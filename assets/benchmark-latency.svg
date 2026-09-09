@@ -1,23 +1,43 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="480" viewBox="0 0 1000 480" role="img" aria-labelledby="title desc"><title id="title">Local CLI lookup latency</title><desc id="desc">Ten repetitions per task. LEIO medians: 103.9, 92.7 and 117 milliseconds. ripgrep: 11.5, 10.7 and 12.1 milliseconds. Different output types; no equivalent-workload speedup claim.</desc><rect width="1000" height="480" rx="20" fill="#07111e"/>
-<text x="40" y="49" font-family="Arial,sans-serif" font-size="28" fill="#ffffff">Local query latency. Measured, not promised.</text>
-<text x="40" y="81" font-family="Arial,sans-serif" font-size="16" fill="#dce6ef">Median wall-clock milliseconds · 10 runs/task · existing index · lower is faster</text>
-<text x="40" y="140" font-family="Arial,sans-serif" font-size="16" fill="#dce6ef">Find query_dead_code</text>
-<rect x="300" y="120" width="467.55" height="20" rx="3" fill="#59e3c0"/>
-<text x="782.55" y="136" font-family="Arial,sans-serif" font-size="16" fill="#dce6ef">103.9</text>
-<rect x="300" y="150" width="51.75" height="20" rx="3" fill="#91acbf"/>
-<text x="366.75" y="166" font-family="Arial,sans-serif" font-size="16" fill="#dce6ef">11.5</text>
-<text x="40" y="240" font-family="Arial,sans-serif" font-size="16" fill="#dce6ef">Find export_code_graph</text>
-<rect x="300" y="220" width="417.15000000000003" height="20" rx="3" fill="#59e3c0"/>
-<text x="732.1500000000001" y="236" font-family="Arial,sans-serif" font-size="16" fill="#dce6ef">92.7</text>
-<rect x="300" y="250" width="48.15" height="20" rx="3" fill="#91acbf"/>
-<text x="363.15" y="266" font-family="Arial,sans-serif" font-size="16" fill="#dce6ef">10.7</text>
-<text x="40" y="340" font-family="Arial,sans-serif" font-size="16" fill="#dce6ef">Context: RDF namespace</text>
-<rect x="300" y="320" width="526.5" height="20" rx="3" fill="#59e3c0"/>
-<text x="841.5" y="336" font-family="Arial,sans-serif" font-size="16" fill="#dce6ef">117.0</text>
-<rect x="300" y="350" width="54.449999999999996" height="20" rx="3" fill="#91acbf"/>
-<text x="369.45" y="366" font-family="Arial,sans-serif" font-size="16" fill="#dce6ef">12.1</text>
-<rect x="40" y="422" width="15" height="15" fill="#59e3c0"/><rect x="165" y="422" width="15" height="15" fill="#91acbf"/>
-<text x="65" y="435" font-family="Arial,sans-serif" font-size="16" fill="#dce6ef">LEIO</text>
-<text x="190" y="435" font-family="Arial,sans-serif" font-size="16" fill="#dce6ef">ripgrep</text>
-<text x="40" y="466" font-family="Arial,sans-serif" font-size="15" fill="#dce6ef">Apple M1 / macOS 26.5.2 / 2026-09-09. Different outputs; not an agent speedup benchmark.</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="560" viewBox="0 0 1200 560" role="img" aria-labelledby="title desc">
+<title id="title">Local CLI query latency</title>
+<desc id="desc">Median wall-clock latency for LEIO and ripgrep across three local lookup tasks. Every value also appears in the adjacent benchmark table. Lower is faster; the tools return different outputs.</desc>
+<rect width="1200" height="560" rx="22" fill="#07111e"/>
+<text x="45" y="48" font-family="Arial,sans-serif" font-size="17" font-weight="700" fill="#59e3c0">LOCAL CLI LATENCY</text>
+<text x="45" y="100" font-family="Arial,sans-serif" font-size="34" font-weight="700" fill="#ffffff">Measured, not promised.</text>
+<text x="45" y="132" font-family="Arial,sans-serif" font-size="16" fill="#c3c2b7">Median wall-clock milliseconds · lower is faster · different output types</text>
+<path d="M45.0 148.0 H57.0 Q61.0 148.0 61.0 152.0 V160.0 Q61.0 164.0 57.0 164.0 H45.0 Z" fill="#199e70"/>
+<text x="70" y="162" font-family="Arial,sans-serif" font-size="15" fill="#c3c2b7">LEIO</text>
+<path d="M145.0 148.0 H157.0 Q161.0 148.0 161.0 152.0 V160.0 Q161.0 164.0 157.0 164.0 H145.0 Z" fill="#d95926"/>
+<text x="170" y="162" font-family="Arial,sans-serif" font-size="15" fill="#c3c2b7">ripgrep</text>
+<line x1="355.0" y1="170" x2="355.0" y2="470" stroke="#365161" stroke-width="1"/>
+<text x="355.0" y="493" text-anchor="middle" font-family="Arial,sans-serif" font-size="13" fill="#898781">0</text>
+<line x1="475.0" y1="170" x2="475.0" y2="470" stroke="#365161" stroke-width="1"/>
+<text x="475.0" y="493" text-anchor="middle" font-family="Arial,sans-serif" font-size="13" fill="#898781">25</text>
+<line x1="595.0" y1="170" x2="595.0" y2="470" stroke="#365161" stroke-width="1"/>
+<text x="595.0" y="493" text-anchor="middle" font-family="Arial,sans-serif" font-size="13" fill="#898781">50</text>
+<line x1="715.0" y1="170" x2="715.0" y2="470" stroke="#365161" stroke-width="1"/>
+<text x="715.0" y="493" text-anchor="middle" font-family="Arial,sans-serif" font-size="13" fill="#898781">75</text>
+<line x1="835.0" y1="170" x2="835.0" y2="470" stroke="#365161" stroke-width="1"/>
+<text x="835.0" y="493" text-anchor="middle" font-family="Arial,sans-serif" font-size="13" fill="#898781">100</text>
+<line x1="955.0" y1="170" x2="955.0" y2="470" stroke="#365161" stroke-width="1"/>
+<text x="955.0" y="493" text-anchor="middle" font-family="Arial,sans-serif" font-size="13" fill="#898781">125</text>
+<line x1="1075.0" y1="170" x2="1075.0" y2="470" stroke="#365161" stroke-width="1"/>
+<text x="1075.0" y="493" text-anchor="middle" font-family="Arial,sans-serif" font-size="13" fill="#898781">150</text>
+<text x="45" y="207" font-family="Arial,sans-serif" font-size="17" fill="#c3c2b7">Find query_dead_code</text>
+<path d="M355.0 220.0 H732.6 Q736.6 220.0 736.6 224.0 V236.0 Q736.6 240.0 732.6 240.0 H355.0 Z" fill="#199e70"/>
+<text x="746.6" y="236.0" font-family="Arial,sans-serif" font-size="15" font-weight="700" fill="#ffffff">79.5 ms</text>
+<path d="M355.0 252.0 H396.6 Q400.6 252.0 400.6 256.0 V268.0 Q400.6 272.0 396.6 272.0 H355.0 Z" fill="#d95926"/>
+<text x="410.6" y="268.0" font-family="Arial,sans-serif" font-size="15" font-weight="700" fill="#ffffff">9.5 ms</text>
+<text x="45" y="307" font-family="Arial,sans-serif" font-size="17" fill="#c3c2b7">Find export_code_graph</text>
+<path d="M355.0 320.0 H716.8 Q720.8 320.0 720.8 324.0 V336.0 Q720.8 340.0 716.8 340.0 H355.0 Z" fill="#199e70"/>
+<text x="730.8" y="336.0" font-family="Arial,sans-serif" font-size="15" font-weight="700" fill="#ffffff">76.2 ms</text>
+<path d="M355.0 352.0 H396.6 Q400.6 352.0 400.6 356.0 V368.0 Q400.6 372.0 396.6 372.0 H355.0 Z" fill="#d95926"/>
+<text x="410.6" y="368.0" font-family="Arial,sans-serif" font-size="15" font-weight="700" fill="#ffffff">9.5 ms</text>
+<text x="45" y="407" font-family="Arial,sans-serif" font-size="17" fill="#c3c2b7">Context: RDF namespace</text>
+<path d="M355.0 420.0 H982.7 Q986.7 420.0 986.7 424.0 V436.0 Q986.7 440.0 982.7 440.0 H355.0 Z" fill="#199e70"/>
+<text x="996.7" y="436.0" font-family="Arial,sans-serif" font-size="15" font-weight="700" fill="#ffffff">131.6 ms</text>
+<path d="M355.0 452.0 H406.2 Q410.2 452.0 410.2 456.0 V468.0 Q410.2 472.0 406.2 472.0 H355.0 Z" fill="#d95926"/>
+<text x="420.2" y="468.0" font-family="Arial,sans-serif" font-size="15" font-weight="700" fill="#ffffff">11.5 ms</text>
+<line x1="355" y1="470" x2="1075" y2="470" stroke="#898781" stroke-width="1"/>
+<text x="45" y="535" font-family="Arial,sans-serif" font-size="14" fill="#898781">Ten repetitions per task · existing index · complete samples and exit codes in the benchmark receipt</text>
 </svg>

@@ -37,7 +37,7 @@ relationships do not prove runtime behavior or complete call coverage.
 
 ## Built for the investigation—not just the lookup.
 
-![Three guided investigations complete in median 1.49 to 1.90 seconds through 11 MCP tool calls and a provider reconnect](assets/benchmark-navigation.svg)
+![Three guided investigations complete in median 1.25 to 1.37 seconds through 11 MCP tool calls and a provider reconnect](assets/benchmark-navigation.svg)
 
 Three real code paths. **11 MCP tool calls per run.** Find context, inventory
 symbols, follow a callee, return to the starting symbol, restart the provider,
@@ -45,9 +45,9 @@ and confirm the session cursor is still there.
 
 | Guided investigation | Median full sequence |
 | --- | ---: |
-| Trace context ranking | **1.49 s** |
-| Follow workflow policy dispatch | **1.56 s** |
-| Investigate MCP binary selection | **1.90 s** |
+| Trace context ranking | **1.37 s** |
+| Follow workflow policy dispatch | **1.25 s** |
+| Investigate MCP binary selection | **1.28 s** |
 
 **15 of 15 scripted runs passed**, including cursor restoration after provider
 restart. Measured on this repository's **414 indexed files**, Apple M1,
@@ -55,8 +55,8 @@ release 2.6.2. Five runs per scenario; warm index/graph. Timings include the
 11 calls, checks and reconnect; setup is excluded.
 
 These are guided navigation benchmarks with labeled targets, not autonomous
-bug fixes or an agent productivity comparison. All samples, including the
-7.96 s outlier, are published with the methodology.
+bug fixes or an agent productivity comparison. Every sample, including the
+slowest 1.55 s run, is published with the methodology.
 
 **[See the complete benchmark and reproduce it →](docs/BENCHMARKS.md)**
 

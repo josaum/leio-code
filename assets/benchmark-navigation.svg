@@ -1,16 +1,28 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="490" viewBox="0 0 1200 490" role="img" aria-labelledby="title desc"><title id="title">Guided multi-step navigation benchmarks</title><desc id="desc">Context ranking: 1.49 seconds. Workflow policy: 1.56 seconds. MCP binary selection: 1.90 seconds. Each sequence makes eleven tool calls and reconnects the provider. Fifteen scripted runs passed. Warm index, labeled targets, no autonomous bug-solving claim.</desc><rect width="1200" height="490" rx="22" fill="#07111e"/>
-<text x="45" y="51" font-family="Arial,sans-serif" font-size="18" fill="#59e3c0">FOLLOW THE CODE. KEEP YOUR PLACE.</text>
-<text x="45" y="107" font-family="Arial,sans-serif" font-size="35" fill="#ffffff">11 tool calls. One continuous investigation.</text>
-<text x="45" y="179" font-family="Arial,sans-serif" font-size="21" fill="#dce6ef">Context ranking</text>
-<rect x="310" y="157" width="505.376" height="32" rx="5" fill="#59e3c0"/>
-<text x="830.376" y="181" font-family="Arial,sans-serif" font-size="23" fill="#ffffff">1.49 s</text>
-<text x="45" y="243" font-family="Arial,sans-serif" font-size="21" fill="#dce6ef">Workflow policy</text>
-<rect x="310" y="221" width="530.5360000000001" height="32" rx="5" fill="#59e3c0"/>
-<text x="855.5360000000001" y="245" font-family="Arial,sans-serif" font-size="23" fill="#ffffff">1.56 s</text>
-<text x="45" y="307" font-family="Arial,sans-serif" font-size="21" fill="#dce6ef">MCP binary selection</text>
-<rect x="310" y="285" width="646.51" height="32" rx="5" fill="#59e3c0"/>
-<text x="971.51" y="309" font-family="Arial,sans-serif" font-size="23" fill="#ffffff">1.90 s</text>
-<text x="45" y="389" font-family="Arial,sans-serif" font-size="22" fill="#ffffff">15 / 15 scripted runs passed — including recovery after provider restart.</text>
-<text x="45" y="433" font-family="Arial,sans-serif" font-size="17" fill="#dce6ef">Median of 5 runs/scenario · 414 indexed files · Apple M1 · warm index/graph</text>
-<text x="45" y="462" font-family="Arial,sans-serif" font-size="15" fill="#91acbf">Guided navigation, not autonomous bug fixing. Setup excluded. Full samples in the benchmark report.</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="500" viewBox="0 0 1200 500" role="img" aria-labelledby="title desc">
+<title id="title">Guided multi-step navigation benchmarks</title>
+<desc id="desc">Median duration for three guided investigations, each using eleven MCP calls and one provider reconnect. All 15 scripted runs restored the navigation cursor. Every value also appears in the adjacent benchmark table.</desc>
+<rect width="1200" height="500" rx="22" fill="#07111e"/>
+<text x="45" y="48" font-family="Arial,sans-serif" font-size="17" font-weight="700" fill="#59e3c0">FOLLOW THE CODE. KEEP YOUR PLACE.</text>
+<text x="45" y="100" font-family="Arial,sans-serif" font-size="34" font-weight="700" fill="#ffffff">11 tool calls. One continuous investigation.</text>
+<text x="45" y="132" font-family="Arial,sans-serif" font-size="16" fill="#c3c2b7">Median full-sequence duration · setup excluded · lower is faster</text>
+<line x1="355.0" y1="165" x2="355.0" y2="405" stroke="#365161" stroke-width="1"/>
+<text x="355.0" y="428" text-anchor="middle" font-family="Arial,sans-serif" font-size="13" fill="#898781">0 s</text>
+<line x1="595.0" y1="165" x2="595.0" y2="405" stroke="#365161" stroke-width="1"/>
+<text x="595.0" y="428" text-anchor="middle" font-family="Arial,sans-serif" font-size="13" fill="#898781">0.5 s</text>
+<line x1="835.0" y1="165" x2="835.0" y2="405" stroke="#365161" stroke-width="1"/>
+<text x="835.0" y="428" text-anchor="middle" font-family="Arial,sans-serif" font-size="13" fill="#898781">1 s</text>
+<line x1="1075.0" y1="165" x2="1075.0" y2="405" stroke="#365161" stroke-width="1"/>
+<text x="1075.0" y="428" text-anchor="middle" font-family="Arial,sans-serif" font-size="13" fill="#898781">1.5 s</text>
+<text x="45" y="212" font-family="Arial,sans-serif" font-size="17" fill="#c3c2b7">Context ranking</text>
+<path d="M355.0 195.0 H1007.9 Q1011.9 195.0 1011.9 199.0 V213.0 Q1011.9 217.0 1007.9 217.0 H355.0 Z" fill="#199e70"/>
+<text x="1021.9" y="212" font-family="Arial,sans-serif" font-size="16" font-weight="700" fill="#ffffff">1.37 s</text>
+<text x="45" y="284" font-family="Arial,sans-serif" font-size="17" fill="#c3c2b7">Workflow policy</text>
+<path d="M355.0 267.0 H950.4 Q954.4 267.0 954.4 271.0 V285.0 Q954.4 289.0 950.4 289.0 H355.0 Z" fill="#199e70"/>
+<text x="964.4" y="284" font-family="Arial,sans-serif" font-size="16" font-weight="700" fill="#ffffff">1.25 s</text>
+<text x="45" y="356" font-family="Arial,sans-serif" font-size="17" fill="#c3c2b7">MCP binary selection</text>
+<path d="M355.0 339.0 H964.2 Q968.2 339.0 968.2 343.0 V357.0 Q968.2 361.0 964.2 361.0 H355.0 Z" fill="#199e70"/>
+<text x="978.2" y="356" font-family="Arial,sans-serif" font-size="16" font-weight="700" fill="#ffffff">1.28 s</text>
+<line x1="355" y1="405" x2="1075" y2="405" stroke="#898781" stroke-width="1"/>
+<text x="45" y="462" font-family="Arial,sans-serif" font-size="16" fill="#ffffff">15 / 15 scripted runs passed, including cursor restoration after provider restart.</text>
+<text x="45" y="487" font-family="Arial,sans-serif" font-size="13" fill="#898781">Guided navigation, not autonomous bug fixing · warm index and graph · complete samples in the benchmark receipt</text>
 </svg>

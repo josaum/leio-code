@@ -1,9 +1,25 @@
 {
-  "schema_version": 1,
-  "measured_at": "2026-09-09T19:13:22.268Z",
+  "schema_version": 2,
+  "measured_at": "2026-09-09T21:52:12.815Z",
   "repository": "https://github.com/josaum/leio-code",
-  "source_revision": "a21963badc83bc149a42ebfa192820ee384398fb",
-  "binary_version": "leio-code 2.6.2 (a21963badc83, clean)",
+  "harness": {
+    "revision": "77d6c3378bd870c752d3be0c328332fad3c3cb5a",
+    "clean": true,
+    "dirty_path_count": 0,
+    "entrypoint": "scripts/benchmark_navigation.mjs",
+    "entrypoint_sha256": "0d8bcced43de45fb4f36b001ca568c8bec65b8b21721105d671b3720b495f6b9",
+    "mcp_wrapper": "mcp/index.js",
+    "mcp_wrapper_sha256": "ec3347f945f08d60c44c65eaa4e0f0b818015aef302da7d53259719eb88a1074"
+  },
+  "inspected_source": {
+    "revision": "a21963badc83bc149a42ebfa192820ee384398fb",
+    "clean": true,
+    "dirty_path_count": 0
+  },
+  "binary": {
+    "version": "leio-code 2.6.2 (a21963badc83, clean)",
+    "sha256": "c493f3c3eb5074ab648dea577bbdab48b0ff1d24e770ddd82d4f074919216bf6"
+  },
   "environment": {
     "platform": "darwin",
     "arch": "arm64",
@@ -21,10 +37,10 @@
       "file": "mcp/resolve-binary.js",
       "caller": "resolveBinaryPath",
       "callee": "findInstalledBinary",
-      "median_ms": 1901.5,
+      "median_ms": 1277.6,
       "runs": [
         {
-          "elapsed_ms": 1511.6,
+          "elapsed_ms": 1326.8,
           "tool_calls": 11,
           "expected_file_rank": 1,
           "returned_files": [
@@ -41,7 +57,7 @@
           "cursor_survived_provider_restart": true
         },
         {
-          "elapsed_ms": 7958.2,
+          "elapsed_ms": 1318.9,
           "tool_calls": 11,
           "expected_file_rank": 1,
           "returned_files": [
@@ -58,7 +74,7 @@
           "cursor_survived_provider_restart": true
         },
         {
-          "elapsed_ms": 2448.6,
+          "elapsed_ms": 1247.1,
           "tool_calls": 11,
           "expected_file_rank": 1,
           "returned_files": [
@@ -75,7 +91,7 @@
           "cursor_survived_provider_restart": true
         },
         {
-          "elapsed_ms": 1901.5,
+          "elapsed_ms": 1237.7,
           "tool_calls": 11,
           "expected_file_rank": 1,
           "returned_files": [
@@ -92,7 +108,7 @@
           "cursor_survived_provider_restart": true
         },
         {
-          "elapsed_ms": 1516.2,
+          "elapsed_ms": 1277.6,
           "tool_calls": 11,
           "expected_file_rank": 1,
           "returned_files": [
@@ -116,10 +132,10 @@
       "file": "src/context.rs",
       "caller": "build_context_bundle",
       "callee": "rank_files",
-      "median_ms": 1486.4,
+      "median_ms": 1368.5,
       "runs": [
         {
-          "elapsed_ms": 1530.2,
+          "elapsed_ms": 1546.8,
           "tool_calls": 11,
           "expected_file_rank": 1,
           "returned_files": [
@@ -136,7 +152,7 @@
           "cursor_survived_provider_restart": true
         },
         {
-          "elapsed_ms": 1473.6,
+          "elapsed_ms": 1253.9,
           "tool_calls": 11,
           "expected_file_rank": 1,
           "returned_files": [
@@ -153,7 +169,7 @@
           "cursor_survived_provider_restart": true
         },
         {
-          "elapsed_ms": 1539.9,
+          "elapsed_ms": 1368.5,
           "tool_calls": 11,
           "expected_file_rank": 1,
           "returned_files": [
@@ -170,7 +186,7 @@
           "cursor_survived_provider_restart": true
         },
         {
-          "elapsed_ms": 1486.4,
+          "elapsed_ms": 1247.9,
           "tool_calls": 11,
           "expected_file_rank": 1,
           "returned_files": [
@@ -187,7 +203,7 @@
           "cursor_survived_provider_restart": true
         },
         {
-          "elapsed_ms": 1456.2,
+          "elapsed_ms": 1426.2,
           "tool_calls": 11,
           "expected_file_rank": 1,
           "returned_files": [
@@ -211,10 +227,10 @@
       "file": "crates/leio-harness/src/workflow.rs",
       "caller": "apply",
       "callee": "apply_with_deployment_policy",
-      "median_ms": 1560.4,
+      "median_ms": 1248.7,
       "runs": [
         {
-          "elapsed_ms": 1560.4,
+          "elapsed_ms": 1234.9,
           "tool_calls": 11,
           "expected_file_rank": 2,
           "returned_files": [
@@ -231,7 +247,7 @@
           "cursor_survived_provider_restart": true
         },
         {
-          "elapsed_ms": 1459.3,
+          "elapsed_ms": 1262.8,
           "tool_calls": 11,
           "expected_file_rank": 2,
           "returned_files": [
@@ -248,7 +264,7 @@
           "cursor_survived_provider_restart": true
         },
         {
-          "elapsed_ms": 1581.9,
+          "elapsed_ms": 1322.2,
           "tool_calls": 11,
           "expected_file_rank": 2,
           "returned_files": [
@@ -265,7 +281,7 @@
           "cursor_survived_provider_restart": true
         },
         {
-          "elapsed_ms": 1629.7,
+          "elapsed_ms": 1248.7,
           "tool_calls": 11,
           "expected_file_rank": 2,
           "returned_files": [
@@ -282,7 +298,7 @@
           "cursor_survived_provider_restart": true
         },
         {
-          "elapsed_ms": 1462.3,
+          "elapsed_ms": 1241.6,
           "tool_calls": 11,
           "expected_file_rank": 2,
           "returned_files": [

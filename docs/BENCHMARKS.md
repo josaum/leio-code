@@ -20,9 +20,9 @@ enabled. The index and graph are prepared before timing starts.
 
 | Scenario | Full-sequence median | Scripted checks passed |
 | --- | ---: | ---: |
-| Trace context ranking | 1,486.4 ms | 5 / 5 |
-| Follow workflow policy dispatch | 1,560.4 ms | 5 / 5 |
-| Investigate MCP binary selection | 1,901.5 ms | 5 / 5 |
+| Trace context ranking | 1,368.5 ms | 5 / 5 |
+| Follow workflow policy dispatch | 1,248.7 ms | 5 / 5 |
+| Investigate MCP binary selection | 1,277.6 ms | 5 / 5 |
 
 Each sequence uses **11 tool calls**:
 
@@ -36,8 +36,9 @@ Each sequence uses **11 tool calls**:
 
 The measured interval includes all calls, assertions, and one provider
 close/reconnect. Initial index creation, graph warm-up and initial connection
-are excluded. All 15 runs passed these assertions. Times vary: the binary-selection
-scenario included a **7,958.2 ms** run; its median is 1,901.5 ms.
+are excluded. All 15 runs passed these assertions. Times vary with machine load: the
+slowest single run was **1,546.8 ms**, in the context-ranking scenario, whose
+median is 1,368.5 ms.
 
 These are **guided development scenarios**, chosen to exercise a known path.
 The script receives the expected file and edge; it does not independently
@@ -80,9 +81,9 @@ latency. These are warm local runs, not cold-index measurements.
 
 | Task | LEIO | ripgrep textual lookup |
 | --- | ---: | ---: |
-| Find `query_dead_code` | 103.9 ms | 11.5 ms |
-| Find `export_code_graph` | 92.7 ms | 10.7 ms |
-| Context for RDF namespace configuration | 117.0 ms | 12.1 ms |
+| Find `query_dead_code` | 79.5 ms | 9.5 ms |
+| Find `export_code_graph` | 76.2 ms | 9.5 ms |
+| Context for RDF namespace configuration | 131.6 ms | 11.5 ms |
 
 All invocations returned exit code 0. ripgrep is faster for these literal searches.
 The outputs are different: textual matches versus LEIO's indexed symbol/context
@@ -99,7 +100,7 @@ Expected files are development labels, not exhaustive relevance judgments.
 | --- | ---: |
 | Expected file in first position | 2 / 7 |
 | Expected file in top three | 4 / 7 |
-| Mean reciprocal rank | 0.493 |
+| Mean reciprocal rank | 0.469 |
 
 Every task and returned path is included in the JSON report, including misses.
 The suite is small and used during development, not held out. This does not
