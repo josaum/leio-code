@@ -1,15 +1,15 @@
 {
   "schema_version": 2,
-  "measured_at": "2026-09-09T21:56:18.912670+00:00",
+  "measured_at": "2026-09-09T22:46:20.476550+00:00",
   "repository": "https://github.com/josaum/leio-code",
   "source": {
-    "revision": "a21963badc83bc149a42ebfa192820ee384398fb",
+    "revision": "377ee12faf616acb9f84688de867097579c74df2",
     "clean": true,
     "dirty_path_count": 0
   },
   "binary": {
-    "version": "leio-code 2.6.2 (a21963badc83, clean)",
-    "sha256": "c493f3c3eb5074ab648dea577bbdab48b0ff1d24e770ddd82d4f074919216bf6"
+    "version": "leio-code 2.6.2 (377ee12faf61, clean)",
+    "sha256": "7e518f828b7268eb74e341a2d315d6b7b05072489f9228e9d2a7083f5213a7c6"
   },
   "environment": {
     "platform": "darwin",
@@ -23,8 +23,8 @@
     "rows": [
       {
         "name": "symbol-query_dead_code",
-        "leio_median_ms": 79.5,
-        "rg_median_ms": 9.5,
+        "leio_median_ms": 90.0,
+        "rg_median_ms": 10.3,
         "leio_exit_codes": [
           0,
           0,
@@ -51,65 +51,65 @@
         ],
         "all_exits_zero": true,
         "repeats": 10,
-        "rg_to_leio_latency_ratio": 0.12,
+        "rg_to_leio_latency_ratio": 0.11,
         "runs": [
           {
-            "leio_elapsed_ms": 99.9,
-            "rg_elapsed_ms": 22.5,
+            "leio_elapsed_ms": 88.9,
+            "rg_elapsed_ms": 31.9,
             "leio_exit": 0,
             "rg_exit": 0
           },
           {
-            "leio_elapsed_ms": 77.3,
-            "rg_elapsed_ms": 9.5,
+            "leio_elapsed_ms": 90.7,
+            "rg_elapsed_ms": 10.2,
             "leio_exit": 0,
             "rg_exit": 0
           },
           {
-            "leio_elapsed_ms": 80.3,
-            "rg_elapsed_ms": 9.5,
+            "leio_elapsed_ms": 90.6,
+            "rg_elapsed_ms": 10.2,
             "leio_exit": 0,
             "rg_exit": 0
           },
           {
-            "leio_elapsed_ms": 81.7,
-            "rg_elapsed_ms": 9.5,
+            "leio_elapsed_ms": 89.0,
+            "rg_elapsed_ms": 11.7,
             "leio_exit": 0,
             "rg_exit": 0
           },
           {
-            "leio_elapsed_ms": 76.1,
-            "rg_elapsed_ms": 9.5,
+            "leio_elapsed_ms": 89.9,
+            "rg_elapsed_ms": 10.1,
             "leio_exit": 0,
             "rg_exit": 0
           },
           {
-            "leio_elapsed_ms": 80.5,
-            "rg_elapsed_ms": 9.5,
+            "leio_elapsed_ms": 90.0,
+            "rg_elapsed_ms": 11.3,
             "leio_exit": 0,
             "rg_exit": 0
           },
           {
-            "leio_elapsed_ms": 78.7,
-            "rg_elapsed_ms": 9.6,
+            "leio_elapsed_ms": 92.6,
+            "rg_elapsed_ms": 10.2,
             "leio_exit": 0,
             "rg_exit": 0
           },
           {
-            "leio_elapsed_ms": 81.3,
-            "rg_elapsed_ms": 9.6,
+            "leio_elapsed_ms": 90.2,
+            "rg_elapsed_ms": 11.3,
             "leio_exit": 0,
             "rg_exit": 0
           },
           {
-            "leio_elapsed_ms": 77.3,
-            "rg_elapsed_ms": 10.0,
+            "leio_elapsed_ms": 87.4,
+            "rg_elapsed_ms": 10.4,
             "leio_exit": 0,
             "rg_exit": 0
           },
           {
-            "leio_elapsed_ms": 76.3,
-            "rg_elapsed_ms": 9.4,
+            "leio_elapsed_ms": 86.8,
+            "rg_elapsed_ms": 10.2,
             "leio_exit": 0,
             "rg_exit": 0
           }
@@ -117,8 +117,8 @@
       },
       {
         "name": "symbol-export_code_graph",
-        "leio_median_ms": 76.2,
-        "rg_median_ms": 9.5,
+        "leio_median_ms": 92.2,
+        "rg_median_ms": 10.4,
         "leio_exit_codes": [
           0,
           0,
@@ -145,65 +145,65 @@
         ],
         "all_exits_zero": true,
         "repeats": 10,
-        "rg_to_leio_latency_ratio": 0.12,
+        "rg_to_leio_latency_ratio": 0.11,
         "runs": [
           {
-            "leio_elapsed_ms": 75.7,
-            "rg_elapsed_ms": 9.4,
+            "leio_elapsed_ms": 87.2,
+            "rg_elapsed_ms": 11.7,
             "leio_exit": 0,
             "rg_exit": 0
           },
           {
-            "leio_elapsed_ms": 77.6,
-            "rg_elapsed_ms": 9.4,
+            "leio_elapsed_ms": 92.3,
+            "rg_elapsed_ms": 10.1,
             "leio_exit": 0,
             "rg_exit": 0
           },
           {
-            "leio_elapsed_ms": 76.2,
-            "rg_elapsed_ms": 9.5,
+            "leio_elapsed_ms": 90.8,
+            "rg_elapsed_ms": 10.5,
             "leio_exit": 0,
             "rg_exit": 0
           },
           {
-            "leio_elapsed_ms": 76.1,
-            "rg_elapsed_ms": 9.4,
+            "leio_elapsed_ms": 90.5,
+            "rg_elapsed_ms": 10.3,
             "leio_exit": 0,
             "rg_exit": 0
           },
           {
-            "leio_elapsed_ms": 75.3,
-            "rg_elapsed_ms": 9.6,
+            "leio_elapsed_ms": 92.2,
+            "rg_elapsed_ms": 10.6,
             "leio_exit": 0,
             "rg_exit": 0
           },
           {
-            "leio_elapsed_ms": 79.7,
-            "rg_elapsed_ms": 9.5,
+            "leio_elapsed_ms": 95.2,
+            "rg_elapsed_ms": 10.4,
             "leio_exit": 0,
             "rg_exit": 0
           },
           {
-            "leio_elapsed_ms": 76.2,
-            "rg_elapsed_ms": 11.4,
+            "leio_elapsed_ms": 95.2,
+            "rg_elapsed_ms": 10.2,
             "leio_exit": 0,
             "rg_exit": 0
           },
           {
-            "leio_elapsed_ms": 74.6,
-            "rg_elapsed_ms": 9.5,
+            "leio_elapsed_ms": 95.0,
+            "rg_elapsed_ms": 10.5,
             "leio_exit": 0,
             "rg_exit": 0
           },
           {
-            "leio_elapsed_ms": 74.9,
-            "rg_elapsed_ms": 9.6,
+            "leio_elapsed_ms": 92.9,
+            "rg_elapsed_ms": 10.3,
             "leio_exit": 0,
             "rg_exit": 0
           },
           {
-            "leio_elapsed_ms": 76.5,
-            "rg_elapsed_ms": 9.8,
+            "leio_elapsed_ms": 90.6,
+            "rg_elapsed_ms": 10.5,
             "leio_exit": 0,
             "rg_exit": 0
           }
@@ -211,8 +211,8 @@
       },
       {
         "name": "context-rdf-namespace",
-        "leio_median_ms": 131.6,
-        "rg_median_ms": 11.5,
+        "leio_median_ms": 151.4,
+        "rg_median_ms": 12.5,
         "leio_exit_codes": [
           0,
           0,
@@ -239,65 +239,65 @@
         ],
         "all_exits_zero": true,
         "repeats": 10,
-        "rg_to_leio_latency_ratio": 0.09,
+        "rg_to_leio_latency_ratio": 0.08,
         "runs": [
           {
-            "leio_elapsed_ms": 145.1,
-            "rg_elapsed_ms": 13.8,
+            "leio_elapsed_ms": 154.9,
+            "rg_elapsed_ms": 14.8,
             "leio_exit": 0,
             "rg_exit": 0
           },
           {
-            "leio_elapsed_ms": 143.7,
+            "leio_elapsed_ms": 150.7,
             "rg_elapsed_ms": 12.5,
             "leio_exit": 0,
             "rg_exit": 0
           },
           {
-            "leio_elapsed_ms": 131.4,
-            "rg_elapsed_ms": 11.2,
+            "leio_elapsed_ms": 153.2,
+            "rg_elapsed_ms": 12.9,
             "leio_exit": 0,
             "rg_exit": 0
           },
           {
-            "leio_elapsed_ms": 135.1,
-            "rg_elapsed_ms": 11.7,
+            "leio_elapsed_ms": 155.3,
+            "rg_elapsed_ms": 13.7,
             "leio_exit": 0,
             "rg_exit": 0
           },
           {
-            "leio_elapsed_ms": 132.7,
-            "rg_elapsed_ms": 11.0,
-            "leio_exit": 0,
-            "rg_exit": 0
-          },
-          {
-            "leio_elapsed_ms": 129.5,
+            "leio_elapsed_ms": 153.8,
             "rg_elapsed_ms": 12.5,
             "leio_exit": 0,
             "rg_exit": 0
           },
           {
-            "leio_elapsed_ms": 129.8,
-            "rg_elapsed_ms": 11.0,
+            "leio_elapsed_ms": 149.7,
+            "rg_elapsed_ms": 12.3,
             "leio_exit": 0,
             "rg_exit": 0
           },
           {
-            "leio_elapsed_ms": 128.2,
-            "rg_elapsed_ms": 11.3,
+            "leio_elapsed_ms": 149.3,
+            "rg_elapsed_ms": 12.0,
             "leio_exit": 0,
             "rg_exit": 0
           },
           {
-            "leio_elapsed_ms": 131.8,
-            "rg_elapsed_ms": 11.3,
+            "leio_elapsed_ms": 142.8,
+            "rg_elapsed_ms": 12.0,
             "leio_exit": 0,
             "rg_exit": 0
           },
           {
-            "leio_elapsed_ms": 130.5,
-            "rg_elapsed_ms": 12.5,
+            "leio_elapsed_ms": 152.2,
+            "rg_elapsed_ms": 13.2,
+            "leio_exit": 0,
+            "rg_exit": 0
+          },
+          {
+            "leio_elapsed_ms": 147.3,
+            "rg_elapsed_ms": 11.9,
             "leio_exit": 0,
             "rg_exit": 0
           }
@@ -307,9 +307,9 @@
     "limitations": "The arms return different output types. This is subprocess latency, not an agent speedup or equal-workload comparison."
   },
   "retrieval": {
-    "binary_version": "leio-code 2.6.2 (a21963badc83, clean)",
+    "binary_version": "leio-code 2.6.2 (377ee12faf61, clean)",
     "task_count": 7,
-    "mean_reciprocal_rank": 0.46904761904761905,
+    "mean_reciprocal_rank": 0.4928571428571429,
     "hit_at_1": 0.2857142857142857,
     "hit_at_3": 0.5714285714285714,
     "limitations": "Small labeled suite; relevance labels are not exhaustive. No architecture or call-edge accuracy claim.",
@@ -373,13 +373,13 @@
         ],
         "paths": [
           "src/doctors/session_hot_state.rs",
-          "src/doctors/skill_contract.rs",
           "hooks/session-context.sh",
-          "tests/skill_contract_doctor.rs",
-          "tests/skill_runbook_safety.rs"
+          "src/doctors/skill_contract.rs",
+          "tests/cli_surface.rs",
+          "tests/skill_contract_doctor.rs"
         ],
-        "first_relevant_rank": 3,
-        "reciprocal_rank": 0.3333333333333333,
+        "first_relevant_rank": 2,
+        "reciprocal_rank": 0.5,
         "hit_at_1": false,
         "hit_at_3": true
       },

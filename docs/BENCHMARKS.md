@@ -5,14 +5,14 @@ agent's workflow. These local measurements show what that costs and how well
 retrieval performs on the checked-in development tasks.
 
 Measured **9 September 2026**, Apple M1, macOS 26.5.2, release binary
-`2.6.2 (a21963badc83, clean)`, against source revision
-[`a21963b`](https://github.com/josaum/leio-code/tree/a21963badc83bc149a42ebfa192820ee384398fb).
+`2.6.2 (377ee12faf61, clean)`, against source revision
+[`377ee12`](https://github.com/josaum/leio-code/tree/377ee12faf616acb9f84688de867097579c74df2).
 [Machine-readable results](../benchmarks/public-results.json).
 
 ## Multi-step investigations through stdio MCP
 
 The primary product benchmark exercises three guided investigations in the real
-public repository: **414 indexed files**, source `a21963badc83`, Node.js 24.13.0.
+public repository: **420 indexed files**, source `377ee12faf61`, Node.js 24.13.0.
 It runs actual MCP calls against the release CLI, with default provenance events
 enabled. The index and graph are prepared before timing starts.
 
@@ -20,9 +20,9 @@ enabled. The index and graph are prepared before timing starts.
 
 | Scenario | Full-sequence median | Scripted checks passed |
 | --- | ---: | ---: |
-| Trace context ranking | 1,368.5 ms | 5 / 5 |
-| Follow workflow policy dispatch | 1,248.7 ms | 5 / 5 |
-| Investigate MCP binary selection | 1,277.6 ms | 5 / 5 |
+| Trace context ranking | 1,494.2 ms | 5 / 5 |
+| Follow workflow policy dispatch | 1,463.4 ms | 5 / 5 |
+| Investigate MCP binary selection | 1,416.0 ms | 5 / 5 |
 
 Each sequence uses **11 tool calls**:
 
@@ -37,8 +37,8 @@ Each sequence uses **11 tool calls**:
 The measured interval includes all calls, assertions, and one provider
 close/reconnect. Initial index creation, graph warm-up and initial connection
 are excluded. All 15 runs passed these assertions. Times vary with machine load: the
-slowest single run was **1,546.8 ms**, in the context-ranking scenario, whose
-median is 1,368.5 ms.
+slowest single run was **1,714.4 ms**, in the binary-selection scenario, whose
+median is 1,416.0 ms.
 
 These are **guided development scenarios**, chosen to exercise a known path.
 The script receives the expected file and edge; it does not independently
@@ -55,10 +55,13 @@ Run the current benchmark script against a separate checkout of the measured
 source. Build that checkout's binary so source identity is explicit:
 
 ```bash
-git worktree add --detach /tmp/leio-benchmark-source a21963badc83bc149a42ebfa192820ee384398fb
+git worktree add --detach /tmp/leio-benchmark-source 377ee12faf616acb9f84688de867097579c74df2
 (cd /tmp/leio-benchmark-source && cargo build --locked --release -p leio-code)
 npm ci --prefix mcp
-LEIO_CODE_BIN=/tmp/leio-benchmark-source/target/release/leio-code \
+BIN=/tmp/leio-benchmark-source/target/release/leio-code
+"$BIN" --repo /tmp/leio-benchmark-source index
+"$BIN" --repo /tmp/leio-benchmark-source export code-graph
+LEIO_CODE_BIN="$BIN" \
   node scripts/benchmark_navigation.mjs --repo /tmp/leio-benchmark-source \
   --repeats 5 --output /tmp/navigation-results.json
 ```
@@ -81,9 +84,9 @@ latency. These are warm local runs, not cold-index measurements.
 
 | Task | LEIO | ripgrep textual lookup |
 | --- | ---: | ---: |
-| Find `query_dead_code` | 79.5 ms | 9.5 ms |
-| Find `export_code_graph` | 76.2 ms | 9.5 ms |
-| Context for RDF namespace configuration | 131.6 ms | 11.5 ms |
+| Find `query_dead_code` | 90.0 ms | 10.3 ms |
+| Find `export_code_graph` | 92.2 ms | 10.4 ms |
+| Context for RDF namespace configuration | 151.4 ms | 12.5 ms |
 
 All invocations returned exit code 0. ripgrep is faster for these literal searches.
 The outputs are different: textual matches versus LEIO's indexed symbol/context
@@ -100,7 +103,7 @@ Expected files are development labels, not exhaustive relevance judgments.
 | --- | ---: |
 | Expected file in first position | 2 / 7 |
 | Expected file in top three | 4 / 7 |
-| Mean reciprocal rank | 0.469 |
+| Mean reciprocal rank | 0.493 |
 
 Every task and returned path is included in the JSON report, including misses.
 The suite is small and used during development, not held out. This does not
