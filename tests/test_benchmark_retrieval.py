@@ -1,4 +1,5 @@
 import importlib.util
+import statistics
 import subprocess
 import sys
 import tempfile
@@ -32,6 +33,28 @@ class BenchmarkRetrievalTests(unittest.TestCase):
         self.assertTrue(row["all_exits_zero"])
         self.assertEqual(row["rg_to_leio_latency_ratio"], 0.1)
         self.assertNotIn("speedup_vs_rg", row)
+
+    def test_published_median_is_reproducible_from_published_runs(self) -> None:
+        # Regression: the median was taken over full-precision timings while the
+        # receipt published each repetition rounded to 0.1 ms, so
+        # publish_benchmarks -- which recomputes the median from the published
+        # runs and demands an exact match -- rejected honest receipts.
+        leio_runs = [{"exit": 0, "elapsed_ms": value} for value in (78.64, 78.14)]
+        rg_runs = [{"exit": 0, "elapsed_ms": value} for value in (9.64, 9.14)]
+
+        row = benchmark_retrieval.summarize_runs("task", leio_runs, rg_runs)
+
+        for arm in ("leio", "rg"):
+            published = [run[f"{arm}_elapsed_ms"] for run in row["runs"]]
+            self.assertEqual(
+                round(statistics.median(published), 1),
+                row[f"{arm}_median_ms"],
+                f"{arm} median must follow from the published repetitions",
+            )
+        self.assertEqual(
+            row["rg_to_leio_latency_ratio"],
+            round(row["rg_median_ms"] / row["leio_median_ms"], 2),
+        )
 
     def test_summarize_runs_rejects_empty_or_mismatched_repetitions(self) -> None:
         with self.assertRaisesRegex(ValueError, "same nonzero repetition count"):

@@ -124,8 +124,14 @@ def summarize_runs(
             f"ripgrep exit codes {', '.join(map(str, rg_exit_codes))}"
         )
 
-    leio_median_ms = round(median([run["elapsed_ms"] for run in leio_runs]), 1)
-    rg_median_ms = round(median([run["elapsed_ms"] for run in rg_runs]), 1)
+    # Summarize the same numbers the receipt publishes: round each repetition
+    # first, then take the median. Rounding after the median makes the published
+    # value unreproducible from the published runs whenever the two middle
+    # samples straddle a rounding boundary, which any even --repeats can hit.
+    leio_elapsed_ms = [round(float(run["elapsed_ms"]), 1) for run in leio_runs]
+    rg_elapsed_ms = [round(float(run["elapsed_ms"]), 1) for run in rg_runs]
+    leio_median_ms = round(median(leio_elapsed_ms), 1)
+    rg_median_ms = round(median(rg_elapsed_ms), 1)
     return {
         "name": name,
         "leio_median_ms": leio_median_ms,
@@ -139,12 +145,14 @@ def summarize_runs(
         ),
         "runs": [
             {
-                "leio_elapsed_ms": round(float(leio_run["elapsed_ms"]), 1),
-                "rg_elapsed_ms": round(float(rg_run["elapsed_ms"]), 1),
+                "leio_elapsed_ms": leio_ms,
+                "rg_elapsed_ms": rg_ms,
                 "leio_exit": int(leio_run["exit"]),
                 "rg_exit": int(rg_run["exit"]),
             }
-            for leio_run, rg_run in zip(leio_runs, rg_runs, strict=True)
+            for leio_run, rg_run, leio_ms, rg_ms in zip(
+                leio_runs, rg_runs, leio_elapsed_ms, rg_elapsed_ms, strict=True
+            )
         ],
     }
 
