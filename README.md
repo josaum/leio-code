@@ -4,7 +4,7 @@ Agent-first code intelligence for one repository at a time.
 
 Selected conversational files also have a local evidence-and-guidance workflow:
 [`conversation --source <TXT/ZIP/JSON>`](docs/conversation-workflow.md), exposed
-through stdio MCP and Reference Provider's typed local bridge. It prepares provenance,
+through the local stdio MCP. It prepares provenance,
 temporal context and a semantic/statistical review plan; model-based analysis
 remains a separately executed step.
 
