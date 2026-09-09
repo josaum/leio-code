@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="490" viewBox="0 0 1200 490" role="img" aria-labelledby="title desc"><title id="title">Guided multi-step navigation benchmarks</title><desc id="desc">Context ranking: 1.49 seconds. Workflow policy: 1.56 seconds. MCP binary selection: 1.90 seconds. Each sequence makes eleven tool calls and reconnects the provider. Fifteen scripted runs passed. Warm index, labeled targets, no autonomous bug-solving claim.</desc><rect width="1200" height="490" rx="22" fill="#07111e"/>
+<text x="45" y="51" font-family="Arial,sans-serif" font-size="18" fill="#59e3c0">FOLLOW THE CODE. KEEP YOUR PLACE.</text>
+<text x="45" y="107" font-family="Arial,sans-serif" font-size="35" fill="#ffffff">11 tool calls. One continuous investigation.</text>
+<text x="45" y="179" font-family="Arial,sans-serif" font-size="21" fill="#dce6ef">Context ranking</text>
+<rect x="310" y="157" width="505.376" height="32" rx="5" fill="#59e3c0"/>
+<text x="830.376" y="181" font-family="Arial,sans-serif" font-size="23" fill="#ffffff">1.49 s</text>
+<text x="45" y="243" font-family="Arial,sans-serif" font-size="21" fill="#dce6ef">Workflow policy</text>
+<rect x="310" y="221" width="530.5360000000001" height="32" rx="5" fill="#59e3c0"/>
+<text x="855.5360000000001" y="245" font-family="Arial,sans-serif" font-size="23" fill="#ffffff">1.56 s</text>
+<text x="45" y="307" font-family="Arial,sans-serif" font-size="21" fill="#dce6ef">MCP binary selection</text>
+<rect x="310" y="285" width="646.51" height="32" rx="5" fill="#59e3c0"/>
+<text x="971.51" y="309" font-family="Arial,sans-serif" font-size="23" fill="#ffffff">1.90 s</text>
+<text x="45" y="389" font-family="Arial,sans-serif" font-size="22" fill="#ffffff">15 / 15 scripted runs passed — including recovery after provider restart.</text>
+<text x="45" y="433" font-family="Arial,sans-serif" font-size="17" fill="#dce6ef">Median of 5 runs/scenario · 414 indexed files · Apple M1 · warm index/graph</text>
+<text x="45" y="462" font-family="Arial,sans-serif" font-size="15" fill="#91acbf">Guided navigation, not autonomous bug fixing. Setup excluded. Full samples in the benchmark report.</text>
+</svg>

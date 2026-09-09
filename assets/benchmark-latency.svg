@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="480" viewBox="0 0 1000 480" role="img" aria-labelledby="title desc"><title id="title">Local CLI lookup latency</title><desc id="desc">Ten repetitions per task. LEIO medians: 103.9, 92.7 and 117 milliseconds. ripgrep: 11.5, 10.7 and 12.1 milliseconds. Different output types; no equivalent-workload speedup claim.</desc><rect width="1000" height="480" rx="20" fill="#07111e"/>
+<text x="40" y="49" font-family="Arial,sans-serif" font-size="28" fill="#ffffff">Local query latency. Measured, not promised.</text>
+<text x="40" y="81" font-family="Arial,sans-serif" font-size="16" fill="#dce6ef">Median wall-clock milliseconds · 10 runs/task · existing index · lower is faster</text>
+<text x="40" y="140" font-family="Arial,sans-serif" font-size="16" fill="#dce6ef">Find query_dead_code</text>
+<rect x="300" y="120" width="467.55" height="20" rx="3" fill="#59e3c0"/>
+<text x="782.55" y="136" font-family="Arial,sans-serif" font-size="16" fill="#dce6ef">103.9</text>
+<rect x="300" y="150" width="51.75" height="20" rx="3" fill="#91acbf"/>
+<text x="366.75" y="166" font-family="Arial,sans-serif" font-size="16" fill="#dce6ef">11.5</text>
+<text x="40" y="240" font-family="Arial,sans-serif" font-size="16" fill="#dce6ef">Find export_code_graph</text>
+<rect x="300" y="220" width="417.15000000000003" height="20" rx="3" fill="#59e3c0"/>
+<text x="732.1500000000001" y="236" font-family="Arial,sans-serif" font-size="16" fill="#dce6ef">92.7</text>
+<rect x="300" y="250" width="48.15" height="20" rx="3" fill="#91acbf"/>
+<text x="363.15" y="266" font-family="Arial,sans-serif" font-size="16" fill="#dce6ef">10.7</text>
+<text x="40" y="340" font-family="Arial,sans-serif" font-size="16" fill="#dce6ef">Context: RDF namespace</text>
+<rect x="300" y="320" width="526.5" height="20" rx="3" fill="#59e3c0"/>
+<text x="841.5" y="336" font-family="Arial,sans-serif" font-size="16" fill="#dce6ef">117.0</text>
+<rect x="300" y="350" width="54.449999999999996" height="20" rx="3" fill="#91acbf"/>
+<text x="369.45" y="366" font-family="Arial,sans-serif" font-size="16" fill="#dce6ef">12.1</text>
+<rect x="40" y="422" width="15" height="15" fill="#59e3c0"/><rect x="165" y="422" width="15" height="15" fill="#91acbf"/>
+<text x="65" y="435" font-family="Arial,sans-serif" font-size="16" fill="#dce6ef">LEIO</text>
+<text x="190" y="435" font-family="Arial,sans-serif" font-size="16" fill="#dce6ef">ripgrep</text>
+<text x="40" y="466" font-family="Arial,sans-serif" font-size="15" fill="#dce6ef">Apple M1 / macOS 26.5.2 / 2026-09-09. Different outputs; not an agent speedup benchmark.</text>
+</svg>

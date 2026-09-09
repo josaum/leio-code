@@ -8,7 +8,7 @@
  * Authoritative schema:
  *   schema/2026-07-28/schema.ts in the MCP spec tree
  * Human spec:
- *   https://modelcontextprotocol.info/specification/2026-07-28/
+ *   https://modelcontextprotocol.io/specification/2026-07-28
  */
 
 import { readFileSync } from "node:fs";
@@ -33,7 +33,7 @@ export const SUPPORTED_PROTOCOL_VERSIONS = Object.freeze([
 ]);
 
 export const SPEC_URL =
-  "https://modelcontextprotocol.info/specification/2026-07-28/";
+  "https://modelcontextprotocol.io/specification/2026-07-28";
 
 export const SPEC_TOOLS_URL =
   "https://modelcontextprotocol.io/specification/2026-07-28/server/tools";

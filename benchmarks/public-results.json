@@ -1,0 +1,175 @@
+{
+  "schema_version": 1,
+  "measured_at": "2026-09-09",
+  "source_revision": "a21963badc83bc149a42ebfa192820ee384398fb",
+  "platform": {
+    "cpu": "Apple M1",
+    "os": "macOS 26.5.2"
+  },
+  "methodology": "Existing index; sequential CLI subprocess wall time, ten repetitions per task. No hosted model calls. Developer machine, not an isolated laboratory. Small development suite, not held-out evaluation.",
+  "latency": {
+    "binary": "leio-code release binary",
+    "rows": [
+      {
+        "name": "symbol-query_dead_code",
+        "leio_median_ms": 103.9,
+        "rg_median_ms": 11.5,
+        "leio_exit": 0,
+        "rg_exit": 0,
+        "repeats": 10,
+        "speedup_vs_rg": 0.11
+      },
+      {
+        "name": "symbol-export_code_graph",
+        "leio_median_ms": 92.7,
+        "rg_median_ms": 10.7,
+        "leio_exit": 0,
+        "rg_exit": 0,
+        "repeats": 10,
+        "speedup_vs_rg": 0.12
+      },
+      {
+        "name": "context-rdf-namespace",
+        "leio_median_ms": 117.0,
+        "rg_median_ms": 12.1,
+        "leio_exit": 0,
+        "rg_exit": 0,
+        "repeats": 10,
+        "speedup_vs_rg": 0.1
+      }
+    ],
+    "repository": "https://github.com/josaum/leio-code"
+  },
+  "retrieval": {
+    "repository": "https://github.com/josaum/leio-code",
+    "binary": "leio-code release binary",
+    "binary_version": "leio-code 2.6.2 (a21963badc83, clean)",
+    "task_count": 7,
+    "mean_reciprocal_rank": 0.4928571428571429,
+    "hit_at_1": 0.2857142857142857,
+    "hit_at_3": 0.5714285714285714,
+    "limitations": "Small labeled suite; relevance labels are not exhaustive. No architecture or call-edge accuracy claim.",
+    "results": [
+      {
+        "task": "fix Apps SDK Docker smoke",
+        "relevant_paths": [
+          "apps-sdk/scripts/smoke-docker.sh",
+          "apps-sdk/smoke.mjs"
+        ],
+        "paths": [
+          "apps-sdk/server.js",
+          "apps-sdk/auth-summary.mjs",
+          "tests/test_apps_sdk_start_local.py",
+          "apps-sdk/scripts/smoke-docker.sh",
+          "apps-sdk/smoke.mjs"
+        ],
+        "first_relevant_rank": 4,
+        "reciprocal_rank": 0.25,
+        "hit_at_1": false,
+        "hit_at_3": false
+      },
+      {
+        "task": "context file ranking scoring exact identifier relevance",
+        "relevant_paths": [
+          "src/context.rs"
+        ],
+        "paths": [
+          "src/context.rs",
+          "src/doctors/server_dockerfile_context_coherence.rs",
+          "src/search.rs",
+          "tests/export_formal_context_stream.rs",
+          "src/doctors/flight_server_context_isolation.rs"
+        ],
+        "first_relevant_rank": 1,
+        "reciprocal_rank": 1.0,
+        "hit_at_1": true,
+        "hit_at_3": true
+      },
+      {
+        "task": "MCP binary resolution installed cargo executable",
+        "relevant_paths": [
+          "mcp/resolve-binary.js"
+        ],
+        "paths": [
+          "mcp/resolve-binary.js",
+          "mcp/tools.test.js",
+          "mcp/resolve-binary.test.js",
+          "tests/test_apps_sdk_start_local.py",
+          "src/update.rs"
+        ],
+        "first_relevant_rank": 1,
+        "reciprocal_rank": 1.0,
+        "hit_at_1": true,
+        "hit_at_3": true
+      },
+      {
+        "task": "session startup inject canonical skill instructions",
+        "relevant_paths": [
+          "hooks/session-context.sh"
+        ],
+        "paths": [
+          "src/doctors/session_hot_state.rs",
+          "hooks/session-context.sh",
+          "tests/skill_runbook_safety.rs",
+          "src/query.rs",
+          "src/export.rs"
+        ],
+        "first_relevant_rank": 2,
+        "reciprocal_rank": 0.5,
+        "hit_at_1": false,
+        "hit_at_3": true
+      },
+      {
+        "task": "update installed CLI and refresh plugin caches",
+        "relevant_paths": [
+          "src/update.rs"
+        ],
+        "paths": [
+          "tests/test_plugin_mcp_launch.py",
+          "apps-sdk/keycloak/configure-app-client.mjs",
+          "tests/test_install_codex_plugin.py",
+          "scripts/install_codex_plugin.py",
+          "src/update.rs"
+        ],
+        "first_relevant_rank": 5,
+        "reciprocal_rank": 0.2,
+        "hit_at_1": false,
+        "hit_at_3": false
+      },
+      {
+        "task": "persist workflow approval retry revision inputs",
+        "relevant_paths": [
+          "crates/leio-harness/src/workflow.rs"
+        ],
+        "paths": [
+          "crates/leio-harness/tests/workflow.rs",
+          "crates/leio-harness/src/workflow.rs",
+          "src/node_rows.rs",
+          "apps-sdk/server.js",
+          ".github/workflows/binary-release.yml"
+        ],
+        "first_relevant_rank": 2,
+        "reciprocal_rank": 0.5,
+        "hit_at_1": false,
+        "hit_at_3": true
+      },
+      {
+        "task": "local deployment verify revision rollback artifact",
+        "relevant_paths": [
+          "crates/leio-harness/src/delivery.rs"
+        ],
+        "paths": [
+          "scripts/verify_release_artifact.py",
+          "src/doctors/local_packs.rs",
+          "src/doctors/artifact_reuse.rs",
+          "tests/test_release_artifact.py",
+          "tests/local_doctor_packs.rs"
+        ],
+        "first_relevant_rank": null,
+        "reciprocal_rank": 0,
+        "hit_at_1": false,
+        "hit_at_3": false
+      }
+    ]
+  }
+}

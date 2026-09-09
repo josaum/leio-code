@@ -54,5 +54,5 @@ Until that exists, bundles still work; **`retrieval_signals.code_graph_refresh_h
 
 ## Related
 
-- Code-graph export layout and query cache: [README.md § Code-graph export](../README.md#code-graph-export) (repository README).
+- Code-graph export layout and query cache: [technical guide § What stays on disk](CLI-GUIDE.md#what-stays-on-disk).
 - Agent-oriented overview: [skills/leio-code/SKILL.md](../skills/leio-code/SKILL.md).

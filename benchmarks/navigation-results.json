@@ -1,0 +1,304 @@
+{
+  "schema_version": 1,
+  "measured_at": "2026-09-09T19:13:22.268Z",
+  "repository": "https://github.com/josaum/leio-code",
+  "source_revision": "a21963badc83bc149a42ebfa192820ee384398fb",
+  "binary_version": "leio-code 2.6.2 (a21963badc83, clean)",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpu": "Apple M1",
+    "node": "v24.13.0"
+  },
+  "indexed_files": 414,
+  "setup": "Fresh index then untimed context and graph warm-up. Setup excluded. Default provenance events enabled.",
+  "measurement": "11 sequential MCP tool calls plus one provider close/reconnect per run. Assertions included in elapsed time. Fixed labeled file and edge selected by script; no LLM reasoning time.",
+  "limitations": "Three guided development scenarios, not held-out tasks or bug-solving results. No comparator, token-saving, productivity or graph-completeness claim. Unselected graph candidates are not validated.",
+  "rows": [
+    {
+      "name": "Investigate MCP binary selection",
+      "task": "MCP binary resolution installed cargo executable",
+      "file": "mcp/resolve-binary.js",
+      "caller": "resolveBinaryPath",
+      "callee": "findInstalledBinary",
+      "median_ms": 1901.5,
+      "runs": [
+        {
+          "elapsed_ms": 1511.6,
+          "tool_calls": 11,
+          "expected_file_rank": 1,
+          "returned_files": [
+            "mcp/resolve-binary.js",
+            "mcp/tools.test.js",
+            "mcp/resolve-binary.test.js",
+            "tests/test_apps_sdk_start_local.py",
+            "src/update.rs"
+          ],
+          "candidate_count": 4,
+          "selected_result_index": 2,
+          "selected_symbol": "findInstalledBinary",
+          "cursor_restored": true,
+          "cursor_survived_provider_restart": true
+        },
+        {
+          "elapsed_ms": 7958.2,
+          "tool_calls": 11,
+          "expected_file_rank": 1,
+          "returned_files": [
+            "mcp/resolve-binary.js",
+            "mcp/tools.test.js",
+            "mcp/resolve-binary.test.js",
+            "tests/test_apps_sdk_start_local.py",
+            "src/update.rs"
+          ],
+          "candidate_count": 4,
+          "selected_result_index": 2,
+          "selected_symbol": "findInstalledBinary",
+          "cursor_restored": true,
+          "cursor_survived_provider_restart": true
+        },
+        {
+          "elapsed_ms": 2448.6,
+          "tool_calls": 11,
+          "expected_file_rank": 1,
+          "returned_files": [
+            "mcp/resolve-binary.js",
+            "mcp/tools.test.js",
+            "mcp/resolve-binary.test.js",
+            "tests/test_apps_sdk_start_local.py",
+            "src/update.rs"
+          ],
+          "candidate_count": 4,
+          "selected_result_index": 2,
+          "selected_symbol": "findInstalledBinary",
+          "cursor_restored": true,
+          "cursor_survived_provider_restart": true
+        },
+        {
+          "elapsed_ms": 1901.5,
+          "tool_calls": 11,
+          "expected_file_rank": 1,
+          "returned_files": [
+            "mcp/resolve-binary.js",
+            "mcp/tools.test.js",
+            "mcp/resolve-binary.test.js",
+            "tests/test_apps_sdk_start_local.py",
+            "src/update.rs"
+          ],
+          "candidate_count": 4,
+          "selected_result_index": 2,
+          "selected_symbol": "findInstalledBinary",
+          "cursor_restored": true,
+          "cursor_survived_provider_restart": true
+        },
+        {
+          "elapsed_ms": 1516.2,
+          "tool_calls": 11,
+          "expected_file_rank": 1,
+          "returned_files": [
+            "mcp/resolve-binary.js",
+            "mcp/tools.test.js",
+            "mcp/resolve-binary.test.js",
+            "tests/test_apps_sdk_start_local.py",
+            "src/update.rs"
+          ],
+          "candidate_count": 4,
+          "selected_result_index": 2,
+          "selected_symbol": "findInstalledBinary",
+          "cursor_restored": true,
+          "cursor_survived_provider_restart": true
+        }
+      ]
+    },
+    {
+      "name": "Trace context ranking",
+      "task": "context file ranking scoring exact identifier relevance",
+      "file": "src/context.rs",
+      "caller": "build_context_bundle",
+      "callee": "rank_files",
+      "median_ms": 1486.4,
+      "runs": [
+        {
+          "elapsed_ms": 1530.2,
+          "tool_calls": 11,
+          "expected_file_rank": 1,
+          "returned_files": [
+            "src/context.rs",
+            "src/doctors/server_dockerfile_context_coherence.rs",
+            "src/search.rs",
+            "tests/test_context_benchmark.py",
+            "tests/export_formal_context_stream.rs"
+          ],
+          "candidate_count": 20,
+          "selected_result_index": 6,
+          "selected_symbol": "rank_files",
+          "cursor_restored": true,
+          "cursor_survived_provider_restart": true
+        },
+        {
+          "elapsed_ms": 1473.6,
+          "tool_calls": 11,
+          "expected_file_rank": 1,
+          "returned_files": [
+            "src/context.rs",
+            "src/doctors/server_dockerfile_context_coherence.rs",
+            "src/search.rs",
+            "tests/test_context_benchmark.py",
+            "tests/export_formal_context_stream.rs"
+          ],
+          "candidate_count": 20,
+          "selected_result_index": 6,
+          "selected_symbol": "rank_files",
+          "cursor_restored": true,
+          "cursor_survived_provider_restart": true
+        },
+        {
+          "elapsed_ms": 1539.9,
+          "tool_calls": 11,
+          "expected_file_rank": 1,
+          "returned_files": [
+            "src/context.rs",
+            "src/doctors/server_dockerfile_context_coherence.rs",
+            "src/search.rs",
+            "tests/test_context_benchmark.py",
+            "tests/export_formal_context_stream.rs"
+          ],
+          "candidate_count": 20,
+          "selected_result_index": 6,
+          "selected_symbol": "rank_files",
+          "cursor_restored": true,
+          "cursor_survived_provider_restart": true
+        },
+        {
+          "elapsed_ms": 1486.4,
+          "tool_calls": 11,
+          "expected_file_rank": 1,
+          "returned_files": [
+            "src/context.rs",
+            "src/doctors/server_dockerfile_context_coherence.rs",
+            "src/search.rs",
+            "tests/test_context_benchmark.py",
+            "tests/export_formal_context_stream.rs"
+          ],
+          "candidate_count": 20,
+          "selected_result_index": 6,
+          "selected_symbol": "rank_files",
+          "cursor_restored": true,
+          "cursor_survived_provider_restart": true
+        },
+        {
+          "elapsed_ms": 1456.2,
+          "tool_calls": 11,
+          "expected_file_rank": 1,
+          "returned_files": [
+            "src/context.rs",
+            "src/doctors/server_dockerfile_context_coherence.rs",
+            "src/search.rs",
+            "tests/test_context_benchmark.py",
+            "tests/export_formal_context_stream.rs"
+          ],
+          "candidate_count": 20,
+          "selected_result_index": 6,
+          "selected_symbol": "rank_files",
+          "cursor_restored": true,
+          "cursor_survived_provider_restart": true
+        }
+      ]
+    },
+    {
+      "name": "Follow workflow policy dispatch",
+      "task": "persist workflow approval retry revision inputs",
+      "file": "crates/leio-harness/src/workflow.rs",
+      "caller": "apply",
+      "callee": "apply_with_deployment_policy",
+      "median_ms": 1560.4,
+      "runs": [
+        {
+          "elapsed_ms": 1560.4,
+          "tool_calls": 11,
+          "expected_file_rank": 2,
+          "returned_files": [
+            "crates/leio-harness/tests/workflow.rs",
+            "crates/leio-harness/src/workflow.rs",
+            "src/node_rows.rs",
+            "apps-sdk/server.js",
+            ".github/workflows/binary-release.yml"
+          ],
+          "candidate_count": 1,
+          "selected_result_index": 0,
+          "selected_symbol": "apply_with_deployment_policy",
+          "cursor_restored": true,
+          "cursor_survived_provider_restart": true
+        },
+        {
+          "elapsed_ms": 1459.3,
+          "tool_calls": 11,
+          "expected_file_rank": 2,
+          "returned_files": [
+            "crates/leio-harness/tests/workflow.rs",
+            "crates/leio-harness/src/workflow.rs",
+            "src/node_rows.rs",
+            "apps-sdk/server.js",
+            ".github/workflows/binary-release.yml"
+          ],
+          "candidate_count": 1,
+          "selected_result_index": 0,
+          "selected_symbol": "apply_with_deployment_policy",
+          "cursor_restored": true,
+          "cursor_survived_provider_restart": true
+        },
+        {
+          "elapsed_ms": 1581.9,
+          "tool_calls": 11,
+          "expected_file_rank": 2,
+          "returned_files": [
+            "crates/leio-harness/tests/workflow.rs",
+            "crates/leio-harness/src/workflow.rs",
+            "src/node_rows.rs",
+            "apps-sdk/server.js",
+            ".github/workflows/binary-release.yml"
+          ],
+          "candidate_count": 1,
+          "selected_result_index": 0,
+          "selected_symbol": "apply_with_deployment_policy",
+          "cursor_restored": true,
+          "cursor_survived_provider_restart": true
+        },
+        {
+          "elapsed_ms": 1629.7,
+          "tool_calls": 11,
+          "expected_file_rank": 2,
+          "returned_files": [
+            "crates/leio-harness/tests/workflow.rs",
+            "crates/leio-harness/src/workflow.rs",
+            "src/node_rows.rs",
+            "apps-sdk/server.js",
+            ".github/workflows/binary-release.yml"
+          ],
+          "candidate_count": 1,
+          "selected_result_index": 0,
+          "selected_symbol": "apply_with_deployment_policy",
+          "cursor_restored": true,
+          "cursor_survived_provider_restart": true
+        },
+        {
+          "elapsed_ms": 1462.3,
+          "tool_calls": 11,
+          "expected_file_rank": 2,
+          "returned_files": [
+            "crates/leio-harness/tests/workflow.rs",
+            "crates/leio-harness/src/workflow.rs",
+            "src/node_rows.rs",
+            "apps-sdk/server.js",
+            ".github/workflows/binary-release.yml"
+          ],
+          "candidate_count": 1,
+          "selected_result_index": 0,
+          "selected_symbol": "apply_with_deployment_policy",
+          "cursor_restored": true,
+          "cursor_survived_provider_restart": true
+        }
+      ]
+    }
+  ]
+}

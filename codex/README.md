@@ -66,4 +66,4 @@ Anything that speaks MCP-over-HTTP can use the same setup:
 - [`leio-code/apps-sdk/README.md`](../apps-sdk/README.md) — apps-sdk-specific contract (auth, OAuth, widget surface)
 - [`leio-code/mcp/index.js`](../mcp/index.js) — stdio MCP source; tool registrations mirror the apps-sdk
 - [`leio-code/docs/output-schema.md`](../docs/output-schema.md) — every envelope and diagnostic shape
-- workspace-root [`AGENTS.md`](../../AGENTS.md) — universal agent guidance (this directory points the Codex-specific path)
+- [`AGENTS.md`](AGENTS.md) — Codex-specific agent guidance for this repository.
