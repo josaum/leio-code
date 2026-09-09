@@ -1,0 +1,95 @@
+{
+  "version": 1,
+  "updated_at": "2026-08-05",
+  "purpose": "Account for every current LEIO doctor warning family so `audit --strict` can stay ON for NEW architectural drift while pre-existing, triaged debt does not block merges. This is a baseline ratchet (cf. eslint-baseline / rubocop-todo): a NEW family fails (missing_current), a FIXED family fails (stale \u2014 remove it), and with --enforce-counts a GROWN family fails (count exceeds last_seen_warning_count). Debt may shrink freely; it may not grow.",
+  "field_semantics": {
+    "owner": "Team/surface responsible for the eventual fix.",
+    "severity": "low|medium|high \u2014 operational impact if left unaddressed.",
+    "status": "known_env_gap (CI/checkout lacks runtime data/secrets/artifacts) | known_data_gap (uncommitted competency-versioned reference data) | tracked_drift (genuine architectural drift, fix scheduled).",
+    "block_later": "true once the family is expected to be clean in CI and any recurrence should hard-block; false while it is an accepted environment/data-residency fact.",
+    "next_action": "The concrete step that retires this family.",
+    "last_seen_warning_count": "Baseline count; --enforce-counts blocks if the live count exceeds it."
+  },
+  "families": {
+    "artifact-reuse": {
+      "owner": "release-engineering",
+      "severity": "high",
+      "status": "tracked_drift",
+      "block_later": true,
+      "next_action": "Repoint the example-api Dockerfile wheel lookup from the retired wheels/ root to artifacts/wheels/manylinux/ and verify the remote build context.",
+      "last_seen_warning_count": 1
+    },
+    "deploy": {
+      "owner": "health-audit",
+      "severity": "medium",
+      "status": "tracked_drift",
+      "block_later": true,
+      "next_action": "Register HEALTH_AUDIT_REFERENCE_ROOT and HEALTH_AUDIT_TISS_SCHEMAS_DIR as canonical operational keys (or move them out of the health_audit and sentinel backend profiles) so the deploy doctor's canonical-key contract passes again.",
+      "last_seen_warning_count": 2
+    },
+    "egress-compliance": {
+      "owner": "platform-auth",
+      "severity": "high",
+      "status": "tracked_drift",
+      "block_later": true,
+      "next_action": "Extend the role-only JWT permission projection in example-api/example/auth/jwt.py to cover \"messages:send\" and \"cases:assign\" so role-derived tokens carry the full egress permission set.",
+      "last_seen_warning_count": 1
+    },
+    "llm-provider-egress": {
+      "owner": "leio-code",
+      "severity": "low",
+      "status": "tracked_drift",
+      "block_later": true,
+      "next_action": "Teach the provider-egress doctor to distinguish embedded regression fixtures in doctor source files from executable provider call sites.",
+      "last_seen_warning_count": 8
+    },
+    "py-rust-boundary": {
+      "owner": "platform-auth",
+      "severity": "high",
+      "status": "tracked_drift",
+      "block_later": true,
+      "next_action": "Close the refresh rotation and upstream token-cookie normalization gap reported by the composite Python/Rust auth boundary.",
+      "last_seen_warning_count": 1
+    },
+    "revops-tenant-gate": {
+      "owner": "example-ops",
+      "severity": "high",
+      "status": "tracked_drift",
+      "block_later": true,
+      "next_action": "Decode the tenant cookie and enforce the allowlist before the RevOps proxy forwards a request.",
+      "last_seen_warning_count": 1
+    },
+    "server-dockerfile-context-coherence": {
+      "owner": "platform-runtime",
+      "severity": "high",
+      "status": "tracked_drift",
+      "block_later": true,
+      "next_action": "Reconcile every Dockerfile.server COPY source with scripts/docker-context.sh, then tighten the doctor around any intentional directory-level syncs.",
+      "last_seen_warning_count": 23
+    },
+    "tenant-override-contract": {
+      "owner": "platform-auth",
+      "severity": "high",
+      "status": "tracked_drift",
+      "block_later": true,
+      "next_action": "Align Python role-list superadmin detection with the Next.js tenant-override authorization gate.",
+      "last_seen_warning_count": 2
+    },
+    "tessellation-contract": {
+      "owner": "example-studio",
+      "severity": "medium",
+      "status": "tracked_drift",
+      "block_later": true,
+      "next_action": "Restore the canonical Example Studio/Tessellation operational authoring integration and remove any duplicate standalone surface.",
+      "last_seen_warning_count": 1
+    },
+    "test-route-mount-integrity": {
+      "owner": "assurant-plusoft",
+      "severity": "medium",
+      "status": "tracked_drift",
+      "block_later": true,
+      "next_action": "Mount GET /v2/plusoft/config/routing or remove the stale route-level contract test after confirming the intended public API.",
+      "last_seen_warning_count": 1
+    }
+  }
+}

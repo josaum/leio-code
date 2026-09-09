@@ -1,0 +1,1008 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LEIO Code</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f4f6f4;
+        --panel: #ffffff;
+        --ink: #0f172a;
+        --muted: #475569;
+        --line: #d7e0dc;
+        --accent: #0f766e;
+        --accent-soft: #e6f4f2;
+        --warn: #92400e;
+        --warn-soft: #fff7ed;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: linear-gradient(180deg, #fafcfb 0%, var(--bg) 100%);
+        color: var(--ink);
+      }
+      .shell {
+        padding: 16px;
+        display: grid;
+        gap: 16px;
+      }
+      .hero, .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 16px;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04);
+      }
+      .hero h1 {
+        margin: 0 0 6px;
+        font-size: 20px;
+      }
+      .hero p {
+        margin: 0;
+        color: var(--muted);
+      }
+      .grid {
+        display: grid;
+        gap: 16px;
+      }
+      @media (min-width: 960px) {
+        .grid {
+          grid-template-columns: 1.25fr 0.95fr;
+        }
+      }
+      .section-title {
+        margin: 0 0 10px;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      .summary {
+        font-size: 15px;
+        font-weight: 600;
+      }
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .chip {
+        border-radius: 999px;
+        padding: 6px 10px;
+        border: 1px solid var(--line);
+        background: #fff;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .chip.positive {
+        border-color: #a7f3d0;
+        background: var(--accent-soft);
+        color: var(--accent);
+      }
+      .chip.warning {
+        border-color: #fdba74;
+        background: var(--warn-soft);
+        color: var(--warn);
+      }
+      .kv {
+        display: grid;
+        gap: 8px;
+      }
+      .kv-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 8px 0;
+        border-bottom: 1px solid #edf2ef;
+      }
+      .kv-row:last-child {
+        border-bottom: 0;
+      }
+      .kv-row .label {
+        color: var(--muted);
+      }
+      .mono {
+        font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+        word-break: break-word;
+      }
+      .list {
+        margin: 0;
+        padding-left: 18px;
+        display: grid;
+        gap: 6px;
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+      .stack {
+        display: grid;
+        gap: 10px;
+      }
+      .field {
+        display: grid;
+        gap: 6px;
+      }
+      .field label {
+        font-weight: 600;
+        color: var(--muted);
+      }
+      input {
+        width: 100%;
+        appearance: none;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 10px 12px;
+        background: #fff;
+        color: var(--ink);
+        font: inherit;
+      }
+      textarea {
+        width: 100%;
+        min-height: 120px;
+        resize: vertical;
+        appearance: none;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 10px 12px;
+        background: #fff;
+        color: var(--ink);
+        font: inherit;
+      }
+      .repo-grid {
+        display: grid;
+        gap: 10px;
+      }
+      .repo-card {
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 12px;
+        background: #fcfffd;
+        display: grid;
+        gap: 8px;
+      }
+      .repo-card h3 {
+        margin: 0;
+        font-size: 14px;
+      }
+      .repo-card p {
+        margin: 0;
+        color: var(--muted);
+      }
+      button {
+        appearance: none;
+        border: 0;
+        border-radius: 12px;
+        padding: 10px 12px;
+        background: var(--accent);
+        color: white;
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button.secondary {
+        background: #e2e8f0;
+        color: var(--ink);
+      }
+      button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+      pre {
+        margin: 0;
+        padding: 12px;
+        border-radius: 12px;
+        overflow: auto;
+        background: #f8fafc;
+        border: 1px solid var(--line);
+        color: #0f172a;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .details {
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: #fcfffd;
+      }
+      .details > summary {
+        cursor: pointer;
+        list-style: none;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 12px 14px;
+        font-weight: 600;
+      }
+      .details > summary::-webkit-details-marker {
+        display: none;
+      }
+      .details > summary::after {
+        content: "+";
+        color: var(--muted);
+        font-size: 18px;
+        line-height: 1;
+      }
+      .details[open] > summary::after {
+        content: "−";
+      }
+      .details-body {
+        padding: 0 14px 14px;
+        border-top: 1px solid #edf2ef;
+      }
+      .summary-meta {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 500;
+      }
+      .evidence-grid {
+        display: grid;
+        gap: 10px;
+      }
+      @media (min-width: 720px) {
+        .evidence-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+      .evidence-card {
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 12px;
+        background: #fcfffd;
+        display: grid;
+        gap: 6px;
+      }
+      .evidence-card h3 {
+        margin: 0;
+        font-size: 14px;
+        word-break: break-word;
+      }
+      .evidence-card .path {
+        font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+        font-size: 12px;
+        color: var(--muted);
+        word-break: break-word;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell" id="app"></main>
+    <script>
+      const app = document.getElementById("app");
+
+      function createWidgetBridge() {
+        let pendingCalls = new Map();
+        let latestOutput = window.openai?.toolOutput ?? {};
+        let latestInput = window.openai?.toolInput ?? {};
+
+        window.addEventListener(
+          "message",
+          (event) => {
+            const data = event.data;
+            if (!data || typeof data !== "object") {
+              return;
+            }
+
+            if (data.jsonrpc === "2.0" && data.id && pendingCalls.has(data.id)) {
+              const pending = pendingCalls.get(data.id);
+              pendingCalls.delete(data.id);
+              if (data.error) {
+                pending.reject(new Error(data.error.message ?? "tools/call failed"));
+              } else {
+                pending.resolve(data.result ?? {});
+              }
+              return;
+            }
+
+            const method = data.method;
+            if (method === "ui/notifications/tool-result") {
+              const structured =
+                data.params?.structuredContent
+                ?? data.params?.content?.structuredContent
+                ?? data.params?.structuredContent;
+              if (structured) {
+                latestOutput = structured;
+                render(latestOutput);
+              }
+            }
+            if (method === "ui/notifications/tool-input" && data.params) {
+              latestInput = data.params;
+            }
+          },
+          { passive: true },
+        );
+
+        window.addEventListener(
+          "openai:set_globals",
+          (event) => {
+            latestOutput =
+              event.detail?.globals?.toolOutput
+              ?? window.openai?.toolOutput
+              ?? latestOutput;
+            latestInput =
+              event.detail?.globals?.toolInput
+              ?? window.openai?.toolInput
+              ?? latestInput;
+            render(latestOutput);
+          },
+          { passive: true },
+        );
+
+        async function callTool(name, args) {
+          if (typeof window.openai?.callTool === "function") {
+            const next = await window.openai.callTool(name, args);
+            if (next?.structuredContent) {
+              latestOutput = next.structuredContent;
+              render(latestOutput);
+            }
+            return next;
+          }
+
+          const id = crypto.randomUUID();
+          return new Promise((resolve, reject) => {
+            pendingCalls.set(id, { resolve, reject });
+            window.parent.postMessage(
+              {
+                jsonrpc: "2.0",
+                id,
+                method: "tools/call",
+                params: { name, arguments: args ?? {} },
+              },
+              "*",
+            );
+            setTimeout(() => {
+              if (!pendingCalls.has(id)) {
+                return;
+              }
+              pendingCalls.delete(id);
+              reject(new Error("tools/call timed out"));
+            }, 120000);
+          }).then((result) => {
+            const structured = result?.structuredContent;
+            if (structured) {
+              latestOutput = structured;
+              render(latestOutput);
+            }
+            return result;
+          });
+        }
+
+        return {
+          get toolOutput() {
+            return latestOutput;
+          },
+          get toolInput() {
+            return latestInput;
+          },
+          callTool,
+          openExternal(url) {
+            if (!url) {
+              return;
+            }
+            if (typeof window.openai?.openExternal === "function") {
+              window.openai.openExternal(url);
+              return;
+            }
+            window.open(url, "_blank", "noopener,noreferrer");
+          },
+        };
+      }
+
+      const bridge = createWidgetBridge();
+
+      function h(tag, attrs = {}, children = []) {
+        const el = document.createElement(tag);
+        Object.entries(attrs).forEach(([key, value]) => {
+          if (key === "className") el.className = value;
+          else if (key === "text") el.textContent = value;
+          else if (key === "value") el.value = value;
+          else if (key.startsWith("on") && typeof value === "function") {
+            el.addEventListener(key.slice(2).toLowerCase(), value);
+          } else if (value != null) {
+            el.setAttribute(key, value);
+          }
+        });
+        (Array.isArray(children) ? children : [children]).forEach((child) => {
+          if (child == null) return;
+          if (typeof child === "string") el.appendChild(document.createTextNode(child));
+          else el.appendChild(child);
+        });
+        return el;
+      }
+
+      function clear(node) {
+        while (node.firstChild) node.removeChild(node.firstChild);
+      }
+
+      function appendChildren(parent, children) {
+        (Array.isArray(children) ? children : [children]).forEach((child) => {
+          if (child == null) return;
+          parent.appendChild(child);
+        });
+        return parent;
+      }
+
+      function createLazyDetails({ title, summary, buildContent, open = false }) {
+        const body = h("div", { className: "details-body" });
+        let hydrated = false;
+        const details = h("details", { className: "details" }, [
+          h("summary", {}, [
+            h("span", { text: title }),
+            summary ? h("span", { className: "summary-meta", text: summary }) : null,
+          ]),
+          body,
+        ]);
+        if (open) {
+          details.open = true;
+        }
+        const hydrate = () => {
+          if (hydrated) return;
+          hydrated = true;
+          appendChildren(body, buildContent());
+        };
+        details.addEventListener("toggle", () => {
+          if (details.open) hydrate();
+        });
+        if (open) {
+          hydrate();
+        }
+        return details;
+      }
+
+      function currentRepoTarget(data) {
+        const selected = data?.source_control?.selected_repository ?? null;
+        return {
+          repoRoot: data?.repo_root ?? bridge.toolInput?.repo_root ?? null,
+          repoUrl:
+            data?.repo_url
+            ?? selected?.repoUrl
+            ?? bridge.toolInput?.repo_url
+            ?? null,
+          gitRef:
+            data?.git_ref
+            ?? selected?.gitRef
+            ?? bridge.toolInput?.git_ref
+            ?? null,
+          revision: data?.revision ?? null,
+          sessionId: data?.mcp_session_id ?? null,
+        };
+      }
+
+      async function callTool(name, args) {
+        return bridge.callTool(name, args);
+      }
+
+      function renderChips(items) {
+        const wrapper = h("div", { className: "chips" });
+        items.forEach((item) => {
+          wrapper.appendChild(
+            h("span", {
+              className: `chip ${item.tone ?? ""}`.trim(),
+              text: item.label ? `${item.label}: ${item.value}` : String(item.value),
+            }),
+          );
+        });
+        return wrapper;
+      }
+
+      function renderList(items) {
+        if (!Array.isArray(items) || items.length === 0) {
+          return h("p", { className: "muted", text: "None" });
+        }
+        return h(
+          "ul",
+          { className: "list" },
+          items.map((item) => h("li", { text: String(item) })),
+        );
+      }
+
+      function renderCitationList(items) {
+        if (!Array.isArray(items) || items.length === 0) {
+          return h("p", { className: "muted", text: "No citations returned." });
+        }
+        return h(
+          "ul",
+          { className: "list" },
+          items.slice(0, 12).map((item) => {
+            if (!item || typeof item !== "object") {
+              return h("li", { text: String(item) });
+            }
+            const label =
+              item.title
+              ?? item.label
+              ?? item.citation
+              ?? item.source
+              ?? item.url
+              ?? "Citation";
+            const meta = [item.kind, item.source_type, item.domain]
+              .filter(Boolean)
+              .join(" · ");
+            return h("li", {}, [
+              h("div", {}, [
+                h("strong", { text: String(label) }),
+                meta ? h("div", { className: "muted", text: meta }) : null,
+              ]),
+              item.url
+                ? h("div", { className: "actions" }, [
+                    h("button", {
+                      text: "Open source",
+                      className: "secondary",
+                      onclick: () => openExternal(item.url),
+                    }),
+                  ])
+                : null,
+            ]);
+          }),
+        );
+      }
+
+      function openExternal(url) {
+        bridge.openExternal(url);
+      }
+
+      function renderEvidenceCards(data) {
+        const entities = Array.isArray(data?.envelope?.entities)
+          ? data.envelope.entities
+          : [];
+        const evidence = Array.isArray(data?.envelope?.evidence)
+          ? data.envelope.evidence
+          : [];
+        const cards = [];
+
+        for (const entity of entities.slice(0, 24)) {
+          if (!entity || typeof entity !== "object") {
+            continue;
+          }
+          const title =
+            entity.name
+            ?? entity.qual_name
+            ?? entity.needle
+            ?? entity.kind
+            ?? "Entity";
+          const path = entity.path ?? entity.file ?? null;
+          const line = entity.line ?? entity.start_line ?? null;
+          const meta = [entity.kind, entity.language, entity.doctor]
+            .filter(Boolean)
+            .join(" · ");
+          cards.push({ title, path, line, meta });
+        }
+
+        for (const item of evidence.slice(0, 12)) {
+          if (!item || typeof item !== "object") {
+            continue;
+          }
+          cards.push({
+            title: item.kind ?? item.relation ?? "Evidence",
+            path: item.path ?? null,
+            line: item.line ?? null,
+            meta: item.source ?? item.note ?? null,
+          });
+        }
+
+        if (cards.length === 0) {
+          return null;
+        }
+
+        return h(
+          "div",
+          { className: "evidence-grid" },
+          cards.map((card) =>
+            h("div", { className: "evidence-card" }, [
+              h("h3", { text: String(card.title) }),
+              card.meta ? h("p", { className: "muted", text: String(card.meta) }) : null,
+              card.path
+                ? h("div", {
+                    className: "path",
+                    text: `${card.path}${card.line ? `:${card.line}` : ""}`,
+                  })
+                : null,
+            ]),
+          ),
+        );
+      }
+
+      function render(data) {
+        const fragment = document.createDocumentFragment();
+        const title = data?.summary ?? data?.envelope_summary?.summary ?? "LEIO Code";
+        const repoTarget = currentRepoTarget(data);
+        const sourceControl = data?.source_control ?? { github: { repositories: [] } };
+        const github = sourceControl.github ?? { repositories: [] };
+        const capabilityHints = data?.workspace_capability_hints ?? null;
+        const actionPalette = data?.action_palette ?? null;
+        const uiHints = data?.ui_hints ?? { badges: [] };
+        const specialistBridge = data?.specialist_bridge ?? { enabled: false };
+        const specialistReview = data?.specialist_review ?? null;
+        const repoUrlValue = repoTarget.repoUrl ?? "";
+        const gitRefValue = repoTarget.gitRef ?? "";
+        const specialistInput = h("textarea", {
+          placeholder:
+            "Ask Carlos Motta about governance, controls, compliance, disclosure, or regulatory implications of this repository.",
+        });
+        const repoUrlInput = h("input", {
+          type: "text",
+          value: repoUrlValue,
+          placeholder: "https://github.com/org/repo.git or owner/repo",
+        });
+        const gitRefInput = h("input", {
+          type: "text",
+          value: gitRefValue,
+          placeholder: "main, branch, tag, or commit",
+        });
+
+        fragment.appendChild(
+          h("section", { className: "hero" }, [
+            h("h1", { text: "LEIO Code" }),
+            h("p", {
+              text:
+                title ||
+                "Capability-aware repository inspection for symbols, topology, and profile-specific drift.",
+            }),
+            renderChips([
+              ...(Array.isArray(uiHints.badges) ? uiHints.badges : []),
+              ...(data?.workspace_profile
+                ? [{ label: "profile", value: data.workspace_profile, tone: data.workspace_profile === "generic" ? "neutral" : "positive" }]
+                : []),
+              ...(github.connected ? [{ label: "github", value: github.login ?? "connected", tone: "positive" }] : []),
+            ]),
+          ]),
+        );
+
+        const left = h("div", { className: "panel" }, [
+          h("div", { className: "section-title", text: "Repository target" }),
+          h("div", { className: "stack" }, [
+            h("div", { className: "field" }, [
+              h("label", { text: "Repository URL" }),
+              repoUrlInput,
+            ]),
+            h("div", { className: "field" }, [
+              h("label", { text: "Git ref" }),
+              gitRefInput,
+            ]),
+            h("div", { className: "actions" }, [
+              h("button", {
+                text: "Select repository",
+                onclick: () => {
+                  const repoUrl = repoUrlInput.value.trim();
+                  const gitRef = gitRefInput.value.trim();
+                  if (!repoUrl) return;
+                  callTool("select_repository_target", {
+                    repo_url: repoUrl,
+                    ...(gitRef ? { git_ref: gitRef } : {}),
+                  });
+                },
+              }),
+              h("button", {
+                text: "Clear selection",
+                className: "secondary",
+                onclick: () => callTool("clear_repository_target", {}),
+              }),
+            ]),
+            h("p", {
+              className: "muted",
+              text:
+                "Public repositories work directly from URL. For private GitHub repositories, connect the GitHub App and then choose a repository below.",
+            }),
+          ]),
+          h("div", { className: "section-title", text: "Status" }),
+          h("div", { className: "summary", text: title }),
+          h("div", { className: "kv" }, [
+            h("div", { className: "kv-row" }, [
+              h("span", { className: "label", text: "Repository URL" }),
+              h("span", { className: "mono", text: repoTarget.repoUrl ?? "Not provided" }),
+            ]),
+            h("div", { className: "kv-row" }, [
+              h("span", { className: "label", text: "Server checkout" }),
+              h("span", { className: "mono", text: repoTarget.repoRoot ?? "Not provided" }),
+            ]),
+            h("div", { className: "kv-row" }, [
+              h("span", { className: "label", text: "Git ref" }),
+              h("span", { className: "mono", text: repoTarget.gitRef ?? "default branch" }),
+            ]),
+            h("div", { className: "kv-row" }, [
+              h("span", { className: "label", text: "Revision" }),
+              h("span", { className: "mono", text: repoTarget.revision ?? "n/a" }),
+            ]),
+            h("div", { className: "kv-row" }, [
+              h("span", { className: "label", text: "Show tools" }),
+              h("span", { className: "mono", text: (actionPalette?.show_tools ?? []).join(", ") || "n/a" }),
+            ]),
+            h("div", { className: "kv-row" }, [
+              h("span", { className: "label", text: "Hide tools" }),
+              h("span", { className: "mono", text: (actionPalette?.hide_tools ?? []).join(", ") || "none" }),
+            ]),
+          ]),
+          h("div", { className: "section-title", text: "Recommended queries" }),
+          renderList(actionPalette?.query_starters ?? data?.sections ?? []),
+        ]);
+
+        const toolRepoArgs = {
+          ...(repoTarget.repoRoot ? { repo_root: repoTarget.repoRoot } : {}),
+          ...(repoTarget.repoUrl ? { repo_url: repoTarget.repoUrl } : {}),
+          ...(repoTarget.gitRef ? { git_ref: repoTarget.gitRef } : {}),
+        };
+
+        const renderRepositoryCards = (repositories) => {
+          if (!Array.isArray(repositories) || repositories.length === 0) {
+            return h("p", {
+              className: "muted",
+              text: github.connected
+                ? "No repositories were returned for this GitHub connection yet. Install the GitHub App on selected repositories and then refresh."
+                : "No GitHub repositories connected yet.",
+            });
+          }
+
+          const renderCards = (items) =>
+            h(
+              "div",
+              { className: "repo-grid" },
+              items.map((repo) =>
+                h("div", { className: "repo-card" }, [
+                  h("h3", { text: repo.full_name }),
+                  h("p", {
+                    text: `${repo.private ? "Private" : "Public"}${repo.default_branch ? ` · default ${repo.default_branch}` : ""}${repo.installation_account_login ? ` · ${repo.installation_account_login}` : ""}`,
+                  }),
+                  h("div", { className: "actions" }, [
+                    h("button", {
+                      text: "Use this repository",
+                      className: "secondary",
+                      onclick: () =>
+                        callTool("select_repository_target", {
+                          repo_url: repo.clone_url ?? repo.html_url ?? repo.full_name,
+                          ...(repo.default_branch ? { git_ref: repo.default_branch } : {}),
+                        }),
+                    }),
+                  ]),
+                ]),
+              ),
+            );
+
+          const visible = repositories.slice(0, 6);
+          const remaining = repositories.slice(6, 18);
+          const stack = h("div", { className: "stack" }, [renderCards(visible)]);
+          if (remaining.length > 0) {
+            stack.appendChild(
+              createLazyDetails({
+                title: "More repositories",
+                summary: `${remaining.length} additional repository options`,
+                buildContent: () => [renderCards(remaining)],
+              }),
+            );
+          }
+          return stack;
+        };
+
+        const right = h("div", { className: "panel" }, [
+          h("div", { className: "section-title", text: "Source access" }),
+          h("div", { className: "stack" }, [
+            h("p", {
+              className: "muted",
+              text: github.configured
+                ? (
+                    github.connected
+                      ? `Connected as ${github.login ?? "GitHub user"}. Choose an installed repository or paste a public repo URL manually.`
+                      : "Connect GitHub to browse private repositories installed for this GitHub App."
+                  )
+                : "GitHub App source access is not configured on this deployment. Public repositories still work by URL.",
+            }),
+            h("div", { className: "actions" }, [
+              h("button", {
+                text: github.connected ? "Reconnect GitHub" : "Connect GitHub",
+                disabled: !github.connect_url,
+                onclick: () => openExternal(github.connect_url),
+              }),
+              h("button", {
+                text: "Install GitHub App",
+                className: "secondary",
+                disabled: !github.install_url,
+                onclick: () => openExternal(github.install_url),
+              }),
+              h("button", {
+                text: "Refresh access",
+                className: "secondary",
+                onclick: () => callTool("inspect_repository_status", toolRepoArgs),
+              }),
+            ]),
+            renderRepositoryCards(github.repositories),
+          ]),
+          h("div", { className: "section-title", text: "Capabilities" }),
+          renderList(
+            [
+              ...(Array.isArray(data?.workspace_capabilities?.find_kinds)
+                ? [`find: ${data.workspace_capabilities.find_kinds.join(", ")}`]
+                : []),
+              ...(Array.isArray(data?.workspace_capabilities?.explain_kinds)
+                ? [`explain: ${data.workspace_capabilities.explain_kinds.join(", ")}`]
+                : []),
+              ...(Array.isArray(data?.workspace_capabilities?.doctor_kinds)
+                ? [
+                    `doctors: ${
+                      data.workspace_capabilities.doctor_kinds.length > 0
+                        ? data.workspace_capabilities.doctor_kinds.join(", ")
+                        : "none configured"
+                    }`,
+                  ]
+                : []),
+              ...(Array.isArray(capabilityHints?.unavailable_optional_facets) &&
+              capabilityHints.unavailable_optional_facets.length > 0
+                ? [
+                    `unavailable facets: ${capabilityHints.unavailable_optional_facets.join(", ")}`,
+                  ]
+                : []),
+              ...(Array.isArray(capabilityHints?.notes) ? capabilityHints.notes : []),
+            ].filter(Boolean),
+          ),
+          h("div", { className: "section-title", text: "Quick actions" }),
+          h("div", { className: "actions" }, [
+            h("button", {
+              text: "Refresh capabilities",
+              onclick: () => callTool("inspect_repository_capabilities", toolRepoArgs),
+            }),
+            h("button", {
+              text: "Refresh status",
+              className: "secondary",
+              onclick: () => callTool("inspect_repository_status", toolRepoArgs),
+            }),
+            h("button", {
+              text: "Run doctor all",
+              disabled: !capabilityHints?.supports_doctors,
+              className: "secondary",
+              onclick: () =>
+                callTool("audit_repository_contracts", {
+                  ...toolRepoArgs,
+                  kind: "all",
+                }),
+            }),
+          ]),
+          h("div", { className: "section-title", text: "Carlos Motta specialist" }),
+          h("p", {
+            className: "muted",
+            text: specialistBridge.enabled
+              ? "Dispatch the active repository context to the Carlos Motta digital twin."
+              : "Carlos Motta bridge is not configured on this deployment yet.",
+          }),
+          h("div", { className: "field" }, [
+            h("label", { text: "Specialist question" }),
+            specialistInput,
+          ]),
+          h("div", { className: "actions" }, [
+            h("button", {
+              text: "Ask Carlos Motta",
+              disabled: !specialistBridge.enabled,
+              onclick: () => {
+                const question = specialistInput.value.trim();
+                if (!question) return;
+                callTool("consult_carlos_motta_specialist", {
+                  ...toolRepoArgs,
+                  question,
+                  depth: "quick",
+                });
+              },
+            }),
+            h("button", {
+              text: "Deep specialist review",
+              className: "secondary",
+              disabled: !specialistBridge.enabled,
+              onclick: () => {
+                const question = specialistInput.value.trim();
+                if (!question) return;
+                callTool("consult_carlos_motta_specialist", {
+                  ...toolRepoArgs,
+                  question,
+                  depth: "deep",
+                  include_audit: true,
+                  audit_kind: "all",
+                });
+              },
+            }),
+          ]),
+        ]);
+
+        fragment.appendChild(h("div", { className: "grid" }, [left, right]));
+
+        const evidenceCards = renderEvidenceCards(data);
+        if (evidenceCards) {
+          fragment.appendChild(
+            h("section", { className: "panel" }, [
+              h("div", { className: "section-title", text: "Evidence" }),
+              evidenceCards,
+            ]),
+          );
+        }
+
+        if (Array.isArray(data?.envelope?.entities) && data.envelope.entities.length > 0) {
+          fragment.appendChild(
+            h("section", { className: "panel" }, [
+              h("div", { className: "section-title", text: "Entities" }),
+              createLazyDetails({
+                title: "Show entity payload",
+                summary: `${data.envelope.entities.length} entities`,
+                buildContent: () => [
+                  h("pre", { text: JSON.stringify(data.envelope.entities, null, 2) }),
+                ],
+              }),
+            ]),
+          );
+        }
+
+        if (Array.isArray(data?.sections) && data.sections.length > 0) {
+          fragment.appendChild(
+            h("section", { className: "panel" }, [
+              h("div", { className: "section-title", text: "Sections" }),
+              createLazyDetails({
+                title: "Show section list",
+                summary: `${data.sections.length} sections`,
+                buildContent: () => [renderList(data.sections)],
+              }),
+            ]),
+          );
+        }
+
+        if (specialistReview) {
+          const dossier = specialistReview.research_dossier ?? null;
+          fragment.appendChild(
+            h("section", { className: "panel" }, [
+              h("div", { className: "section-title", text: "Carlos Motta" }),
+              h("div", { className: "summary", text: "Specialist repository review" }),
+              h("div", { className: "kv" }, [
+                h("div", { className: "kv-row" }, [
+                  h("span", { className: "label", text: "Question" }),
+                  h("span", { text: specialistReview.question ?? "n/a" }),
+                ]),
+                h("div", { className: "kv-row" }, [
+                  h("span", { className: "label", text: "Depth" }),
+                  h("span", { text: specialistReview.depth ?? "quick" }),
+                ]),
+                h("div", { className: "kv-row" }, [
+                  h("span", { className: "label", text: "Answer ID" }),
+                  h("span", { className: "mono", text: specialistReview.answer_id ?? "n/a" }),
+                ]),
+                h("div", { className: "kv-row" }, [
+                  h("span", { className: "label", text: "Synthesis mode" }),
+                  h("span", { text: specialistReview.synthesis_mode ?? "single_pass" }),
+                ]),
+              ]),
+              h("pre", { text: specialistReview.answer ?? "" }),
+              h("div", { className: "section-title", text: "Citations" }),
+              renderCitationList(specialistReview.citations),
+              dossier
+                ? h("div", { className: "stack" }, [
+                    h("div", { className: "section-title", text: "Research dossier" }),
+                    Array.isArray(dossier.hypotheses)
+                      ? h("p", { className: "muted", text: `Hypotheses: ${dossier.hypotheses.length}` })
+                      : null,
+                    Array.isArray(dossier.next_moves)
+                      ? renderList(dossier.next_moves)
+                      : h("p", { className: "muted", text: "No next moves captured." }),
+                  ])
+                : null,
+            ]),
+          );
+        }
+
+        if (!data || Object.keys(data).length === 0) {
+          fragment.appendChild(
+            h("section", { className: "panel" }, [
+              h("div", { className: "section-title", text: "Start here" }),
+              h("p", {
+                className: "muted",
+                text: "Call inspect_repository_capabilities first and provide an allowlisted HTTPS repo_url or GitHub owner/repo shorthand when you want LEIO Code to analyze another repository.",
+              }),
+            ]),
+          );
+        }
+
+        clear(app);
+        app.appendChild(fragment);
+      }
+
+      render(bridge.toolOutput ?? {});
+    </script>
+  </body>
+</html>

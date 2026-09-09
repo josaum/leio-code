@@ -1,0 +1,4 @@
+interface:
+  display_name: "Run LEIO Code"
+  short_description: "Route repository work through LEIO"
+  default_prompt: "Use $run-leio-code to choose and run the smallest LEIO Code query for this repository task."

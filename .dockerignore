@@ -1,0 +1,14 @@
+.git
+.DS_Store
+target
+node_modules
+apps-sdk/node_modules
+mcp/node_modules
+.leio-code
+dist
+coverage
+npm-debug.log
+yarn.lock
+pnpm-lock.yaml
+*.pyc
+__pycache__

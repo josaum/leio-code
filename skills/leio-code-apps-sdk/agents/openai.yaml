@@ -1,0 +1,4 @@
+interface:
+  display_name: "LEIO Code Apps SDK"
+  short_description: "Operate the LEIO Apps SDK surface"
+  default_prompt: "Use $leio-code-apps-sdk to diagnose this Apps SDK or ChatGPT integration task from the live tool registry."

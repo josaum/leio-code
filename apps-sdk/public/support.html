@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{APP_NAME}} Support</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #edf4f0;
+        --panel: #fcfffd;
+        --ink: #142019;
+        --muted: #4a5f54;
+        --accent: #166534;
+        --border: #c7ddd0;
+        --warn: #fff3bf;
+      }
+      body {
+        margin: 0;
+        font-family: "Iowan Old Style", Georgia, serif;
+        background: linear-gradient(180deg, #f6fcf8 0%, var(--bg) 100%);
+        color: var(--ink);
+      }
+      main {
+        max-width: 860px;
+        margin: 0 auto;
+        padding: 48px 20px 72px;
+      }
+      article {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        padding: 32px;
+        box-shadow: 0 18px 40px rgba(22, 66, 48, 0.08);
+      }
+      h1, h2 { line-height: 1.15; }
+      h1 { margin-top: 0; font-size: 2.2rem; }
+      h2 { margin-top: 2rem; font-size: 1.25rem; }
+      p, li { color: var(--muted); font-size: 1rem; line-height: 1.7; }
+      a { color: var(--accent); }
+      .notice {
+        margin: 0 0 1.5rem;
+        padding: 14px 16px;
+        border-radius: 12px;
+        background: var(--warn);
+        border: 1px solid #ead37d;
+        color: #5d4700;
+      }
+      .meta-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 12px;
+      }
+      .card {
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 14px 16px;
+        background: #f8fff9;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <article>
+        {{LEGAL_NOTICE}}
+        <h1>{{APP_NAME}} Support</h1>
+        <p>
+          This page tells users and reviewers how to get help with {{APP_NAME}}, the read-only
+          repository inspection app published by {{PUBLISHER_NAME}}.
+        </p>
+
+        <div class="meta-grid">
+          <div class="card">
+            <strong>Support email</strong>
+            <p><a href="mailto:{{SUPPORT_EMAIL}}">{{SUPPORT_EMAIL}}</a></p>
+          </div>
+          <div class="card">
+            <strong>Security email</strong>
+            <p><a href="mailto:{{SECURITY_EMAIL}}">{{SECURITY_EMAIL}}</a></p>
+          </div>
+          <div class="card">
+            <strong>Privacy email</strong>
+            <p><a href="mailto:{{PRIVACY_EMAIL}}">{{PRIVACY_EMAIL}}</a></p>
+          </div>
+          <div class="card">
+            <strong>Support hours</strong>
+            <p>{{SUPPORT_HOURS}}</p>
+          </div>
+        </div>
+
+        <h2>What we can help with</h2>
+        <ul>
+          <li>Authentication or access problems.</li>
+          <li>ChatGPT connection issues.</li>
+          <li>Repository inspection failures or obviously incorrect results.</li>
+          <li>Privacy requests and data handling questions.</li>
+          <li>Security reports and suspected abuse.</li>
+        </ul>
+
+        <h2>What to include in your message</h2>
+        <ul>
+          <li>A short description of the problem.</li>
+          <li>The time the issue happened and your timezone.</li>
+          <li>The tool or prompt you were using.</li>
+          <li>Relevant screenshots or error messages.</li>
+          <li>No passwords, bearer tokens, or secrets.</li>
+        </ul>
+
+        <h2>Security reporting</h2>
+        <p>
+          If you believe you found a security issue, contact <a href="mailto:{{SECURITY_EMAIL}}">{{SECURITY_EMAIL}}</a>
+          instead of posting the details publicly. Include enough information for reproduction and impact assessment.
+        </p>
+
+        <h2>Reviewer guidance</h2>
+        <p>
+          If OpenAI review requires a demo account, {{PUBLISHER_NAME}} should provide credentials that
+          work outside internal networks and do not require MFA, SMS, or one-time email verification.
+        </p>
+
+        <h2>Related pages</h2>
+        <ul>
+          <li><a href="{{PRIVACY_URL}}">Privacy policy</a></li>
+          <li><a href="{{TERMS_URL}}">Terms of use</a></li>
+          <li><a href="{{COMPANY_URL}}">{{COMPANY_NAME}}</a></li>
+        </ul>
+      </article>
+    </main>
+  </body>
+</html>

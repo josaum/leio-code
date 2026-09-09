@@ -1,0 +1,49 @@
+{
+  "name": "leio-code",
+  "version": "2.6.2",
+  "description": "Agent-first code intelligence. Local Arrow wiki first, SPARQL-gated knowledge explain, formal.nq, lattice/heading nav, JSON-LD provenance. Fully local.",
+  "author": {
+    "name": "LEIO Code contributors",
+    "url": "https://github.com/josaum/leio-code"
+  },
+  "homepage": "https://github.com/josaum/leio-code",
+  "repository": "https://github.com/josaum/leio-code",
+  "license": "MIT OR Apache-2.0",
+  "keywords": [
+    "leio-code",
+    "code-intelligence",
+    "mcp",
+    "knowledge-base",
+    "wiki",
+    "array-of-structs",
+    "symbols",
+    "redis",
+    "deploy",
+    "graph",
+    "doctor",
+    "rust"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "LEIO Code",
+    "shortDescription": "Indexed code intelligence, SPARQL-grounded wiki, lattice nav, JSON-LD provenance.",
+    "longDescription": "Use LEIO Code to find exact owners, inspect repository capabilities, explain runtime lineage, compile a local Arrow wiki plus formal.nq, answer SPARQL-gated knowledge questions (or refuse), walk the concept lattice and heading functor, emit JSON-LD PROV events with git checkout identity, audit profile-aware drift with doctors, and trace call and import topology. Concurrent agents share locked sidecars; isolate nav with LEIO_SESSION.",
+    "developerName": "LEIO Code",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "websiteURL": "https://leio-site.josaum.chatgpt.site/",
+    "appsSdkUrl": "https://leio-code.getjai.com/mcp",
+    "defaultPrompt": [
+      "Check capabilities first and tell me what this repository actually models.",
+      "Find where resolveLeioCodeRoot is defined and who uses it.",
+      "Run doctor all and summarize only real architectural drift when the profile registers doctors."
+    ],
+    "brandColor": "#0F766E",
+    "composerIcon": "./assets/composer-icon.png",
+    "logo": "./assets/logo.png"
+  }
+}

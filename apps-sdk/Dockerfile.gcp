@@ -1,0 +1,52 @@
+# syntax=docker/dockerfile:1.7
+# Fast GCP deploy path: reuse published leio-code CLI binary instead of
+# recompiling Rust. Prefer apps-sdk/Dockerfile (full source build) for
+# release tags; this file is for bringing up example-leio quickly.
+
+FROM jquant/leio-code:latest AS leio-bin
+
+FROM node:22-trixie-slim AS runtime
+
+ENV NODE_ENV=production \
+  LEIO_APPS_SDK_HOST=0.0.0.0 \
+  LEIO_APPS_SDK_PORT=3333 \
+  LEIO_CODE_BIN=/usr/local/bin/leio-code \
+  LEIO_CODE_REPO_ROOT=/workspace/repo \
+  LEIO_CODE_BAKED_REPO_ROOT=/workspace/baked-repo
+
+WORKDIR /opt/leio-code
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates git \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY --from=leio-bin /usr/local/bin/leio-code /usr/local/bin/leio-code
+RUN /usr/local/bin/leio-code --help >/dev/null
+COPY mcp ./mcp
+
+WORKDIR /opt/leio-code/apps-sdk
+
+COPY apps-sdk/package.json apps-sdk/package-lock.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+
+COPY apps-sdk/auth.js ./auth.js
+COPY apps-sdk/tenant-scope.mjs ./tenant-scope.mjs
+COPY apps-sdk/repo-url.js ./repo-url.js
+COPY apps-sdk/output-schemas.js ./output-schemas.js
+COPY apps-sdk/tool-annotations.js ./tool-annotations.js
+COPY apps-sdk/validate-repo-url.mjs ./validate-repo-url.mjs
+COPY apps-sdk/server.js ./server.js
+COPY apps-sdk/auth-summary.mjs ./auth-summary.mjs
+COPY apps-sdk/entrypoint.sh ./entrypoint.sh
+COPY apps-sdk/keycloak ./keycloak
+COPY apps-sdk/public ./public
+COPY . /workspace/baked-repo
+
+RUN chmod +x ./entrypoint.sh
+
+EXPOSE 3333
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:3333/health').then((res) => { if (!res.ok) process.exit(1); }).catch(() => process.exit(1));"
+
+CMD ["./entrypoint.sh"]

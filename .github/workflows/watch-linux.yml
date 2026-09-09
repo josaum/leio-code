@@ -1,0 +1,38 @@
+name: Linux watch smoke
+
+on:
+  pull_request:
+    paths:
+      - "src/watcher.rs"
+      - "tests/watch_smoke.rs"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/watch-linux.yml"
+  push:
+    paths:
+      - "src/watcher.rs"
+      - "tests/watch_smoke.rs"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/watch-linux.yml"
+
+concurrency:
+  group: leio-code-watch-linux-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTC_WRAPPER: ""
+
+jobs:
+  watch-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: watch smoke
+        env:
+          CARGO_TARGET_DIR: target
+        run: cargo test --test watch_smoke -- --nocapture

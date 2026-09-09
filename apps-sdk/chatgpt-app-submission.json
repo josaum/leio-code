@@ -1,0 +1,176 @@
+{
+  "$schema": "https://developers.openai.com/apps-sdk/schemas/chatgpt-app-submission.v1.json",
+  "schema_version": 1,
+  "app_info": {
+    "display_name": "LEIO Code",
+    "subtitle": "Repository GPS for agents",
+    "description": "LEIO Code helps users understand software repositories inside ChatGPT. It can inspect repository health and capabilities, prepare ranked task context, find symbols and runtime contracts, search repository memory, explain deployment and configuration lineage, traverse call and import graphs, and run architecture audits with source-backed evidence.",
+    "category": "DEVELOPER_TOOLS"
+  },
+  "tools": {
+    "guide_repository_tools": {
+      "annotations": { "readOnlyHint": false, "openWorldHint": false, "destructiveHint": false },
+      "justifications": {
+        "read_only_justification": "Returns routing guidance and may prepare or refresh the selected repository's private server-side checkout and index.",
+        "open_world_justification": "Operates only on the user's selected private repository workspace and does not publish or change public internet state.",
+        "destructive_justification": "Does not delete source content, overwrite the upstream repository, or perform an irreversible action."
+      }
+    },
+    "inspect_repository_capabilities": {
+      "annotations": { "readOnlyHint": false, "openWorldHint": false, "destructiveHint": false },
+      "justifications": {
+        "read_only_justification": "Reports supported repository intelligence facets and may clone or refresh a private server-side checkout and index first.",
+        "open_world_justification": "Repository preparation and inspection remain inside the authenticated LEIO service and do not alter public systems.",
+        "destructive_justification": "Does not modify upstream source files, delete repository content, or revoke access."
+      }
+    },
+    "inspect_repository_status": {
+      "annotations": { "readOnlyHint": false, "openWorldHint": false, "destructiveHint": false },
+      "justifications": {
+        "read_only_justification": "Returns index, capability, and repository health information and may refresh the private checkout or index used for that report.",
+        "open_world_justification": "Status preparation is confined to the authenticated repository workspace and does not publish external content.",
+        "destructive_justification": "Does not delete or overwrite the selected upstream repository or perform irreversible administration."
+      }
+    },
+    "prepare_repository_context": {
+      "annotations": { "readOnlyHint": false, "openWorldHint": false, "destructiveHint": false },
+      "justifications": {
+        "read_only_justification": "Builds a ranked context bundle and may create or refresh private checkout and index artifacts needed for the task.",
+        "open_world_justification": "Context preparation stays within the authenticated LEIO workspace and does not post data to public services.",
+        "destructive_justification": "Does not edit source files, push commits, delete content, or perform an irreversible action."
+      }
+    },
+    "search_repository": {
+      "annotations": { "readOnlyHint": false, "openWorldHint": false, "destructiveHint": false },
+      "justifications": {
+        "read_only_justification": "Searches indexed repository entities and may materialize or refresh the private checkout and index used by the search.",
+        "open_world_justification": "Search operates only in the selected authenticated repository workspace and does not change public state.",
+        "destructive_justification": "Does not alter upstream code, remove repository data, or carry out irreversible operations."
+      }
+    },
+    "search_repository_memory": {
+      "annotations": { "readOnlyHint": false, "openWorldHint": false, "destructiveHint": false },
+      "justifications": {
+        "read_only_justification": "Runs semantic retrieval over the local Arrow node store without mutating the selected repository's index but may prepare or refresh its private checkout.",
+        "open_world_justification": "Retrieval stays within tenant-scoped private repository memory and does not publish or update external systems.",
+        "destructive_justification": "Does not delete, overwrite, or mutate upstream repository or tenant memory data."
+      }
+    },
+    "explain_repository": {
+      "annotations": { "readOnlyHint": false, "openWorldHint": false, "destructiveHint": false },
+      "justifications": {
+        "read_only_justification": "Explains repository runtime lineage and may refresh private checkout and index artifacts before resolving the requested entity.",
+        "open_world_justification": "Explanation uses only the authenticated repository workspace and does not change public internet state.",
+        "destructive_justification": "Does not edit or delete source content, push changes, or perform irreversible actions."
+      }
+    },
+    "graph_repository": {
+      "annotations": { "readOnlyHint": false, "openWorldHint": false, "destructiveHint": false },
+      "justifications": {
+        "read_only_justification": "Traverses code topology and may build or refresh private checkout and index artifacts required for graph resolution.",
+        "open_world_justification": "Graph processing remains within the selected authenticated repository workspace and does not publish externally.",
+        "destructive_justification": "Does not change upstream source, delete repository data, or execute an irreversible operation."
+      }
+    },
+    "audit_repository_contracts": {
+      "annotations": { "readOnlyHint": false, "openWorldHint": false, "destructiveHint": false },
+      "justifications": {
+        "read_only_justification": "Runs architecture doctors and may prepare or refresh private repository checkout and index artifacts before producing diagnostics.",
+        "open_world_justification": "Audits run inside the authenticated LEIO workspace and do not send changes to public or third-party systems.",
+        "destructive_justification": "Doctors emit diagnostics without editing upstream source, deleting content, or performing irreversible administration."
+      }
+    },
+    "audit_repository_rollup": {
+      "annotations": { "readOnlyHint": false, "openWorldHint": false, "destructiveHint": false },
+      "justifications": {
+        "read_only_justification": "Builds a composite audit and may refresh the private checkout and index used to inspect repository contracts.",
+        "open_world_justification": "The audit remains confined to the authenticated repository workspace and does not modify public systems.",
+        "destructive_justification": "Does not alter upstream code, remove repository content, or perform an irreversible action."
+      }
+    },
+    "select_repository_target": {
+      "annotations": { "readOnlyHint": false, "openWorldHint": false, "destructiveHint": false },
+      "justifications": {
+        "read_only_justification": "Updates the session repository target and may clone, fetch, and index that repository in a private server-side checkout.",
+        "open_world_justification": "The selection changes only the authenticated user's private LEIO session and checkout cache, not public repository state.",
+        "destructive_justification": "Selection is reversible and does not modify or delete content in the upstream repository."
+      }
+    },
+    "clear_repository_target": {
+      "annotations": { "readOnlyHint": false, "openWorldHint": false, "destructiveHint": false },
+      "justifications": {
+        "read_only_justification": "Clears the active repository pointer stored for the current MCP session.",
+        "open_world_justification": "The change is limited to private in-memory LEIO session state and does not affect external systems.",
+        "destructive_justification": "The session reset is reversible by selecting a repository again and does not delete repository content."
+      }
+    }
+  },
+  "test_cases": [
+    {
+      "description": "Inspect repository readiness before beginning an engineering task.",
+      "user_prompt": "Give me a LEIO status snapshot for the selected repository, including index freshness, available capabilities, and actionable warnings.",
+      "file_attachment_urls": null,
+      "tools_triggered": "inspect_repository_status",
+      "expected_output": "Returns a concise repository status report with index state, workspace capabilities, warnings, and source-backed diagnostic context.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Prepare focused context for a potentially risky code change.",
+      "user_prompt": "Prepare repository context for changing JWT validation without breaking session continuity.",
+      "file_attachment_urls": null,
+      "tools_triggered": "prepare_repository_context",
+      "expected_output": "Returns ranked files, symbols, tests, instructions, dependencies, and risk notes relevant to the requested change.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Find the source definition of a repository symbol.",
+      "user_prompt": "Find where McpServer is defined in this repository and show the supporting source location.",
+      "file_attachment_urls": null,
+      "tools_triggered": "search_repository",
+      "expected_output": "Returns matching symbol entities with repository paths and source locations grounded in the LEIO index.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Trace structural callers rather than performing plain text search.",
+      "user_prompt": "Who calls invokeLeioTool in the selected repository?",
+      "file_attachment_urls": null,
+      "tools_triggered": "graph_repository",
+      "expected_output": "Returns caller relationships with supporting paths and structural graph evidence.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Run a strict architecture and deployment readiness audit.",
+      "user_prompt": "Run the strict LEIO audit rollup and summarize only warnings that require action before deployment.",
+      "file_attachment_urls": null,
+      "tools_triggered": "audit_repository_rollup",
+      "expected_output": "Returns a composite status, capability, and architecture-doctor report focused on actionable warnings.",
+      "expected_output_url": null
+    }
+  ],
+  "negative_test_cases": [
+    {
+      "description": "Do not trigger for generic programming education without repository context.",
+      "user_prompt": "Explain recursion with a simple Python example.",
+      "file_attachment_urls": null,
+      "tools_triggered": null,
+      "expected_output": "The app should not be invoked because the request does not require intelligence from a selected repository.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Do not trigger for requests to modify or publish repository content.",
+      "user_prompt": "Commit my changes and push them to GitHub.",
+      "file_attachment_urls": null,
+      "tools_triggered": null,
+      "expected_output": "The app should not be invoked because LEIO Code provides repository intelligence and does not commit or push source changes.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Do not trigger for unrelated personal productivity requests.",
+      "user_prompt": "Schedule a meeting with the engineering team tomorrow afternoon.",
+      "file_attachment_urls": null,
+      "tools_triggered": null,
+      "expected_output": "The app should not be invoked because calendar scheduling is outside repository intelligence workflows.",
+      "expected_output_url": null
+    }
+  ]
+}

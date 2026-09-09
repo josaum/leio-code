@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{APP_NAME}} Terms of Use</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f2f4fb;
+        --panel: #fcfdff;
+        --ink: #161b2b;
+        --muted: #4d5870;
+        --accent: #1d4ed8;
+        --border: #cfd7ee;
+        --warn: #fff3bf;
+      }
+      body {
+        margin: 0;
+        font-family: Georgia, "Times New Roman", serif;
+        background: linear-gradient(180deg, #f9fbff 0%, var(--bg) 100%);
+        color: var(--ink);
+      }
+      main {
+        max-width: 860px;
+        margin: 0 auto;
+        padding: 48px 20px 72px;
+      }
+      article {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        padding: 32px;
+        box-shadow: 0 18px 40px rgba(25, 47, 95, 0.08);
+      }
+      h1, h2 { line-height: 1.15; }
+      h1 { margin-top: 0; font-size: 2.2rem; }
+      h2 { margin-top: 2rem; font-size: 1.25rem; }
+      p, li { color: var(--muted); font-size: 1rem; line-height: 1.7; }
+      a { color: var(--accent); }
+      .notice {
+        margin: 0 0 1.5rem;
+        padding: 14px 16px;
+        border-radius: 12px;
+        background: var(--warn);
+        border: 1px solid #ead37d;
+        color: #5d4700;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <article>
+        {{LEGAL_NOTICE}}
+        <h1>{{APP_NAME}} Terms of Use</h1>
+        <p>Last updated: {{LEGAL_LAST_UPDATED}}</p>
+
+        <h2>Service description</h2>
+        <p>
+          {{APP_NAME}} is a read-only developer tool for repository inspection, explanation, and
+          contract auditing. It is published by {{PUBLISHER_NAME}}.
+        </p>
+
+        <h2>Acceptable use</h2>
+        <ul>
+          <li>Use the app only with repositories and systems you are authorized to inspect.</li>
+          <li>Do not use the app to bypass security, access controls, or legal restrictions.</li>
+          <li>Do not submit secrets, credentials, or personal data unless strictly necessary.</li>
+          <li>Do not abuse the service, scrape it aggressively, or attempt to disrupt availability.</li>
+        </ul>
+
+        <h2>No write-side actions</h2>
+        <p>
+          This deployment is intended to expose read-only workflows. It should not create commits,
+          modify repositories, or publish externally visible side effects.
+        </p>
+
+        <h2>No professional advice</h2>
+        <p>
+          Outputs are informational. Users remain responsible for validating technical, legal,
+          compliance, security, or operational conclusions before acting on them.
+        </p>
+
+        <h2>Availability</h2>
+        <p>
+          {{PUBLISHER_NAME}} may change, suspend, rate-limit, or discontinue the service to maintain
+          security, prevent abuse, or perform maintenance.
+        </p>
+
+        <h2>Contact</h2>
+        <ul>
+          <li>Company URL: <a href="{{COMPANY_URL}}">{{COMPANY_URL}}</a></li>
+          <li>Support: <a href="mailto:{{SUPPORT_EMAIL}}">{{SUPPORT_EMAIL}}</a></li>
+          <li>Privacy: <a href="mailto:{{PRIVACY_EMAIL}}">{{PRIVACY_EMAIL}}</a></li>
+          <li>Security: <a href="mailto:{{SECURITY_EMAIL}}">{{SECURITY_EMAIL}}</a></li>
+        </ul>
+      </article>
+    </main>
+  </body>
+</html>

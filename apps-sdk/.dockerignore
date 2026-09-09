@@ -1,0 +1,9 @@
+node_modules
+apps-sdk/node_modules
+mcp/node_modules
+target
+.git
+.DS_Store
+.leio-code
+coverage
+npm-debug.log*

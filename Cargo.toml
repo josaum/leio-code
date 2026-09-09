@@ -1,0 +1,83 @@
+[workspace]
+members = [".", "crates/leio-harness", "crates/leio-knowledge-core"]
+resolver = "2"
+
+[package]
+name = "leio-code"
+version = "2.6.2"
+edition = "2024"
+description = "Agent-first code intelligence for one repository at a time"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/josaum/leio-code"
+
+[dependencies]
+# Formal store + anchored-or-refuse SPARQL envelope, split out so runtimes
+# that ship an ontology without a repo (container images, brain substrates)
+# share one mechanism instead of re-implementing it.
+leio-knowledge-core = { path = "crates/leio-knowledge-core", version = "2.6.2" }
+anyhow = "1"
+arrow-array = "=58.3.0"
+arrow-buffer = "=58.3.0"
+arrow-ipc = { version = "=58.3.0", features = ["lz4", "zstd"] }
+arrow-schema = "=58.3.0"
+blake2 = "0.10"
+bytes = "1"
+clap = { version = "4.5", features = ["derive"] }
+ignore = "0.4"
+memmap2 = "0.9"
+mimalloc = "0.1"
+# Linux inotify + Windows ReadDirectoryChanges are target deps in notify 8
+# (always compiled on those OSes). macos_fsevent is the only feature gate.
+notify = { version = "8", default-features = false, features = ["macos_fsevent"] }
+oxigraph = { version = "0.5.10", default-features = false, features = ["rdf-12"] }
+rayon = "1.10"
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+serde_yaml = "0.9"
+sha2 = "0.10"
+thiserror = "2"
+time = { version = "0.3", features = ["formatting", "macros", "serde"] }
+toml = "0.8"
+tree-sitter = "0.25"
+tree-sitter-c-sharp = "0.23.5"
+tree-sitter-c = "0.24.2"
+tree-sitter-cpp = "0.23.4"
+tree-sitter-go = "0.25"
+tree-sitter-bash = "0.25"
+tree-sitter-java = "0.23.5"
+tree-sitter-html = "0.23.2"
+tree-sitter-css = "0.25"
+tree-sitter-swift = "0.7.3"
+tree-sitter-javascript = "0.23"
+tree-sitter-python = "0.23"
+tree-sitter-rust = "0.23"
+tree-sitter-typescript = "0.23"
+unicode-normalization = "0.1"
+zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
+ureq = { version = "3", features = ["json"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.dev]
+opt-level = 0
+debug = "line-tables-only"
+incremental = true
+split-debuginfo = "unpacked"
+codegen-units = 256
+
+[profile.dev.package."*"]
+opt-level = 2
+debug = false
+
+[profile.debugging]
+inherits = "dev"
+debug = 2
+split-debuginfo = "unpacked"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 16
+strip = true

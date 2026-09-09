@@ -1,0 +1,48 @@
+/target/
+/target-local/
+/target-cli/
+**/node_modules/
+**/__pycache__/
+*.pyc
+.DS_Store
+*.swp
+
+# Local index / search artifacts at any analyzed repo root.
+# Keep config.toml and repository-local doctor definitions trackable.
+**/.leio-code/index.json
+**/.leio-code/index-summary.json
+**/.leio-code/indexed-revision
+**/.leio-code/cache/
+**/.leio-code/exports/
+**/.leio-code/bin/
+**/.leio-code/nav-session.json
+**/.leio-code/events/
+**/.leio-code/sessions/
+**/.leio-code/search.duckdb
+**/.leio-code/search.duckdb.wal
+**/.leio-code/search.arrow
+**/.leio-code/reindex.stamp
+**/.leio-code/apps-sdk.pid
+**/.leio-code/apps-sdk.log
+**/.leio-code/*.lock
+
+# Plugin loader residue (keep SessionStart sources tracked)
+.orphaned_at
+/hooks/*
+!/hooks/hooks.json
+!/hooks/session-context.sh
+metadata.json
+/releases/
+/dist/
+
+# python tooling + model-sweep outputs
+.coverage
+benchmarks/model-sweep/
+benchmarks/reference-sweep/
+benchmarks/experiments/
+
+# Local LEIO trio snapshots and reports (generated verification evidence).
+.trio-runs/
+
+# Local browser automation traces are never source artifacts.
+.playwright-mcp/

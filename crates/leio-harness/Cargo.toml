@@ -1,0 +1,46 @@
+[package]
+name = "leio-harness"
+version = "2.6.2"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "LEIO-Harness — agent execution runtime for LEIO Code"
+
+[[bin]]
+name = "leio-harness"
+path = "src/main.rs"
+
+[features]
+default = ["codeview"]
+# In-process leio-code indexing + `code-view/<repo>` publication. Off, the
+# crate is embeddable (leases, bus, gates, GEPA) without the code-intelligence
+# dependency tree.
+codeview = ["dep:leio-code"]
+
+[dependencies]
+leio-code = { path = "../..", optional = true }
+anyhow = "1.0"
+arrow-array = "=58.3.0"
+arrow-buffer = "=58.3.0"
+arrow-flight = "=58.3.0"
+arrow-ipc = "=58.3.0"
+arrow-schema = "=58.3.0"
+clap = { version = "4.5", features = ["derive"] }
+chrono = { version = "0.4", features = ["serde"] }
+fs2 = "0.4"
+hex = "0.4"
+memmap2 = "0.9"
+nix = { version = "0.30", features = ["signal", "process"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time", "net"] }
+tokio-stream = { version = "0.1", features = ["net"] }
+tonic = "0.14"
+tower = "0.5"
+hyper-util = { version = "0.1", features = ["tokio"] }
+futures = "0.3"
+
+[dev-dependencies]
+proptest = "1"
+tempfile = "3.23"

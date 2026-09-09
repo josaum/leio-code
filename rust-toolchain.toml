@@ -1,0 +1,7 @@
+# Todo o Rust do projeto roda na versão estável corrente: o canal "stable"
+# acompanha o último release estável do Rust em vez de congelar uma versão,
+# então builds locais e de CI nunca ficam para trás (o rustup resolve o canal
+# na primeira utilização e reutiliza a toolchain instalada nas seguintes).
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]

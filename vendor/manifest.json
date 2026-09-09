@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "description": "Provenance for first-party crates vendored into leio-code. Enforced by the `vendored-crate-provenance` doctor under `leio-code audit --strict`. See docs/architecture/vendored-crate-provenance.md. No crates are vendored today: parser functionality is consumed from pre-built wheels under artifacts/wheels/.",
+  "hash_algorithm": "sha256 over each regular file under the crate directory (excluding any `target` directory), sorted by forward-slash relative path, feeding `path || 0x00 || bytes || 0x00` per file",
+  "crates": []
+}

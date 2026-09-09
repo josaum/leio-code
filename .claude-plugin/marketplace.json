@@ -1,0 +1,31 @@
+{
+  "name": "leio-code",
+  "description": "LEIO Code — agent-first repository intelligence (this repository is the marketplace source).",
+  "owner": {
+    "name": "LEIO Code contributors",
+    "url": "https://github.com/josaum/leio-code"
+  },
+  "plugins": [
+    {
+      "name": "leio-code",
+      "description": "Indexed lookup, graph, doctors, local wiki, SPARQL-gated explain, formal graph, lattice nav, and JSON-LD provenance via CLI/MCP.",
+      "version": "2.6.1",
+      "author": {
+        "name": "LEIO Code contributors",
+        "url": "https://github.com/josaum/leio-code"
+      },
+      "source": "./",
+      "category": "development",
+      "homepage": "https://github.com/josaum/leio-code",
+      "keywords": [
+        "leio-code",
+        "mcp",
+        "wiki",
+        "lattice",
+        "sparql",
+        "jsonld",
+        "code-intelligence"
+      ]
+    }
+  ]
+}

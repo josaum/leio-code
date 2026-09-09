@@ -1,0 +1,5 @@
+@prefix ex:   <http://example.org/gym#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+ex:unitA rdfs:label "Unit A" ; ex:opensAt "05:00" .
+ex:unitB rdfs:label "Unit B" ; ex:opensAt "06:00" .

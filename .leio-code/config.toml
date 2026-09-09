@@ -1,0 +1,4 @@
+version = 1
+primary_tool = "leio-code"
+default_mode = "capabilities-first"
+workspace_profile = "leio-code"

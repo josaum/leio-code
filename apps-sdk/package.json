@@ -1,0 +1,34 @@
+{
+  "name": "@leio/leio-code-apps-sdk",
+  "version": "2.6.2",
+  "private": true,
+  "type": "module",
+  "description": "OpenAI Apps SDK / ChatGPT MCP app for LEIO Code (self-host production-capable; private package)",
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check server.js && node --check tenant-scope.mjs && node --check repo-url.js && node --check output-schemas.js && node --check tool-annotations.js && node --check validate-repo-url.mjs",
+    "test": "node --test auth.test.js tenant-scope.test.mjs repo-url.test.js runtime-contract.test.js server-health.test.js submission-contract.test.js validate-repo-url.test.js mcp-spec-contract.test.js keycloak/*.test.mjs ../mcp/guide.test.js",
+    "auth:summary": "node auth-summary.mjs",
+    "auth:human-login": "node keycloak/human-login.mjs",
+    "auth:pkce-url": "node keycloak/human-login.mjs --print-url",
+    "auth:pkce-exchange": "node keycloak/human-login.mjs --exchange-code",
+    "keycloak:configure-app-client": "node keycloak/configure-app-client.mjs",
+    "keycloak:import-realm": "node keycloak/import-realm.mjs",
+    "keycloak:destroy-fly": "bash keycloak/destroy-fly.sh",
+    "keycloak:configure-dcr": "node keycloak/configure-dcr.mjs",
+    "keycloak:create-dev-user": "node keycloak/create-dev-user.mjs",
+    "keycloak:create-reviewer-user": "node keycloak/create-reviewer-user.mjs",
+    "keycloak:deploy:fly": "bash keycloak/deploy-fly.sh",
+    "test:keycloak": "node --test keycloak/*.test.mjs",
+    "smoke": "node smoke.mjs",
+    "docker:build": "docker build -t leio-code-apps-sdk -f Dockerfile ..",
+    "docker:smoke": "bash scripts/smoke-docker.sh",
+    "deploy:fly": "bash scripts/deploy-fly.sh"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "jose": "^6.1.3",
+    "zod": "^3.25.76"
+  },
+  "license": "MIT OR Apache-2.0"
+}

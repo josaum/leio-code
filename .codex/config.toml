@@ -1,0 +1,3 @@
+[mcp_servers.leio-code]
+command = "bash"
+args = ["./scripts/launch-stdio-mcp.sh"]

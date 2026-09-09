@@ -1,0 +1,54 @@
+{
+  "goal": "Opt-in OpenRouter model routing by work-shape. Rankings are adoption, not quality.",
+  "repo": "/Users/josaum/projects/example-workspace",
+  "worktreeRoot": "/tmp/leio-wt-openrouter",
+  "outputDir": "/tmp/leio-runs-openrouter",
+  "timeoutMs": 300000,
+  "parallel": false,
+  "requireFreshCodeView": true,
+  "agentTemplates": {
+    "codex-model": {
+      "argv": ["codex", "exec", "--model", "{model}", "{task}"]
+    },
+    "claude-model": {
+      "argv": ["claude", "-p", "--model", "{model}", "{task}"]
+    }
+  },
+  "lanes": [
+    {
+      "agentId": "explorer",
+      "agent": "codex-model",
+      "workShape": "explorer",
+      "task": "Map callers of resolve_lane_invocation via leio-code graph."
+    },
+    {
+      "agentId": "worker",
+      "agent": "codex-model",
+      "workShape": "worker",
+      "task": "Implement the smallest change that satisfies the explorer map."
+    },
+    {
+      "agentId": "verifier",
+      "agent": "codex-model",
+      "workShape": "verifier",
+      "task": "Run the scoped leio-harness tests and report pass/fail."
+    },
+    {
+      "agentId": "reviewer",
+      "agent": "claude-model",
+      "workShape": "reviewer",
+      "task": "Review the worker diff for correctness and test-gap."
+    },
+    {
+      "agentId": "security",
+      "agent": "claude-model",
+      "workShape": "security",
+      "task": "Review auth, tenant, egress, and secret boundaries in the worker diff."
+    },
+    {
+      "agentId": "coordinator",
+      "agent": "grok",
+      "task": "Integrate lane results. Do not pick a token-volume default."
+    }
+  ]
+}

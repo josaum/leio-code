@@ -1,0 +1,44 @@
+{
+  "manifest_version": "0.3",
+  "name": "leio-code",
+  "display_name": "LEIO Code",
+  "version": "2.6.2",
+  "description": "Agent-first code intelligence. Index, find, graph, doctors, SPARQL knowledge, lattice nav over one repo_root.",
+  "author": {
+    "name": "LEIO Code contributors",
+    "url": "https://github.com/josaum/leio-code"
+  },
+  "homepage": "https://github.com/josaum/leio-code",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/josaum/leio-code"
+  },
+  "license": "MIT OR Apache-2.0",
+  "icon": "icon.png",
+  "server": {
+    "type": "node",
+    "entry_point": "mcp/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/mcp/index.js"],
+      "env": {
+        "LEIO_CODE_BIN": "${HOME}/.cargo/bin/leio-code"
+      }
+    }
+  },
+  "tools_generated": true,
+  "keywords": [
+    "leio-code",
+    "mcp",
+    "code-intelligence",
+    "graph",
+    "doctor"
+  ],
+  "compatibility": {
+    "claude_desktop": ">=0.10.0",
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "node": ">=18.0.0"
+    }
+  }
+}

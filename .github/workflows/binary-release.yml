@@ -1,0 +1,95 @@
+name: Binary release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (leio-code-plugin-v*)."
+        required: false
+        type: string
+  push:
+    tags:
+      - "leio-code-plugin-v*"
+
+concurrency:
+  group: leio-code-binary-${{ github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  resolve-tag:
+    runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.tag.outputs.release_tag }}
+      version: ${{ steps.tag.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Resolve release tag
+        id: tag
+        run: |
+          set -euo pipefail
+          VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+          INPUT_TAG="${{ inputs.tag }}"
+          TAG="${INPUT_TAG:-leio-code-plugin-v${VERSION}}"
+          echo "release_tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: resolve-tag
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            asset_name: leio-code-linux-amd64
+          - os: macos-14
+            target: aarch64-apple-darwin
+            asset_name: leio-code-darwin-arm64
+          - os: macos-13
+            target: x86_64-apple-darwin
+            asset_name: leio-code-darwin-amd64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: leio-code-binary-${{ matrix.target }}
+      - name: Build release binary
+        env:
+          RUSTC_WRAPPER: ""
+          CARGO_TARGET_DIR: target
+        run: |
+          cargo build --release --target ${{ matrix.target }} -p leio-code -p leio-harness
+          BINARY=$(find target -name leio-code -type f ! -path "*/deps/*" ! -path "*/build/*" | grep release | head -1)
+          HARNESS=$(find target -name leio-harness -type f ! -path "*/deps/*" ! -path "*/build/*" | grep release | head -1)
+          cp "$BINARY" ${{ matrix.asset_name }}
+          cp "$HARNESS" ${{ matrix.asset_name }}-harness
+      - name: Strip binary
+        run: |
+          command -v strip >/dev/null && strip ${{ matrix.asset_name }} ${{ matrix.asset_name }}-harness || true
+      - name: Checksum
+        run: |
+          shasum -a 256 ${{ matrix.asset_name }} > ${{ matrix.asset_name }}.sha256
+          shasum -a 256 ${{ matrix.asset_name }}-harness > ${{ matrix.asset_name }}-harness.sha256
+      - name: Ensure release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ needs.resolve-tag.outputs.release_tag }}"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --target "$GITHUB_SHA" \
+              --title "LEIO Code v${{ needs.resolve-tag.outputs.version }}" \
+              --notes "Binary release for leio-code v${{ needs.resolve-tag.outputs.version }}" \
+              --draft
+          fi
+          gh release upload "$TAG" "${{ matrix.asset_name }}" "${{ matrix.asset_name }}.sha256" \
+            "${{ matrix.asset_name }}-harness" "${{ matrix.asset_name }}-harness.sha256" --clobber

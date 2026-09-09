@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.jquant.leio-models-refresh</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/josaum/.grok/bin/leio-harness</string>
+    <string>models</string>
+    <string>refresh</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/Users/josaum</string>
+  </dict>
+  <!-- Daily refresh keeps the work-shape table inside its one-week TTL. -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>9</integer>
+    <key>Minute</key>
+    <integer>17</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/Users/josaum/.leio-harness/models-refresh.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/josaum/.leio-harness/models-refresh.log</string>
+</dict>
+</plist>

@@ -1,0 +1,102 @@
+{
+  "skill_name": "leio-trio",
+  "note": "Expectations are added to this file only after an iteration's runs have finished; executors may read the skill directory, so the answer key must not live here while runs are in flight.",
+  "evals": [
+    {
+      "id": 1,
+      "name": "swarm-plan-cross-repo",
+      "prompt": "ok I need a swarm on this: the affiliate checkout URL fallback logic exists in two places \u2014 `cartridges/pratique_cobranca/` (the python agent) and `jai-pay/src/lib/fitness-erp.ts` (plus the recovery audience route under `jai-pay/src/app/api/fitness/recovery/audience/`). I want lanes to (a) map both implementations with evidence, (b) propose the single-source fix, (c) verify it, (d) review it for tenant/egress risk. Do NOT execute the swarm or edit any repo files \u2014 write me the day spec (json), the lane briefs, and a short plan I can sanity-check before we spend tokens. Repo root is /Users/josaum/projects/example-workspace.",
+      "expected_output": "A validated day spec, self-contained lane briefs (repo root, isolation/index instruction, must-nots per lane), an objective that emits an OutcomeSnapshot, and a plan that names the gates (dirty tree with commit-vs-stash reasoning, integrated-tree verdict, model-table source), states the Reference scope, and checks the premise \u2014 grounded in resolving LEIO query ids, with no execution.",
+      "files": [],
+      "baseline": "old_skill",
+      "expectations": [
+        "day-spec.json passes scripts/validate_day_spec.py with zero errors and sets requireFreshCodeView to true",
+        "every lane carries a recognised work shape (explorer/worker/verifier/reviewer/security) or is the coordinator, and every shaped lane resolves to a template whose argv consumes {model}",
+        "every lane's task string is self-contained: it carries the repository root literal and that lane's own must-not boundaries, and does not rely on reading an external briefs file to learn its scope",
+        "harness-lane isolation is handled: each lane is told to establish its own code view in its worktree first (leio-code index) or the spec otherwise guarantees an indexed worktree",
+        "plan.md names the dirty-tree gate with commit-vs-stash reasoning, verification on the integrated tree with promotion only on an Improved verdict (no per-lane merge into main), and the model-table source (leio-harness models show)",
+        "premise check: the plan states, with LEIO/file:line evidence, whether jai-pay/src/lib/fitness-erp.ts actually carries affiliate-checkout fallback logic and re-scopes the lanes to what is really there",
+        "every LEIO query id cited in the outputs resolves in /Users/josaum/projects/example-workspace/.leio-code/events/events.ndjson (trio_receipts.py: 0 unresolved) and at least one cited file:line into cartridges/pratique_cobranca is correct at the current tree",
+        "an integrate/objective block exists and the objective (script or spec) emits an OutcomeSnapshot JSON with named metrics and a minimize list",
+        "Reference scope is stated explicitly: either 'no governed fact in scope' with a reason, or an ask with receipt id, snapshot id and runtime status; the on-miss URL policy is named as a human decision, not one a lane picks",
+        "no execution and no writes: the supervising side-effect diff of the workspace repo is clean and the transcript shows no `leio-harness day --spec`, integrate, gate, merge or worktree-create invocation (--help calls are fine)"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "mixed-code-and-reference-report",
+      "prompt": "For the Reference demo prep: what's the signed ROAS for the Nylabone Healthy Edibles line this month, and where in the reference repo (/Users/josaum/projects/reference) is ROAS actually computed for that route (q_roas_lookup)? I need a short report a reviewer can verify \u2014 with whatever receipts/ids they'd need \u2014 and be explicit about what's signed vs your own reasoning. Also say plainly whether we can treat that number as production truth right now.",
+      "expected_output": "Exact governed value with claim id/status/as_of/source, receipt + snapshot, runtime profile \u2192 not production truth, verify-back run, code location via LEIO with resolving query ids and a correct file:line, per-sentence captions, route vs claim status distinguished, and a retroaliment entry for any LEIO blind spot hit.",
+      "files": [],
+      "baseline": "old_skill",
+      "expectations": [
+        "roas-report.md quotes the ROAS value exactly as Reference returned it (3.1024) with its claim id (cl:\u2026), status signed, as_of 2026-07-31 and source feed (pacvue)",
+        "roas-report.md carries a well-formed receipt_id (res:<64 hex>) together with its snapshot_id (snap:<64 hex>) (trio_receipts.py: no malformed ids, receipt and snapshot co-present)",
+        "the report states runtime.profile (local-demo) and/or production_ready=false and concludes plainly that the number is NOT production truth",
+        "transcript shows reference_provider_verify called with the ask's verify_claims/receipt_id/snapshot_id unchanged \u2192 verified, and the report says what verified means (attribution, not truth; host_prose_signed false or equivalent)",
+        "the ROAS computation location is given as resolve_roas in app/reference_demo/engine.py with a correct file:line, the route is described as TTL data (reference.ttl) rather than a per-route handler, and this was obtained LEIO-first (leio_code_* calls precede any rg; cited query ids resolve in /Users/josaum/projects/reference/.leio-code/events/events.ndjson)",
+        "in the synthesis section at least 90% of sentences/bullets carry a status caption (trio_receipts.py captions ratio \u2265 0.9) and no host inference sits under a heading that calls it signed",
+        "the report distinguishes route status from claim statuses and never calls the whole answer signed merely because the route is signed",
+        "a drift/retroaliment section names at least one real LEIO blind spot hit during the run (e.g. find symbol returning 0 for the route id or RESOLVERS) with its query id and the durable form proposed"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "verify-flawed-synthesis",
+      "prompt": "someone on the team wrote this up before the review (attached: flawed-synthesis.md). verify it end to end against Reference and the reference repo (/Users/josaum/projects/reference) and give me the trio-style report: what's wrong, what's actually true, and what to fix before it goes anywhere.",
+      "expected_output": "Correction direction (3.1024 governed, 3.2 rejected by verify-back), as_of drift, production-grade and whole-answer-signed rejected on runtime/claim statuses, the six-lane/auto-merge/status-from-prose process violations, the code claim corrected, days-of-supply diagnosed, honest harness block, captioned corrected synthesis.",
+      "files": [
+        "evals/files/flawed-synthesis.md"
+      ],
+      "baseline": "old_skill",
+      "expectations": [
+        "correction direction is explicit: 3.1024 is presented as the governed value and 3.2 as wrong, with the reference_provider_verify rejection (value-mismatch) cited",
+        "the as_of drift is caught: governed evidence is as of 2026-07-31, not 2026-08-31",
+        "'production-grade' is rejected on runtime.profile local-demo / production_ready false, and 'the whole answer is signed because the route is signed' is rejected on claim statuses (answer_claim_status / claim_statuses / host_prose_signed)",
+        "the process violations are flagged: six parallel lanes exceed the four-active-lanes-per-repository design limit (cited as a design-spec rule, not runtime behaviour), and per-lane auto-merge into main violates integrated-tree verification with promotion only on an Improved verdict",
+        "fabricated status is flagged (lanes summarised as 'done' from their final message) and the report's own harness block is honest: no lane table is invented; it states that no DayReport/manifest/branches exist for the claimed run",
+        "transcript shows reference_provider_ask followed by reference_provider_verify in the same session and at least one leio_code_* query into /Users/josaum/projects/reference; cited LEIO query ids resolve in that repo's events.ndjson (trio_receipts.py: 0 unresolved)",
+        "the code claim is corrected: there is no per-route handler; ROAS is computed by resolve_roas in app/reference_demo/engine.py reached through the RESOLVERS dispatch, and reference:q_roas_lookup is TTL data",
+        "the days-of-supply claim is checked against Reference: the governed value (45) is obtained and the '18' is diagnosed as the month-over-month spend claim from the ROAS envelope",
+        "the corrected synthesis carries a status caption on at least 90% of its sentences/bullets (trio_receipts.py captions ratio \u2265 0.9)"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "tier-a-fanout-readonly",
+      "prompt": "fan out a small read-only swarm on /Users/josaum/projects/leio-code for me: three lanes in parallel \u2014 an explorer that maps every writer and reader of the `code-view/<repo>` bus topic in crates/leio-harness, a verifier that checks whether the `requireFreshCodeView` gate inspects the source repo or the lane worktrees (file:line please), and a reviewer that checks both returns for provenance. Then give me the trio report. Read-only \u2014 don't run any harness commands and don't edit anything.",
+      "expected_output": "Three parallel in-session lanes with distinct LEIO sessions, a critic table with S-2PC states derived from the returned blocks, resolving query ids, a clean side-effect diff, the correct gate finding (the gate checks the source repo, not the worktrees), an honest harness block (Tier A, nothing claimed from a runtime), and an explicit 'no governed facts in scope'.",
+      "files": [],
+      "baseline": "without_skill",
+      "expectations": [
+        "three lanes were launched as parallel Agent (subagent) calls in a single message (transcript), not sequentially and not simulated in-line",
+        "each lane prompt carries a distinct LEIO_SESSION / --session id and the repository root",
+        "the report contains a critic table with one row per lane whose S-2PC state (Committed/Aborted) and typed reason are derived from the lane's returned block, and the critic pass is named as the orchestrator's own",
+        "every LEIO query id cited in the report resolves in /Users/josaum/projects/leio-code/.leio-code/events/events.ndjson (trio_receipts.py: 0 unresolved)",
+        "the supervising side-effect diff of /Users/josaum/projects/leio-code is clean (no tracked changes, no new untracked files outside the output dir, no agents/* branches, no worktrees)",
+        "the verifier finding is correct and cited: the requireFreshCodeView gate checks the source repository (spec.repo) rather than the lane worktrees, with file:line in crates/leio-harness/src/orchestrator.rs",
+        "the explorer map lists the writers and readers of the code-view/<repo> bus topic with file:line (codeview publish path and the day/orchestrator publish site) and does not invent extra consumers",
+        "the harness block is honest: it says Tier A / in-session, claims no DayReport, manifest, branches or verdict (trio_receipts.py harness_honesty flag false)",
+        "no reference_provider call was made and the report states explicitly that no governed business fact is in scope"
+      ]
+    },
+    {
+      "id": 5,
+      "name": "trivial-rename-depth-scaling",
+      "prompt": "quick one: in /Users/josaum/projects/reference I want to rename `resolve_days_of_supply` (app/reference_demo/engine.py) to `resolve_dos`. don't edit anything \u2014 just tell me every place that references it and whether the rename is safe.",
+      "expected_output": "A short answer (rung 1): LEIO graph/find with a resolving query id, every reference with file:line including the RESOLVERS dict registration (a LEIO blind spot handled by rg after LEIO, both cited), a safety verdict \u2014 and none of the ceremony: no Reference call, no lanes, no preflight, no day spec, no full template.",
+      "files": [],
+      "baseline": "without_skill",
+      "expectations": [
+        "the answer declares the depth explicitly as trivial / rung 1 (one file, no governed fact) before doing the work",
+        "LEIO was used for the reference map (graph callers-of and/or find) and the cited query id(s) resolve in /Users/josaum/projects/reference/.leio-code/events/events.ndjson",
+        "every reference is listed with file:line, including the RESOLVERS dict registration in app/reference_demo/engine.py (a dict-reference LEIO blind spot: the answer shows it was found by rg after LEIO and cites both), and a safety verdict is given",
+        "no reference_provider call was made",
+        "no lanes/subagents were spawned, the preflight script was not run, and no day spec or full trio report template was produced",
+        "answer.md is at most 40 lines",
+        "the transcript shows at most 15 tool calls",
+        "the supervising side-effect diff of /Users/josaum/projects/reference is clean"
+      ]
+    }
+  ]
+}

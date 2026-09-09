@@ -1,0 +1,11 @@
+{
+  "tasks": [
+    {"task":"fix Apps SDK Docker smoke", "relevant_paths":["apps-sdk/scripts/smoke-docker.sh","apps-sdk/smoke.mjs"]},
+    {"task":"context file ranking scoring exact identifier relevance", "relevant_paths":["src/context.rs"]},
+    {"task":"MCP binary resolution installed cargo executable", "relevant_paths":["mcp/resolve-binary.js"]},
+    {"task":"session startup inject canonical skill instructions", "relevant_paths":["hooks/session-context.sh"]},
+    {"task":"update installed CLI and refresh plugin caches", "relevant_paths":["src/update.rs"]},
+    {"task":"persist workflow approval retry revision inputs", "relevant_paths":["crates/leio-harness/src/workflow.rs"]},
+    {"task":"local deployment verify revision rollback artifact", "relevant_paths":["crates/leio-harness/src/delivery.rs"]}
+  ]
+}

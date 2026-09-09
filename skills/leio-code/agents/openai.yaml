@@ -1,0 +1,4 @@
+interface:
+  display_name: "LEIO Code"
+  short_description: "Inspect codebases with LEIO Code"
+  default_prompt: "Use $leio-code to inspect this repository through the LEIO CLI or stdio MCP. Do not use Apps SDK tool names."

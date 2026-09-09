@@ -1,0 +1,118 @@
+{
+  "version": 1,
+  "description": "Golden context-bundle tasks for LEIO's agent-first reliability roadmap.",
+  "tasks": [
+    {
+      "name": "apps_sdk_docker_smoke",
+      "repo": "leio-code",
+      "task": "fix Apps SDK Docker smoke",
+      "limit": 8,
+      "min_files": 3,
+      "min_confidence": 0.8,
+      "min_context_zones": 7,
+      "expected_context_zone_order": [
+        "instructions",
+        "memory",
+        "anchors",
+        "ranked_files",
+        "graph_followups",
+        "verification",
+        "risks"
+      ],
+      "expected_context_zone_names": [
+        "instructions",
+        "memory",
+        "anchors",
+        "ranked_files",
+        "verification"
+      ],
+      "expected_instruction_paths_any": [
+        "GEMINI.md",
+        "AGENTS.md",
+        "CLAUDE.md"
+      ],
+      "expected_instruction_kinds_any": [
+        "agent_instructions",
+        "claude_instructions",
+        "gemini_instructions"
+      ],
+      "expected_memory_paths_any": [
+        "docs/agent-memory.md"
+      ],
+      "expected_memory_kinds_any": [
+        "memory_bank"
+      ],
+      "expected_paths_any": [
+        "apps-sdk/server.js",
+        "apps-sdk/smoke.mjs",
+        "apps-sdk/scripts/smoke-docker.sh"
+      ],
+      "expected_doctor_kinds_any": [
+        "self-contract"
+      ],
+      "expected_tests_any": [
+        "npm run docker:smoke",
+        "npm run check"
+      ]
+    },
+    {
+      "name": "release_artifact_self_contract",
+      "repo": "leio-code",
+      "task": "verify LEIO package release artifact self contract",
+      "limit": 8,
+      "min_files": 3,
+      "min_confidence": 0.8,
+      "min_context_zones": 7,
+      "expected_context_zone_order": [
+        "instructions",
+        "memory",
+        "anchors",
+        "ranked_files",
+        "graph_followups",
+        "verification",
+        "risks"
+      ],
+      "expected_context_zone_names": [
+        "instructions",
+        "memory",
+        "anchors",
+        "ranked_files",
+        "verification"
+      ],
+      "expected_instruction_paths_any": [
+        "GEMINI.md",
+        "AGENTS.md",
+        "CLAUDE.md"
+      ],
+      "expected_instruction_kinds_any": [
+        "agent_instructions",
+        "claude_instructions",
+        "gemini_instructions"
+      ],
+      "expected_memory_paths_any": [
+        "docs/agent-memory.md"
+      ],
+      "expected_memory_kinds_any": [
+        "memory_bank"
+      ],
+      "expected_anchor_ids_any": [
+        "#release-verify-contract"
+      ],
+      "expected_anchor_paths_any": [
+        "scripts/verify_release_artifact.py"
+      ],
+      "expected_paths_any": [
+        "src/doctors/self_contract.rs",
+        "scripts/package_codex_plugin.py",
+        "scripts/verify_release_artifact.py"
+      ],
+      "expected_doctor_kinds_any": [
+        "self-contract"
+      ],
+      "expected_tests_any": [
+        "cargo run -- verify",
+        "python3 -m unittest"
+      ]
+    }
+  ]
+}

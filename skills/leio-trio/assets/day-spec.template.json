@@ -1,0 +1,62 @@
+{
+  "goal": "<one sentence: the outcome, not the steps>",
+  "repo": "/abs/repo",
+  "worktreeRoot": "/abs/tmp/leio-wt-<short-goal>",
+  "outputDir": "/abs/tmp/leio-runs/<short-goal>",
+  "timeoutMs": 600000,
+  "parallel": false,
+  "requireFreshCodeView": true,
+  "agentTemplates": {
+    "claude-model": {
+      "argv": ["claude", "-p", "--model", "{model}", "{task}"]
+    },
+    "codex-model": {
+      "argv": ["codex", "exec", "--model", "{model}", "{task}"]
+    }
+  },
+  "lanes": [
+    {
+      "agentId": "explorer",
+      "agent": "codex-model",
+      "workShape": "explorer",
+      "task": "CONTEXT repo_root=<your worktree cwd; run `leio-code index --repo .` first if .leio-code/index.json is absent>session=explorer code_view=<fingerprint> reference=<none|receipts>. TASK map <scope> with LEIO (status, capabilities, context, graph callers-of/importers-of). SUCCESS every claim has file:line + query_id; blast radius, tests_to_run, doctor_suggestions listed. MUST NOT edit; grep before LEIO; infer business facts. RETURN five-part block; proposal=PROPOSE_FACT."
+    },
+    {
+      "agentId": "worker",
+      "agent": "codex-model",
+      "workShape": "worker",
+      "task": "CONTEXT repo_root=<your worktree cwd; run `leio-code index --repo .` first if .leio-code/index.json is absent>session=worker code_view=<fingerprint> reference=<receipts the change may affect>. TASK implement the smallest change satisfying the explorer map; test first. SUCCESS scoped tests green; no new doctor warnings. MUST NOT merge/push; touch target branch; add dependencies. RETURN diff summary + commands run; proposal=PROPOSE_TOOL_CALL."
+    },
+    {
+      "agentId": "verifier",
+      "agent": "codex-model",
+      "workShape": "verifier",
+      "task": "CONTEXT repo_root=<your worktree cwd; run `leio-code index --repo .` first if .leio-code/index.json is absent>session=verifier code_view=<fingerprint>. TASK confirm the worker diff, run tests_to_run + doctor_suggestions from Ground, report exact commands and exit codes. SUCCESS new-vs-baseline doctor delta stated. MUST NOT repair; edit; self-declare Committed. RETURN Committed | Aborted/<INVARIANT_VIOLATION|REGRESSION_DETECTED|LOW_CONFIDENCE>."
+    },
+    {
+      "agentId": "reviewer",
+      "agent": "claude-model",
+      "workShape": "reviewer",
+      "task": "CONTEXT repo_root=<your worktree cwd; run `leio-code index --repo .` first if .leio-code/index.json is absent>session=reviewer code_view=<fingerprint> reference=<receipts>. TASK review diff + prose for correctness, test gaps, provenance (query_id or file:line per claim; Reference values unchanged with status/as_of/claim id). MUST NOT edit; re-ask Reference. RETURN Committed | Aborted/<HALLUCINATION_DETECTED|LOW_CONFIDENCE>."
+    },
+    {
+      "agentId": "security",
+      "agent": "claude-model",
+      "workShape": "security",
+      "task": "CONTEXT repo_root=<your worktree cwd; run `leio-code index --repo .` first if .leio-code/index.json is absent>session=security code_view=<fingerprint>. TASK audit auth, tenant, egress, secrets, provider boundaries in the diff; LEIO explain every env var / redis key touched; run the egress/auth/secret doctors the profile exposes. MUST NOT edit; approve sends or promotions. RETURN Committed | Aborted/INVARIANT_VIOLATION."
+    },
+    {
+      "agentId": "coordinator",
+      "agent": "grok",
+      "task": "CONTEXT repo_root=<your worktree cwd; run `leio-code index --repo .` first if .leio-code/index.json is absent>session=coordinator. TASK integrate LaneOutcomes from the DayReport, run integrate + objective on the integrated tree, read the verdict, assemble assets/trio-report.template.md. MUST NOT merge into target; pick a token-volume default; summarise a lane from prose; omit a failed lane. RETURN report path; proposal=MERGE_REQUEST only on Improved."
+    }
+  ],
+  "integrate": {
+    "targetRef": "main",
+    "objective": {
+      "argv": ["/abs/repo/scripts/objective.sh"],
+      "outputDir": "/abs/tmp/leio-runs/<short-goal>/objective",
+      "timeoutMs": 300000
+    }
+  }
+}

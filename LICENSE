@@ -1,0 +1,11 @@
+LEIO Code is licensed under either of the following, at your option:
+
+- MIT license: LICENSE-MIT
+- Apache License, Version 2.0: LICENSE-APACHE
+
+SPDX-License-Identifier: MIT OR Apache-2.0
+Copyright (c) 2026 LEIO Code contributors
+
+This choice applies to original LEIO Code source and documentation unless a
+file states otherwise. Third-party dependencies and incorporated materials
+retain their respective licenses and copyright notices; see THIRD_PARTY.md.

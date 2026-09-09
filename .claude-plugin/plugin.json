@@ -1,0 +1,49 @@
+{
+  "name": "leio-code",
+  "version": "2.6.2",
+  "description": "Agent-first code intelligence. CLI/MCP for index, find, graph, doctors, local Arrow wiki, SPARQL-gated knowledge explain, formal.nq, lattice/heading nav, and JSON-LD provenance events. Concurrent-agent safe.",
+  "author": {
+    "name": "LEIO Code contributors",
+    "url": "https://github.com/josaum/leio-code"
+  },
+  "homepage": "https://github.com/josaum/leio-code",
+  "repository": "https://github.com/josaum/leio-code",
+  "license": "MIT OR Apache-2.0",
+  "keywords": [
+    "leio-code",
+    "code-intelligence",
+    "mcp",
+    "symbols",
+    "redis",
+    "deploy",
+    "graph",
+    "doctor",
+    "wiki",
+    "lattice",
+    "fca",
+    "nav",
+    "sparql",
+    "jsonld",
+    "provenance",
+    "rust"
+  ],
+  "skills": [
+    "./skills/leio-code",
+    "./skills/leio-code-apps-sdk",
+    "./skills/leio-bench",
+    "./skills/leio-day",
+    "./skills/leio-trio"
+  ],
+  "agents": [
+    "./agents/leio-code-investigator.md",
+    "./agents/leio-code-doctor.md"
+  ],
+  "mcpServers": {
+    "leio-code": {
+      "command": "bash",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/scripts/launch-stdio-mcp.sh"
+      ]
+    }
+  }
+}

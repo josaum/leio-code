@@ -1,0 +1,37 @@
+# Example ~/.codex/config.toml additions for leio-code MCP integration.
+#
+# Place this under `[mcp_servers.<name>]` blocks in your Codex config.
+# The `start-local.sh` script auto-generates an updated snippet with the
+# real port it picked — prefer that over hand-editing this file.
+
+# ─── Path A: local apps-sdk server ────────────────────────────────────────
+# Started via:
+#   bash leio-code/apps-sdk/scripts/start-local.sh
+#
+# Replace 8181 with the port the start-local.sh script reports if the
+# default was taken.
+
+[mcp_servers.leio_code]
+url = "http://127.0.0.1:8181/mcp"
+transport = "streamable_http"
+
+# ─── Path B: remote / shared apps-sdk on an ops VM ────────────────────────
+# When a team or CI agent points at a centrally-run apps-sdk container
+# (e.g. jquant/leio-code-apps-sdk:latest behind a reverse proxy).
+#
+# [mcp_servers.leio_code_shared]
+# url = "https://leio-code.ops.internal/mcp"
+# transport = "streamable_http"
+# # If the apps-sdk is running with LEIO_APPS_SDK_AUTH_MODE=jwt, attach a
+# # bearer token via an env var Codex injects per session:
+# # auth.bearer_env = "LEIO_CODE_TOKEN"
+
+# ─── Path C: local stdio MCP (the same surface, different transport) ──────
+# Useful when HTTP transport isn't supported by the host (older Codex
+# distributions, sandboxed runners). Costs an extra cold-start per session
+# but keeps the index warm within a session.
+#
+# [mcp_servers.leio_code_stdio]
+# command = "node"
+# args = ["/Users/you/projects/example-workspace/leio-code/mcp/index.js"]
+# transport = "stdio"

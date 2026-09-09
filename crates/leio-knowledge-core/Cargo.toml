@@ -1,0 +1,17 @@
+[package]
+name = "leio-knowledge-core"
+version = "2.6.2"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "In-memory formal knowledge store: Oxigraph SPARQL with anchored-or-refuse envelopes"
+repository = "https://github.com/josaum/leio-code"
+readme = "README.md"
+keywords = ["sparql", "rdf", "oxigraph", "knowledge-graph", "leio"]
+categories = ["database", "data-structures"]
+
+[dependencies]
+anyhow = "1"
+oxigraph = { version = "0.5.10", default-features = false, features = ["rdf-12"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+unicode-normalization = "0.1"
