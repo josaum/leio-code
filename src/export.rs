@@ -4,7 +4,9 @@
 //! - [`export_formal_context`] — FCA objects/attributes/incidences (`v1`).
 //!   Downstream: in-process `fca-fast-core` writes `lattice.json` + `induced.ttl`.
 //! - [`export_arrow_nodes`] — Arrow IPC `RecordBatch` payload of LEIO node
-//!   rows for the local node store (`v1`, deterministic SimHash vectors).
+//!   rows for the local node store (`v1`). Dense vectors are zero placeholders
+//!   unless optional export-time BGE-M3 embedding is configured; the
+//!   deterministic SimHash arm remains local.
 //! - [`export_hypergraph`] — JSON hypergraph derived from the same formal
 //!   context, with `semantic_tooling` provenance.
 //!
@@ -546,12 +548,14 @@ pub fn export_arrow_nodes(
 
     let fca_stats = enrich_entities_with_fca(index, &mut entities);
 
-    // Fill the three float vectors with real canonical BGE-M3 embeddings of three
-    // distinct text views (identifier / natural-language / ontology). One embed
-    // call per view-batch amortizes the encoder round-trip. Best-effort: if the
-    // encoder is unreachable the placeholder zero vectors survive and the rows
-    // stay `embed_model: "none"`, so the vector-ANN arm degrades cleanly instead
-    // of aborting the whole export.
+    // Export-time embedding is optional. When an embed URL is configured, fill
+    // the three float vectors with canonical BGE-M3 embeddings of three distinct
+    // text views (identifier / natural-language / ontology); one embed call per
+    // view-batch amortizes the encoder round-trip and may precompute the whole
+    // repository as a search cache. Without a usable encoder, the placeholder
+    // zero vectors survive and the rows stay `embed_model: "none"`, so export
+    // remains successful. Search can rerank bounded zero/incompatible candidates
+    // on demand; those request-local vectors are not persisted.
     let mut embed_warnings: Vec<String> = Vec::new();
     let embedded_rows = match crate::embed::embed_node_entities(root, &mut entities) {
         Ok(count) => count,

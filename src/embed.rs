@@ -1,9 +1,9 @@
 //! Optional BGE-M3 embedding of LEIO node rows for the textual regime.
 //!
 //! Produces real semantic embeddings via a remote GPU encoder when
-//! `LEIO_CODE_EMBED_URL` is set (TEI / LiteLLM OpenAI `/v1/embeddings`,
-//! `BAAI/bge-m3`, 1024-d). Ingest may also read `[embed] url`.
-//! Query embedding uses env only.
+//! `LEIO_CODE_EMBED_URL` is set (direct TEI `/embed`, Gemini
+//! `generativelanguage.googleapis.com`, or LiteLLM OpenAI `/v1/embeddings`,
+//! 1024-d). Ingest may also read `[embed] url`. Query embedding uses env only.
 //!
 //! Three distinct text *views* are embedded per node so the vector arms are
 //! meaningful instead of three identical probes:
@@ -49,9 +49,9 @@ const REMOTE_EMBED_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// Build the identifier/structural text view for a node entity.
 ///
-/// `"{symbol} {kind} {path-tail}"` — the load-bearing identifier tokens. When
-/// the symbol is empty (files, cartridges with no label) the `target` and a
-/// short path tail keep the view non-degenerate.
+/// `"{symbol} {target} {kind} {path-tail}"` — the load-bearing identifier
+/// tokens. When the symbol is empty (files, cartridges with no label), the
+/// `target` and a short path tail keep the view non-degenerate.
 fn build_code_view(entity: &Value) -> String {
     let symbol = str_field(entity, "symbol");
     let kind = str_field(entity, "kind");
@@ -67,17 +67,40 @@ fn build_code_view(entity: &Value) -> String {
     cap(parts.join(" "))
 }
 
-/// Build the natural-language semantic view from the rich `text_snippet` field.
+/// Builds snippet-first candidate text for semantic embedding.
 ///
-/// Falls back to the structural view when the snippet is empty so the arm is
-/// never all-zero.
-fn build_semantic_view(entity: &Value) -> String {
-    let snippet = str_field(entity, "text_snippet").trim();
-    if snippet.is_empty() {
-        build_code_view(entity)
-    } else {
-        cap(snippet.to_string())
+/// Empty snippets fall back to nonempty symbol, kind, and path-tail fields.
+/// The result is capped at [`MAX_VIEW_CHARS`] characters.
+pub(crate) fn candidate_embedding_text(entity: &Value) -> String {
+    candidate_embedding_text_fields(
+        str_field(entity, "text_snippet"),
+        str_field(entity, "symbol"),
+        str_field(entity, "kind"),
+        str_field(entity, "path"),
+    )
+}
+
+/// Builds candidate text directly from node fields.
+pub(crate) fn candidate_embedding_text_fields(
+    snippet: &str,
+    symbol: &str,
+    kind: &str,
+    path: &str,
+) -> String {
+    let snippet = snippet.trim();
+    if !snippet.is_empty() {
+        return cap(snippet.to_string());
     }
+
+    let symbol = symbol.trim();
+    let kind = kind.trim();
+    let path = path.trim();
+    let path_tail = path.rsplit('/').next().unwrap_or(path);
+    cap([symbol, kind, path_tail]
+        .into_iter()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(" "))
 }
 
 /// Build the ontology/context view: `"{kind} {relations…} {path} {lang}"`.
@@ -143,7 +166,7 @@ pub(crate) fn embed_node_entities(
     let model = embed_model(repo_root);
 
     let code_views: Vec<String> = entities.iter().map(build_code_view).collect();
-    let semantic_views: Vec<String> = entities.iter().map(build_semantic_view).collect();
+    let semantic_views: Vec<String> = entities.iter().map(candidate_embedding_text).collect();
     let ontology_views: Vec<String> = entities.iter().map(build_ontology_view).collect();
 
     let code_vecs = embed_texts_remote(&base, &model, &code_views)?;
@@ -207,8 +230,10 @@ pub(crate) fn embed_texts(repo_root: &Path, texts: &[String]) -> Result<Vec<Vec<
     embed_texts_remote(&base, &model, texts)
 }
 
-/// POST texts to TEI / LiteLLM OpenAI `/v1/embeddings`, chunked to
-/// [`REMOTE_EMBED_BATCH`].
+/// POST texts to direct TEI `/embed` or LiteLLM OpenAI `/v1/embeddings`.
+///
+/// Requests are chunked to [`REMOTE_EMBED_BATCH`] so the lab TEI deployment's
+/// `--max-client-batch-size 64` contract is respected.
 fn embed_texts_remote(base: &str, model: &str, texts: &[String]) -> Result<Vec<Vec<f32>>, String> {
     if texts.is_empty() {
         return Ok(Vec::new());
@@ -219,10 +244,15 @@ fn embed_texts_remote(base: &str, model: &str, texts: &[String]) -> Result<Vec<V
             .timeout_recv_body(Some(REMOTE_EMBED_TIMEOUT))
             .build(),
     );
-    let endpoint = openai_embeddings_url(base);
+    let endpoint = embedding_endpoint(base);
     let mut out = Vec::with_capacity(texts.len());
     for chunk in texts.chunks(REMOTE_EMBED_BATCH) {
-        out.extend(embed_openai_chunk(&agent, &endpoint, model, chunk)?);
+        let vectors = match &endpoint {
+            EmbeddingEndpoint::OpenAi(url) => embed_openai_chunk(&agent, url, model, chunk)?,
+            EmbeddingEndpoint::Tei(url) => embed_tei_chunk(&agent, url, chunk)?,
+            EmbeddingEndpoint::Gemini(url) => embed_gemini_chunk(&agent, url, chunk)?,
+        };
+        out.extend(vectors);
     }
     if out.len() != texts.len() {
         return Err(format!(
@@ -232,6 +262,34 @@ fn embed_texts_remote(base: &str, model: &str, texts: &[String]) -> Result<Vec<V
         ));
     }
     Ok(out)
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum EmbeddingEndpoint {
+    OpenAi(String),
+    Tei(String),
+    Gemini(String),
+}
+
+/// Host of Google's Generative Language API embedding endpoint.
+const GEMINI_EMBED_HOST: &str = "generativelanguage.googleapis.com";
+
+/// Model id sent for Gemini embedding requests. `outputDimensionality: 1024`
+/// keeps vectors on the same contract as BGE-M3 so cosine scoring stays valid.
+const GEMINI_EMBED_MODEL: &str = "models/gemini-embedding-2";
+
+fn embedding_endpoint(base: &str) -> EmbeddingEndpoint {
+    let normalized = base.trim_end_matches('/');
+    if normalized.contains(GEMINI_EMBED_HOST) {
+        let trimmed = normalized
+            .strip_suffix(":embedContent")
+            .unwrap_or(normalized);
+        EmbeddingEndpoint::Gemini(format!("{trimmed}:batchEmbedContents"))
+    } else if normalized.ends_with("/embed") {
+        EmbeddingEndpoint::Tei(normalized.to_string())
+    } else {
+        EmbeddingEndpoint::OpenAi(openai_embeddings_url(normalized))
+    }
 }
 
 fn openai_embeddings_url(base: &str) -> String {
@@ -271,6 +329,60 @@ fn embed_openai_chunk(
     parse_openai_embeddings(&payload, texts.len())
 }
 
+fn embed_tei_chunk(agent: &Agent, url: &str, texts: &[String]) -> Result<Vec<Vec<f32>>, String> {
+    let body = json!({"inputs": texts});
+    let mut request = agent.post(url).header("Content-Type", "application/json");
+    if let Ok(key) = std::env::var("LEIO_CODE_EMBED_API_KEY") {
+        let key = key.trim();
+        if !key.is_empty() {
+            request = request.header("Authorization", format!("Bearer {key}"));
+        }
+    }
+    let mut response = request
+        .send_json(&body)
+        .map_err(|err| format!("remote TEI embed {url}: {err}"))?;
+    let payload: Value = response
+        .body_mut()
+        .read_json()
+        .map_err(|err| format!("remote TEI embed {url} decode: {err}"))?;
+    parse_tei_embeddings(&payload, texts.len())
+}
+
+/// Build the Gemini `batchEmbedContents` request body for one chunk.
+fn gemini_batch_request(texts: &[String]) -> Value {
+    json!({
+        "requests": texts
+            .iter()
+            .map(|text| {
+                json!({
+                    "model": GEMINI_EMBED_MODEL,
+                    "content": {"parts": [{"text": text}]},
+                    "outputDimensionality": EMBED_DIM,
+                })
+            })
+            .collect::<Vec<_>>(),
+    })
+}
+
+fn embed_gemini_chunk(agent: &Agent, url: &str, texts: &[String]) -> Result<Vec<Vec<f32>>, String> {
+    let body = gemini_batch_request(texts);
+    let mut request = agent.post(url).header("Content-Type", "application/json");
+    let key = std::env::var("LEIO_CODE_EMBED_API_KEY")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "gemini embed requires LEIO_CODE_EMBED_API_KEY".to_string())?;
+    request = request.header("x-goog-api-key", key);
+    let mut response = request
+        .send_json(&body)
+        .map_err(|err| format!("remote Gemini embed {url}: {err}"))?;
+    let payload: Value = response
+        .body_mut()
+        .read_json()
+        .map_err(|err| format!("remote Gemini embed {url} decode: {err}"))?;
+    parse_gemini_embeddings(&payload, texts.len())
+}
+
 fn parse_openai_embeddings(payload: &Value, expected: usize) -> Result<Vec<Vec<f32>>, String> {
     let data = payload
         .get("data")
@@ -284,6 +396,12 @@ fn parse_openai_embeddings(payload: &Value, expected: usize) -> Result<Vec<Vec<f
                     .unwrap_or_else(|| payload.clone())
             )
         })?;
+    if data.len() != expected {
+        return Err(format!(
+            "remote embed count mismatch: {expected} texts, {} vectors",
+            data.len()
+        ));
+    }
     let mut ordered: Vec<Option<Vec<f32>>> = vec![None; expected];
     for item in data {
         let index =
@@ -318,6 +436,86 @@ fn parse_openai_embeddings(payload: &Value, expected: usize) -> Result<Vec<Vec<f
         .into_iter()
         .enumerate()
         .map(|(index, slot)| slot.ok_or_else(|| format!("missing remote embedding {index}")))
+        .collect()
+}
+
+fn parse_tei_embeddings(payload: &Value, expected: usize) -> Result<Vec<Vec<f32>>, String> {
+    let rows = payload
+        .as_array()
+        .ok_or_else(|| format!("remote TEI embed expected vector[]: {payload}"))?;
+    if rows.len() != expected {
+        return Err(format!(
+            "remote TEI embed count mismatch: {expected} texts, {} vectors",
+            rows.len()
+        ));
+    }
+    rows.iter()
+        .enumerate()
+        .map(|(index, row)| {
+            let values = row
+                .as_array()
+                .ok_or_else(|| format!("remote TEI embed index {index} is not a vector"))?;
+            if values.len() != EMBED_DIM {
+                return Err(format!(
+                    "remote TEI embed index {index} dim {} (expected {EMBED_DIM})",
+                    values.len()
+                ));
+            }
+            values
+                .iter()
+                .map(|number| {
+                    number.as_f64().map(|value| value as f32).ok_or_else(|| {
+                        format!("remote TEI embed index {index} non-float component")
+                    })
+                })
+                .collect()
+        })
+        .collect()
+}
+
+/// Parse a Gemini `batchEmbedContents` response. Embeddings come back in
+/// request order under `embeddings[].values`.
+fn parse_gemini_embeddings(payload: &Value, expected: usize) -> Result<Vec<Vec<f32>>, String> {
+    let rows = payload
+        .get("embeddings")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            format!(
+                "remote Gemini embed missing embeddings[]: {}",
+                payload
+                    .get("error")
+                    .cloned()
+                    .unwrap_or_else(|| payload.clone())
+            )
+        })?;
+    if rows.len() != expected {
+        return Err(format!(
+            "remote Gemini embed count mismatch: {expected} texts, {} vectors",
+            rows.len()
+        ));
+    }
+    rows.iter()
+        .enumerate()
+        .map(|(index, row)| {
+            let values = row
+                .get("values")
+                .and_then(Value::as_array)
+                .ok_or_else(|| format!("remote Gemini embed index {index} missing values"))?;
+            if values.len() != EMBED_DIM {
+                return Err(format!(
+                    "remote Gemini embed index {index} dim {} (expected {EMBED_DIM})",
+                    values.len()
+                ));
+            }
+            values
+                .iter()
+                .map(|number| {
+                    number.as_f64().map(|value| value as f32).ok_or_else(|| {
+                        format!("remote Gemini embed index {index} non-float component")
+                    })
+                })
+                .collect()
+        })
         .collect()
 }
 
@@ -359,7 +557,7 @@ mod tests {
             "text_snippet": "natural language description of foo",
         });
         assert_eq!(
-            build_semantic_view(&with_snippet),
+            candidate_embedding_text(&with_snippet),
             "natural language description of foo"
         );
 
@@ -372,10 +570,10 @@ mod tests {
         });
         // Falls back to the structural view rather than an empty string.
         assert_eq!(
-            build_semantic_view(&empty_snippet),
+            candidate_embedding_text(&empty_snippet),
             build_code_view(&empty_snippet)
         );
-        assert!(!build_semantic_view(&empty_snippet).is_empty());
+        assert!(!candidate_embedding_text(&empty_snippet).is_empty());
     }
 
     #[test]
@@ -420,6 +618,18 @@ mod tests {
     }
 
     #[test]
+    fn embedding_endpoint_detects_direct_tei_path() {
+        assert_eq!(
+            embedding_endpoint("http://tei.example:8080/embed"),
+            EmbeddingEndpoint::Tei("http://tei.example:8080/embed".to_string())
+        );
+        assert_eq!(
+            embedding_endpoint("http://llm.example:4000"),
+            EmbeddingEndpoint::OpenAi("http://llm.example:4000/v1/embeddings".to_string())
+        );
+    }
+
+    #[test]
     fn parse_openai_embeddings_orders_by_index() {
         let payload = json!({
             "data": [
@@ -431,5 +641,143 @@ mod tests {
         assert_eq!(vectors.len(), 2);
         assert!((vectors[0][0] - 1.0).abs() < f32::EPSILON);
         assert!(vectors[1][0].abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn parse_tei_embeddings_preserves_input_order() {
+        let payload = json!([vec![0.0; EMBED_DIM], vec![1.0; EMBED_DIM]]);
+        let vectors = parse_tei_embeddings(&payload, 2).expect("parse");
+        assert_eq!(vectors.len(), 2);
+        assert!(vectors[0][0].abs() < f32::EPSILON);
+        assert!((vectors[1][0] - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn parse_tei_embeddings_rejects_wrong_count() {
+        let payload = json!([vec![0.0; EMBED_DIM]]);
+        let error = parse_tei_embeddings(&payload, 2).expect_err("count mismatch");
+        assert!(error.contains("count mismatch"));
+    }
+
+    #[test]
+    fn parse_tei_embeddings_rejects_wrong_dimension() {
+        let payload = json!([vec![0.0; EMBED_DIM - 1]]);
+        let error = parse_tei_embeddings(&payload, 1).expect_err("dimension mismatch");
+        assert!(error.contains("dim 1023"));
+    }
+
+    #[test]
+    fn parse_tei_embeddings_rejects_non_numeric_components() {
+        let payload = json!([vec![json!("not-a-number"); EMBED_DIM]]);
+        let error = parse_tei_embeddings(&payload, 1).expect_err("numeric component");
+        assert!(error.contains("non-float component"));
+    }
+
+    #[test]
+    fn candidate_embedding_text_prefers_nonempty_snippet() {
+        let entity = json!({
+            "symbol": "build_node",
+            "kind": "symbol",
+            "path": "src/node.rs",
+            "text_snippet": "  natural language snippet  ",
+        });
+        assert_eq!(
+            candidate_embedding_text(&entity),
+            "natural language snippet"
+        );
+    }
+
+    #[test]
+    fn candidate_embedding_text_falls_back_to_nonempty_structural_fields() {
+        let entity = json!({
+            "symbol": "build_node",
+            "kind": "symbol",
+            "path": "src/node.rs",
+            "text_snippet": "",
+            "target": "ignored-target",
+        });
+        assert_eq!(
+            candidate_embedding_text(&entity),
+            "build_node symbol node.rs"
+        );
+    }
+
+    #[test]
+    fn candidate_embedding_text_truncates_by_characters() {
+        let entity = json!({
+            "text_snippet": "é".repeat(MAX_VIEW_CHARS + 1),
+        });
+        let text = candidate_embedding_text(&entity);
+        assert_eq!(text.chars().count(), MAX_VIEW_CHARS);
+        assert_eq!(text, "é".repeat(MAX_VIEW_CHARS));
+    }
+
+    #[test]
+    fn parse_openai_embeddings_rejects_wrong_count() {
+        let payload = json!({
+            "data": [
+                {"index": 0, "embedding": vec![0.0; EMBED_DIM]},
+                {"index": 1, "embedding": vec![1.0; EMBED_DIM]},
+                {"index": 1, "embedding": vec![1.0; EMBED_DIM]},
+            ]
+        });
+        let error = parse_openai_embeddings(&payload, 2).expect_err("count mismatch");
+        assert!(error.contains("count mismatch"));
+    }
+
+    #[test]
+    fn embedding_endpoint_detects_gemini_path() {
+        assert_eq!(
+            embedding_endpoint("https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2"),
+            EmbeddingEndpoint::Gemini(
+                "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2:batchEmbedContents"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            embedding_endpoint("https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2:embedContent"),
+            EmbeddingEndpoint::Gemini(
+                "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2:batchEmbedContents"
+                    .to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn parse_gemini_embeddings_preserves_input_order() {
+        let payload = json!({
+            "embeddings": [
+                {"values": vec![0.0; EMBED_DIM]},
+                {"values": vec![1.0; EMBED_DIM]},
+            ]
+        });
+        let vectors = parse_gemini_embeddings(&payload, 2).expect("parse");
+        assert_eq!(vectors.len(), 2);
+        assert!(vectors[0][0].abs() < f32::EPSILON);
+        assert!((vectors[1][0] - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn parse_gemini_embeddings_rejects_wrong_count() {
+        let payload = json!({"embeddings": [{"values": vec![0.0; EMBED_DIM]}]});
+        let error = parse_gemini_embeddings(&payload, 2).expect_err("count mismatch");
+        assert!(error.contains("count mismatch"));
+    }
+
+    #[test]
+    fn parse_gemini_embeddings_rejects_wrong_dimension() {
+        let payload = json!({"embeddings": [{"values": vec![0.0; EMBED_DIM - 1]}]});
+        let error = parse_gemini_embeddings(&payload, 1).expect_err("dimension mismatch");
+        assert!(error.contains("dim 1023"));
+    }
+
+    #[test]
+    fn gemini_batch_request_wraps_texts_with_model_and_dimension() {
+        let texts = vec!["alpha".to_string(), "beta".to_string()];
+        let body = gemini_batch_request(&texts);
+        assert_eq!(body["requests"].as_array().unwrap().len(), 2);
+        assert_eq!(body["requests"][0]["model"], "models/gemini-embedding-2");
+        assert_eq!(body["requests"][0]["content"]["parts"][0]["text"], "alpha");
+        assert_eq!(body["requests"][0]["outputDimensionality"], EMBED_DIM);
     }
 }

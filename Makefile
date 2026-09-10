@@ -23,7 +23,7 @@ verify:
 	node --test mcp/resolve-binary.test.js mcp/export-paths.test.js mcp/watch-state.test.js mcp/service-descriptor.test.js
 	python3 tests/test_apps_sdk_start_local.py
 	python3 tests/test_benchmark_models.py
-	python3 -m unittest tests.test_check_doc_links tests.test_benchmark_retrieval tests.test_publish_benchmarks
+	python3 -m unittest tests.test_check_doc_links tests.test_benchmark_retrieval tests.test_publish_benchmarks tests.test_benchmark_nav_graph tests.test_evaluate_retrieval
 	python3 scripts/check_doc_links.py
 
 coverage:

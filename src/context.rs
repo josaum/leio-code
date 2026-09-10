@@ -120,6 +120,24 @@ struct ContextZoneInputs<'a> {
     risk_notes: &'a [String],
 }
 
+fn apply_local_node_hits(
+    files: &mut [ScoredFile],
+    result: &crate::local_nodes::DetailedSearchResult,
+) {
+    for file in files {
+        let mut matching_hits = result.hits.iter().filter(|hit| hit.path == file.path);
+        let Some(first) = matching_hits.next() else {
+            continue;
+        };
+        file.score += 40;
+        file.reasons.insert("local Arrow node/FCA hit".to_string());
+        if first.cosine.is_some() || matching_hits.any(|hit| hit.cosine.is_some()) {
+            file.reasons
+                .insert("BGE-M3 semantic cosine hit".to_string());
+        }
+    }
+}
+
 pub fn build_context_bundle(
     index: &RepoIndex,
     root: &Path,
@@ -153,25 +171,27 @@ pub fn build_context_bundle(
         &identifier_needles,
         graph_cache.as_ref(),
     );
-    if let Ok(hits) = crate::local_nodes::search_hits(root, task, limit.saturating_mul(3))
-        && !hits.is_empty()
-    {
-        let hit_paths: HashSet<String> = hits.iter().map(|hit| hit.path.clone()).collect();
-        for file in &mut files {
-            if hit_paths.contains(&file.path) {
-                file.score += 40;
-                file.reasons.insert("local Arrow node/FCA hit".to_string());
-            }
-        }
-        files.sort_by(|left, right| {
-            right
-                .score
-                .cmp(&left.score)
-                .then_with(|| right.graph_proximity.cmp(&left.graph_proximity))
-                .then_with(|| right.modified_unix_ms.cmp(&left.modified_unix_ms))
-                .then_with(|| left.path.cmp(&right.path))
-        });
-    }
+    let local_node_semantic_source = if crate::local_nodes::available(root) {
+        crate::local_nodes::search_hits_detailed(root, task, limit.saturating_mul(3))
+            .ok()
+            .map(|result| {
+                let semantic_source = result.semantic_source.as_str();
+                if !result.hits.is_empty() {
+                    apply_local_node_hits(&mut files, &result);
+                    files.sort_by(|left, right| {
+                        right
+                            .score
+                            .cmp(&left.score)
+                            .then_with(|| right.graph_proximity.cmp(&left.graph_proximity))
+                            .then_with(|| right.modified_unix_ms.cmp(&left.modified_unix_ms))
+                            .then_with(|| left.path.cmp(&right.path))
+                    });
+                }
+                semantic_source
+            })
+    } else {
+        None
+    };
     files.truncate(limit);
     let symbols = rank_symbols(index, &task_tokens, limit, &idf);
     let env_vars = rank_env_vars(index, &task_tokens, limit, &idf);
@@ -325,6 +345,7 @@ pub fn build_context_bundle(
         warnings,
         meta: Some(json!({
             "limit": limit,
+            "semantic_source": local_node_semantic_source,
             "workspace_profile": workspace_profile,
             "workspace_capabilities": if full { Some(capabilities) } else { None },
             "next_tools": [
@@ -2080,6 +2101,72 @@ mod tests {
                 "packaging".to_string(),
                 "self".to_string(),
             ]
+        );
+    }
+
+    #[test]
+    fn local_node_hits_keep_boost_and_only_mark_cosine_files_as_bge_m3() {
+        let file = |path: &str| ScoredFile {
+            path: path.to_string(),
+            language: "rust".to_string(),
+            score: 10,
+            modified_unix_ms: 0,
+            graph_proximity: 0,
+            reasons: BTreeSet::new(),
+            symbols: Vec::new(),
+            env_vars: Vec::new(),
+            redis_keys: Vec::new(),
+        };
+        let hit = |path: &str, cosine| crate::local_nodes::NodeHit {
+            path: path.to_string(),
+            kind: "function".to_string(),
+            symbol: "marker".to_string(),
+            score: 1,
+            matched_relations: Vec::new(),
+            snippet: String::new(),
+            cosine,
+        };
+        let mut files = vec![file("src/semantic.rs"), file("src/lexical.rs")];
+        let result = crate::local_nodes::DetailedSearchResult {
+            hits: vec![
+                hit("src/semantic.rs", Some(0.75)),
+                hit("src/lexical.rs", None),
+            ],
+            semantic_source: crate::local_nodes::SemanticSource::OnDemand,
+        };
+
+        apply_local_node_hits(&mut files, &result);
+
+        for file in &files {
+            assert_eq!(file.score, 50);
+            assert!(file.reasons.contains("local Arrow node/FCA hit"));
+        }
+        let semantic = files
+            .iter()
+            .find(|file| file.path == "src/semantic.rs")
+            .expect("semantic file");
+        let lexical = files
+            .iter()
+            .find(|file| file.path == "src/lexical.rs")
+            .expect("lexical file");
+        assert!(semantic.reasons.contains("BGE-M3 semantic cosine hit"));
+        assert!(!lexical.reasons.contains("BGE-M3 semantic cosine hit"));
+    }
+
+    #[test]
+    fn context_metadata_marks_absent_local_store_unavailable() {
+        let env = build_context_bundle(
+            &test_index(),
+            Path::new("/tmp/no-such-leio-context-repo"),
+            "self contract packaging",
+            5,
+            false,
+        );
+        assert_eq!(
+            env.meta
+                .as_ref()
+                .and_then(|meta| meta.get("semantic_source")),
+            Some(&Value::Null)
         );
     }
 

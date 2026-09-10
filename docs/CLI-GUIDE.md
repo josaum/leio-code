@@ -124,7 +124,11 @@ Everything under `<repo>/.leio-code/`:
 
 **No network by default.** Outbound traffic only if you set it:
 
-- `LEIO_CODE_EMBED_URL` / `EMBEDDING_API_URL` — query embeddings (OpenAI-compatible, e.g. TEI). Inspected-repo `[embed] url` is **not** used on search.
+- `LEIO_CODE_EMBED_URL` / `EMBEDDING_API_URL` — query embeddings. Three endpoint
+  forms are detected: direct TEI URLs ending in `/embed`, Google Gemini
+  (`generativelanguage.googleapis.com`, needs `LEIO_CODE_EMBED_API_KEY`), and
+  other OpenAI-compatible bases (routed to `/v1/embeddings`). Inspected-repo
+  `[embed] url` is **not** used on search.
 - Apps SDK `repo_url` clone (host allowlist) and the env-gated Vigoros bridge.
 
 Secrets in `explain` are redacted unless `--show-secrets` on a TTY.
@@ -198,8 +202,12 @@ Adaptive / multi-word `find` / `context` prefer the local Arrow export:
 
 1. mmap `nodes.search` when the layout is valid (magic, version, alignment, no overlap)
 2. else decode the Arrow IPC stream
-3. optional cosine against BGE-M3 (1024-d) only when an **environment** embed URL is set
-4. lexical fallback
+3. when an **environment** embed URL is set, use compatible stored vectors as a fast path and bounded on-demand candidate reranking for zero or incompatible vectors (candidate cap: `min(256, max(32, limit * 8))`)
+4. lexical/FCA fallback when query embedding is unavailable
+
+On-demand candidate vectors are request-local and are never persisted. An export-time
+embed URL may precompute vectors for the whole repository as an optional cache;
+without one, `export arrow-nodes` writes the same zero-placeholder vector fields.
 
 Compound path ranking keeps stop words in adjacent pairs (`LEIO Code` →
 `leio-code`).

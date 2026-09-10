@@ -1,12 +1,13 @@
 //! Local FCA + node store over `.leio-code/exports/arrow-nodes-v1/`.
 //!
 //! Search mmaps `nodes.search` first and falls back to the Arrow IPC stream
-//! when the sidecar is missing or unreadable. Ranking is lexical + FCA
-//! relation overlap, plus cosine against `semantic_vec` / `code_vec` when
-//! `LEIO_CODE_EMBED_URL` is set.
+//! when the sidecar is missing or unreadable. Ranking first builds a lexical +
+//! FCA shortlist, then reranks it with compatible stored vectors and bounded
+//! on-demand candidate embeddings when `LEIO_CODE_EMBED_URL` is set.
 //!
 //! The store is process-wide so MCP / repeated in-process calls skip rebuild.
 
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Instant, SystemTime};
@@ -17,7 +18,7 @@ use rayon::prelude::*;
 use serde_json::json;
 
 use crate::arrow_ipc::read_ipc_stream_path;
-use crate::embed::embed_query;
+use crate::embed::{candidate_embedding_text_fields, embed_query, embed_texts};
 use crate::export::{
     default_arrow_nodes_output_dir, default_arrow_nodes_rows_path, default_search_sidecar_path,
 };
@@ -29,10 +30,10 @@ const STOPWORDS: &[&str] = &[
     "or", "the", "to", "with",
 ];
 
-/// Cosine at or above this keeps a row even with no lexical overlap.
+/// Cosine at or above this receives the full semantic score contribution.
 ///
 /// BGE-M3 in-domain neighbors for a multi-word task sit ~0.45–0.75;
-/// 0.42 keeps related symbols without flooding exact-match rankings.
+/// 0.42 separates strong semantic neighbors from quarter-scale contributions.
 const COSINE_KEEP: f32 = 0.42;
 
 /// Scale cosine `[-1, 1]` onto the same integer score ladder as lexical
@@ -44,6 +45,19 @@ const COSINE_SCORE_SCALE: f32 = 80.0;
 /// `find` only short-circuits to local Arrow when the top hit is at least a
 /// path-substring match. Weaker neighbors fall through to the symbol index.
 const LOCAL_FIND_MIN_SCORE: i64 = 70;
+
+/// Minimum semantic shortlist size for small requested result sets.
+const MIN_SEMANTIC_CANDIDATES: usize = 32;
+/// Maximum number of candidates sent through semantic reranking.
+const MAX_SEMANTIC_CANDIDATES: usize = 256;
+/// Candidate multiplier balancing recall against remote embedding cost.
+const SEMANTIC_CANDIDATE_MULTIPLIER: usize = 8;
+
+/// Upper bound on the inverse-document-frequency multiplier applied to per-term
+/// lexical bonuses. Rare terms are boosted up to this factor so they outrank the
+/// flood of common-term substring matches, but never above the exact/substring
+/// signals (+70/+80/+100).
+const TERM_WEIGHT_MAX: f32 = 4.5;
 
 /// LEIO node Arrow column ordinals — must match `build_leio_row_batch`.
 mod col {
@@ -88,6 +102,7 @@ enum StoreBody {
 struct NodeStore {
     key: StoreKey,
     body: StoreBody,
+    term_idf: HashMap<String, f32>,
 }
 
 static STORE: OnceLock<Mutex<Option<Arc<NodeStore>>>> = OnceLock::new();
@@ -132,7 +147,12 @@ fn load_store(path: &Path) -> Result<Arc<NodeStore>> {
                 .collect(),
         ),
     };
-    let store = Arc::new(NodeStore { key, body });
+    let term_idf = compute_idf(&body);
+    let store = Arc::new(NodeStore {
+        key,
+        body,
+        term_idf,
+    });
     if let Ok(mut guard) = store_lock().lock() {
         *guard = Some(Arc::clone(&store));
     }
@@ -173,9 +193,22 @@ fn list_norms(list: Option<&ListArray>) -> Vec<f32> {
 
 /// Ranked hits for a natural-language or identifier needle.
 pub fn search_hits(repo_root: &Path, needle: &str, limit: usize) -> Result<Vec<NodeHit>> {
-    search_ranked_hits(repo_root, needle, limit, SearchRanking::Semantic, || {
-        embed_query(repo_root, needle).ok()
-    })
+    search_hits_detailed(repo_root, needle, limit).map(|result| result.hits)
+}
+
+pub(crate) fn search_hits_detailed(
+    repo_root: &Path,
+    needle: &str,
+    limit: usize,
+) -> Result<DetailedSearchResult> {
+    search_ranked_hits_with(
+        repo_root,
+        needle,
+        limit,
+        SearchRanking::Semantic,
+        || embed_query(repo_root, needle),
+        |texts| embed_texts(repo_root, texts),
+    )
 }
 
 /// Deterministic lexical/FCA ranking for cursor navigation and continuation.
@@ -185,9 +218,15 @@ pub fn search_navigation_hits(
     needle: &str,
     limit: usize,
 ) -> Result<Vec<NodeHit>> {
-    search_ranked_hits(repo_root, needle, limit, SearchRanking::Lexical, || {
-        embed_query(repo_root, needle).ok()
-    })
+    search_ranked_hits_with(
+        repo_root,
+        needle,
+        limit,
+        SearchRanking::Lexical,
+        || embed_query(repo_root, needle),
+        |texts| embed_texts(repo_root, texts),
+    )
+    .map(|ranked| ranked.hits)
 }
 
 #[derive(Clone, Copy)]
@@ -196,6 +235,50 @@ enum SearchRanking {
     Lexical,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SemanticSource {
+    None,
+    Precomputed,
+    OnDemand,
+}
+
+impl SemanticSource {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Precomputed => "precomputed",
+            Self::OnDemand => "on_demand",
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct DetailedSearchResult {
+    pub(crate) hits: Vec<NodeHit>,
+    pub(crate) semantic_source: SemanticSource,
+}
+
+struct CandidateFields<'a> {
+    snippet: &'a str,
+    symbol: &'a str,
+    kind: &'a str,
+    path: &'a str,
+}
+
+struct Candidate<'a> {
+    hit: NodeHit,
+    fields: CandidateFields<'a>,
+    stored_vectors: [Option<(&'a [f32], f32)>; 2],
+}
+
+fn semantic_candidate_limit(requested_limit: usize) -> usize {
+    requested_limit
+        .saturating_mul(SEMANTIC_CANDIDATE_MULTIPLIER)
+        .max(MIN_SEMANTIC_CANDIDATES)
+        .min(MAX_SEMANTIC_CANDIDATES)
+}
+
+#[cfg(test)]
 fn search_ranked_hits(
     repo_root: &Path,
     needle: &str,
@@ -203,57 +286,189 @@ fn search_ranked_hits(
     ranking: SearchRanking,
     encoder: impl FnOnce() -> Option<Vec<f32>>,
 ) -> Result<Vec<NodeHit>> {
+    search_ranked_hits_with(
+        repo_root,
+        needle,
+        limit,
+        ranking,
+        || encoder().ok_or_else(|| "query embedding unavailable".to_string()),
+        |texts| embed_texts(repo_root, texts),
+    )
+    .map(|ranked| ranked.hits)
+}
+
+fn search_ranked_hits_with(
+    repo_root: &Path,
+    needle: &str,
+    limit: usize,
+    ranking: SearchRanking,
+    query_encoder: impl FnOnce() -> std::result::Result<Vec<f32>, String>,
+    candidate_encoder: impl FnOnce(&[String]) -> std::result::Result<Vec<Vec<f32>>, String>,
+) -> Result<DetailedSearchResult> {
     let path = nodes_path(repo_root);
     if !path.is_file() {
-        return Ok(Vec::new());
+        return Ok(DetailedSearchResult {
+            hits: Vec::new(),
+            semantic_source: SemanticSource::None,
+        });
     }
     let store = load_store(&path)?;
     let terms = query_terms(needle);
     let relation_hints = relation_hints(&terms, needle);
     let needle_lc = needle.to_ascii_lowercase();
-    let query_vec = match ranking {
-        SearchRanking::Semantic => encoder(),
-        SearchRanking::Lexical => None,
-    };
-    let query_norm = query_vec.as_deref().map(l2_norm);
-    let mut hits: Vec<NodeHit> = match &store.body {
-        StoreBody::Packed(packed) => score_packed(
-            packed,
-            &needle_lc,
-            &terms,
-            &relation_hints,
-            query_vec.as_deref(),
-            query_norm,
-        ),
+    let candidates = match &store.body {
+        StoreBody::Packed(packed) => {
+            score_packed(packed, &needle_lc, &terms, &relation_hints, &store.term_idf)
+        }
         StoreBody::Arrow(batches) => batches
             .par_iter()
             .flat_map(|mapped| {
-                score_batch(
-                    mapped,
-                    &needle_lc,
-                    &terms,
-                    &relation_hints,
-                    query_vec.as_deref(),
-                    query_norm,
-                )
-                .unwrap_or_default()
+                score_batch(mapped, &needle_lc, &terms, &relation_hints, &store.term_idf)
+                    .unwrap_or_default()
             })
             .collect(),
     };
-    hits.sort_by(|left, right| {
-        right
-            .score
-            .cmp(&left.score)
-            .then_with(|| left.path.cmp(&right.path))
-            .then_with(|| left.symbol.cmp(&right.symbol))
-            .then_with(|| left.kind.cmp(&right.kind))
-            .then_with(|| left.snippet.cmp(&right.snippet))
-            .then_with(|| left.matched_relations.cmp(&right.matched_relations))
-    });
+    rerank_candidates(candidates, limit, ranking, query_encoder, candidate_encoder)
+}
+
+fn rerank_candidates(
+    candidates: Vec<Candidate<'_>>,
+    limit: usize,
+    ranking: SearchRanking,
+    query_encoder: impl FnOnce() -> std::result::Result<Vec<f32>, String>,
+    candidate_encoder: impl FnOnce(&[String]) -> std::result::Result<Vec<Vec<f32>>, String>,
+) -> Result<DetailedSearchResult> {
+    rerank_candidates_with_text(
+        candidates,
+        limit,
+        ranking,
+        query_encoder,
+        candidate_encoder,
+        |fields| {
+            candidate_embedding_text_fields(fields.snippet, fields.symbol, fields.kind, fields.path)
+        },
+    )
+}
+
+fn rerank_candidates_with_text(
+    mut candidates: Vec<Candidate<'_>>,
+    limit: usize,
+    ranking: SearchRanking,
+    query_encoder: impl FnOnce() -> std::result::Result<Vec<f32>, String>,
+    candidate_encoder: impl FnOnce(&[String]) -> std::result::Result<Vec<Vec<f32>>, String>,
+    text_builder: impl Fn(&CandidateFields<'_>) -> String,
+) -> Result<DetailedSearchResult> {
+    sort_candidates(&mut candidates);
     let mut seen = std::collections::HashSet::new();
-    hits.retain(|hit| seen.insert((hit.path.clone(), hit.symbol.clone())));
-    hits.truncate(limit.max(1));
-    Ok(hits)
+    candidates.retain(|candidate| {
+        seen.insert((candidate.hit.path.clone(), candidate.hit.symbol.clone()))
+    });
+
+    if matches!(ranking, SearchRanking::Lexical) {
+        candidates.truncate(limit.max(1));
+        return Ok(DetailedSearchResult {
+            hits: candidates
+                .into_iter()
+                .map(|candidate| candidate.hit)
+                .collect(),
+            semantic_source: SemanticSource::None,
+        });
+    }
+    if candidates.is_empty() {
+        return Ok(DetailedSearchResult {
+            hits: Vec::new(),
+            semantic_source: SemanticSource::None,
+        });
+    }
+
+    let query = match query_encoder() {
+        Ok(query) => query,
+        Err(_) => {
+            candidates.truncate(limit.max(1));
+            return Ok(DetailedSearchResult {
+                hits: candidates
+                    .into_iter()
+                    .map(|candidate| candidate.hit)
+                    .collect(),
+                semantic_source: SemanticSource::None,
+            });
+        }
+    };
+    candidates.truncate(semantic_candidate_limit(limit));
+    let query_norm = l2_norm(&query);
+    let mut used_precomputed = false;
+    let mut missing = Vec::new();
+    for (index, candidate) in candidates.iter_mut().enumerate() {
+        let compatible = candidate
+            .stored_vectors
+            .iter()
+            .flatten()
+            .find(|(vector, norm)| vector.len() == query.len() && *norm > f32::EPSILON);
+        if let Some((vector, norm)) = compatible {
+            let cosine = cosine_pre_normed(&query, query_norm, vector, *norm);
+            apply_cosine(&mut candidate.hit, cosine);
+            used_precomputed = true;
+        } else {
+            missing.push(index);
+        }
+    }
+
+    let mut semantic_source = if used_precomputed {
+        SemanticSource::Precomputed
+    } else {
+        SemanticSource::None
+    };
+    if !missing.is_empty() {
+        let texts = missing
+            .iter()
+            .map(|index| text_builder(&candidates[*index].fields))
+            .collect::<Vec<_>>();
+        if let Ok(vectors) = candidate_encoder(&texts)
+            && vectors.len() == missing.len()
+            && vectors.iter().all(|vector| vector.len() == query.len())
+        {
+            for (index, vector) in missing.into_iter().zip(vectors) {
+                let norm = l2_norm(&vector);
+                let cosine = cosine_pre_normed(&query, query_norm, &vector, norm);
+                apply_cosine(&mut candidates[index].hit, cosine);
+            }
+            semantic_source = SemanticSource::OnDemand;
+        }
+    }
+
+    sort_candidates(&mut candidates);
+    candidates.truncate(limit.max(1));
+    Ok(DetailedSearchResult {
+        hits: candidates
+            .into_iter()
+            .map(|candidate| candidate.hit)
+            .collect(),
+        semantic_source,
+    })
+}
+
+fn sort_candidates(candidates: &mut [Candidate<'_>]) {
+    candidates.sort_by(|left, right| compare_hits(&left.hit, &right.hit));
+}
+
+fn compare_hits(left: &NodeHit, right: &NodeHit) -> std::cmp::Ordering {
+    right
+        .score
+        .cmp(&left.score)
+        .then_with(|| left.path.cmp(&right.path))
+        .then_with(|| left.symbol.cmp(&right.symbol))
+        .then_with(|| left.kind.cmp(&right.kind))
+        .then_with(|| left.snippet.cmp(&right.snippet))
+        .then_with(|| left.matched_relations.cmp(&right.matched_relations))
+}
+
+fn apply_cosine(hit: &mut NodeHit, cosine: f32) {
+    hit.cosine = Some(cosine);
+    if cosine >= COSINE_KEEP {
+        hit.score += (cosine * COSINE_SCORE_SCALE).round() as i64;
+    } else if hit.score > 0 {
+        hit.score += (cosine * (COSINE_SCORE_SCALE / 4.0)).round() as i64;
+    }
 }
 
 /// Adaptive-shaped envelope over the local Arrow file. `None` if the file is absent.
@@ -262,8 +477,15 @@ pub fn search_adaptive(repo_root: &Path, needle: &str, limit: usize) -> Option<Q
         return None;
     }
     let started = Instant::now();
-    let hits = match search_hits(repo_root, needle, limit) {
-        Ok(hits) => hits,
+    let ranked = match search_ranked_hits_with(
+        repo_root,
+        needle,
+        limit,
+        SearchRanking::Semantic,
+        || embed_query(repo_root, needle),
+        |texts| embed_texts(repo_root, texts),
+    ) {
+        Ok(ranked) => ranked,
         Err(err) => {
             return Some(QueryEnvelope {
                 schema_version: crate::model::SCHEMA_VERSION.to_string(),
@@ -282,7 +504,12 @@ pub fn search_adaptive(repo_root: &Path, needle: &str, limit: usize) -> Option<Q
             });
         }
     };
-    Some(hits_to_envelope(needle, hits, started))
+    Some(hits_to_envelope(
+        needle,
+        ranked.hits,
+        ranked.semantic_source,
+        started,
+    ))
 }
 
 /// Map Arrow hits into a `find` envelope (symbol-shaped).
@@ -337,7 +564,17 @@ pub fn search_as_find(repo_root: &Path, needle: &str, limit: usize) -> Option<Qu
     })
 }
 
-fn hits_to_envelope(needle: &str, hits: Vec<NodeHit>, started: Instant) -> QueryEnvelope {
+fn hits_to_envelope(
+    needle: &str,
+    hits: Vec<NodeHit>,
+    semantic_source: SemanticSource,
+    started: Instant,
+) -> QueryEnvelope {
+    let (strategy, semantic_source_name) = match semantic_source {
+        SemanticSource::None => ("arrow_ipc_local", "none"),
+        SemanticSource::Precomputed => ("arrow_ipc_local+precomputed_cosine", "precomputed"),
+        SemanticSource::OnDemand => ("arrow_ipc_local+on_demand_bge_m3", "on_demand"),
+    };
     let entities = hits
         .iter()
         .enumerate()
@@ -381,29 +618,25 @@ fn hits_to_envelope(needle: &str, hits: Vec<NodeHit>, started: Instant) -> Query
             })
             .collect(),
         entities,
-        warnings: vec![if hits.iter().any(|hit| hit.cosine.is_some()) {
-            "search_strategy: arrow_ipc_local+bge_m3_cosine".to_string()
-        } else {
-            "search_strategy: arrow_ipc_local".to_string()
-        }],
+        warnings: vec![format!("search_strategy: {strategy}")],
         meta: Some(json!({
             "transport": "arrow_ipc",
             "store": "local_nodes",
             "path": "exports/arrow-nodes-v1/nodes.arrow",
-            "cosine": hits.iter().any(|hit| hit.cosine.is_some()),
+            "cosine": semantic_source != SemanticSource::None,
+            "semantic_source": semantic_source_name,
         })),
         timing_ms: started.elapsed().as_millis(),
     }
 }
 
-fn score_packed(
-    packed: &PackedIndex,
+fn score_packed<'a>(
+    packed: &'a PackedIndex,
     needle_lc: &str,
     terms: &[String],
     relation_hints: &[String],
-    query_vec: Option<&[f32]>,
-    query_norm: Option<f32>,
-) -> Vec<NodeHit> {
+    term_idf: &HashMap<String, f32>,
+) -> Vec<Candidate<'a>> {
     (0..packed.n())
         .into_par_iter()
         .filter_map(|row| {
@@ -411,26 +644,7 @@ fn score_packed(
             let kind = packed.kind(row);
             let symbol = packed.symbol(row);
             let snippet = packed.snippet(row);
-            let mut score = 0i64;
-            if !needle_lc.is_empty() && ascii_eq_ignore_case(symbol, needle_lc) {
-                score += 100;
-            } else if !needle_lc.is_empty() && ascii_contains_ignore_case(symbol, needle_lc) {
-                score += 80;
-            }
-            if !needle_lc.is_empty() && ascii_contains_ignore_case(path, needle_lc) {
-                score += 70;
-            }
-            for term in terms {
-                if ascii_contains_ignore_case(path, term) {
-                    score += 12;
-                }
-                if ascii_contains_ignore_case(symbol, term) {
-                    score += 14;
-                }
-                if ascii_contains_ignore_case(snippet, term) {
-                    score += 8;
-                }
-            }
+            let mut score = local_score(path, symbol, snippet, needle_lc, terms, term_idf);
             let mut matched = Vec::new();
             let relations = packed.relations(row);
             for hint in relation_hints {
@@ -441,43 +655,41 @@ fn score_packed(
                     matched.push(hint.clone());
                 }
             }
-            let cosine = query_vec.and_then(|query| {
-                let qn = query_norm.unwrap_or(0.0);
-                packed
-                    .vector(row)
-                    .map(|row_vec| cosine_pre_normed(query, qn, row_vec, packed.norm(row)))
-            });
-            if let Some(value) = cosine {
-                if value >= COSINE_KEEP {
-                    score += (value * COSINE_SCORE_SCALE).round() as i64;
-                } else if score > 0 {
-                    score += (value * (COSINE_SCORE_SCALE / 4.0)).round() as i64;
-                }
-            }
             if score <= 0 {
                 return None;
             }
-            Some(NodeHit {
-                path: path.to_string(),
-                kind: kind.to_string(),
-                symbol: symbol.to_string(),
-                score,
-                matched_relations: matched,
-                snippet: snippet.chars().take(240).collect(),
-                cosine,
+            Some(Candidate {
+                hit: NodeHit {
+                    path: path.to_string(),
+                    kind: kind.to_string(),
+                    symbol: symbol.to_string(),
+                    score,
+                    matched_relations: matched,
+                    snippet: snippet.chars().take(240).collect(),
+                    cosine: None,
+                },
+                fields: CandidateFields {
+                    snippet,
+                    symbol,
+                    kind,
+                    path,
+                },
+                stored_vectors: [
+                    packed.vector(row).map(|vector| (vector, packed.norm(row))),
+                    None,
+                ],
             })
         })
         .collect()
 }
 
-fn score_batch(
-    mapped: &MappedBatch,
+fn score_batch<'a>(
+    mapped: &'a MappedBatch,
     needle_lc: &str,
     terms: &[String],
     relation_hints: &[String],
-    query_vec: Option<&[f32]>,
-    query_norm: Option<f32>,
-) -> Result<Vec<NodeHit>> {
+    term_idf: &HashMap<String, f32>,
+) -> Result<Vec<Candidate<'a>>> {
     let batch = &mapped.batch;
     if batch.num_columns() <= col::SEMANTIC_VEC {
         bail!(
@@ -504,33 +716,13 @@ fn score_batch(
         .as_any()
         .downcast_ref::<ListArray>();
 
-    let mut hits = Vec::new();
+    let mut candidates = Vec::new();
     for row in 0..batch.num_rows() {
         let path = paths.value(row);
         let kind = kinds.value(row);
         let symbol = symbols.value(row);
         let snippet = snippets.value(row);
-
-        let mut score = 0i64;
-        if !needle_lc.is_empty() && ascii_eq_ignore_case(symbol, needle_lc) {
-            score += 100;
-        } else if !needle_lc.is_empty() && ascii_contains_ignore_case(symbol, needle_lc) {
-            score += 80;
-        }
-        if !needle_lc.is_empty() && ascii_contains_ignore_case(path, needle_lc) {
-            score += 70;
-        }
-        for term in terms {
-            if ascii_contains_ignore_case(path, term) {
-                score += 12;
-            }
-            if ascii_contains_ignore_case(symbol, term) {
-                score += 14;
-            }
-            if ascii_contains_ignore_case(snippet, term) {
-                score += 8;
-            }
-        }
+        let mut score = local_score(path, symbol, snippet, needle_lc, terms, term_idf);
         let mut matched = Vec::new();
         for hint in relation_hints {
             if relation_matches(relations, row, hint) {
@@ -538,50 +730,143 @@ fn score_batch(
                 matched.push(hint.clone());
             }
         }
-        let cosine = query_vec.and_then(|query| {
-            let qn = query_norm.unwrap_or(0.0);
-            mapped
-                .semantic_norms
-                .get(row)
-                .copied()
-                .filter(|norm| *norm > f32::EPSILON)
-                .and_then(|norm| {
-                    row_vector_slice(semantic_vecs?, row)
-                        .map(|row_vec| cosine_pre_normed(query, qn, row_vec, norm))
-                })
-                .or_else(|| {
-                    mapped
-                        .code_norms
-                        .get(row)
-                        .copied()
-                        .filter(|norm| *norm > f32::EPSILON)
-                        .and_then(|norm| {
-                            row_vector_slice(code_vecs?, row)
-                                .map(|row_vec| cosine_pre_normed(query, qn, row_vec, norm))
-                        })
-                })
-        });
-        if let Some(value) = cosine {
-            if value >= COSINE_KEEP {
-                score += (value * COSINE_SCORE_SCALE).round() as i64;
-            } else if score > 0 {
-                score += (value * (COSINE_SCORE_SCALE / 4.0)).round() as i64;
-            }
-        }
         if score <= 0 {
             continue;
         }
-        hits.push(NodeHit {
-            path: path.to_string(),
-            kind: kind.to_string(),
-            symbol: symbol.to_string(),
-            score,
-            matched_relations: matched,
-            snippet: snippet.chars().take(240).collect(),
-            cosine,
+        let semantic = mapped
+            .semantic_norms
+            .get(row)
+            .copied()
+            .filter(|norm| *norm > f32::EPSILON)
+            .and_then(|norm| row_vector_slice(semantic_vecs?, row).map(|vector| (vector, norm)));
+        let code = mapped
+            .code_norms
+            .get(row)
+            .copied()
+            .filter(|norm| *norm > f32::EPSILON)
+            .and_then(|norm| row_vector_slice(code_vecs?, row).map(|vector| (vector, norm)));
+        candidates.push(Candidate {
+            hit: NodeHit {
+                path: path.to_string(),
+                kind: kind.to_string(),
+                symbol: symbol.to_string(),
+                score,
+                matched_relations: matched,
+                snippet: snippet.chars().take(240).collect(),
+                cosine: None,
+            },
+            fields: CandidateFields {
+                snippet,
+                symbol,
+                kind,
+                path,
+            },
+            stored_vectors: [semantic, code],
         });
     }
-    Ok(hits)
+    Ok(candidates)
+}
+
+fn local_score(
+    path: &str,
+    symbol: &str,
+    snippet: &str,
+    needle_lc: &str,
+    terms: &[String],
+    term_idf: &HashMap<String, f32>,
+) -> i64 {
+    let mut score = 0;
+    if !needle_lc.is_empty() && ascii_eq_ignore_case(symbol, needle_lc) {
+        score += 100;
+    } else if !needle_lc.is_empty() && ascii_contains_ignore_case(symbol, needle_lc) {
+        score += 80;
+    }
+    if !needle_lc.is_empty() && ascii_contains_ignore_case(path, needle_lc) {
+        score += 70;
+    }
+    for term in terms {
+        let weight = term_weight(term_idf.get(term).copied());
+        if ascii_contains_ignore_case(path, term) {
+            score += (12.0 * weight).round() as i64;
+        }
+        if ascii_contains_ignore_case(symbol, term) {
+            score += (14.0 * weight).round() as i64;
+        }
+        if ascii_contains_ignore_case(snippet, term) {
+            score += (8.0 * weight).round() as i64;
+        }
+    }
+    score
+}
+
+/// IDF multiplier for a term, clamped so rare terms are boosted without
+/// outranking the exact/substring signals. Unseen terms default to 1.0 (no
+/// boost) because a substring-only match has no reliable document frequency.
+fn term_weight(idf: Option<f32>) -> f32 {
+    idf.unwrap_or(1.0).clamp(1.0, TERM_WEIGHT_MAX)
+}
+
+/// Smooth inverse document frequency over every node's path + symbol + snippet
+/// tokens. Computed once per store load so rare terms can outrank the flood of
+/// common-term substring matches.
+fn compute_idf(body: &StoreBody) -> HashMap<String, f32> {
+    let mut df: HashMap<String, u32> = HashMap::new();
+    let total = match body {
+        StoreBody::Packed(packed) => {
+            for row in 0..packed.n() {
+                count_doc_terms(
+                    &mut df,
+                    packed.path(row),
+                    packed.symbol(row),
+                    packed.snippet(row),
+                );
+            }
+            packed.n()
+        }
+        StoreBody::Arrow(batches) => {
+            for mapped in batches {
+                let Ok(paths) = utf8_col(&mapped.batch, col::PATH, "path") else {
+                    continue;
+                };
+                let Ok(symbols) = utf8_col(&mapped.batch, col::SYMBOL, "symbol") else {
+                    continue;
+                };
+                let Ok(snippets) = utf8_col(&mapped.batch, col::SNIPPET, "text_snippet") else {
+                    continue;
+                };
+                for row in 0..mapped.batch.num_rows() {
+                    count_doc_terms(
+                        &mut df,
+                        paths.value(row),
+                        symbols.value(row),
+                        snippets.value(row),
+                    );
+                }
+            }
+            batches.iter().map(|mapped| mapped.batch.num_rows()).sum()
+        }
+    };
+    if total == 0 {
+        return HashMap::new();
+    }
+    let n = total as f32;
+    df.into_iter()
+        .map(|(term, count)| {
+            let idf = ((n + 1.0) / (count as f32 + 1.0)).ln() + 1.0;
+            (term, idf)
+        })
+        .collect()
+}
+
+fn count_doc_terms(df: &mut HashMap<String, u32>, path: &str, symbol: &str, snippet: &str) {
+    let mut seen: HashSet<String> = HashSet::new();
+    for text in [path, symbol, snippet] {
+        for term in tokenize(text) {
+            if seen.insert(term.clone()) {
+                *df.entry(term).or_insert(0) += 1;
+            }
+        }
+    }
 }
 
 fn utf8_col<'a>(
@@ -719,9 +1004,20 @@ fn ascii_contains_ignore_case(haystack: &str, needle_lc: &str) -> bool {
 }
 
 fn query_terms(needle: &str) -> Vec<String> {
+    tokenize(needle)
+}
+
+/// Tokenize arbitrary text into lowercase terms, splitting on non-alphanumeric
+/// boundaries and on camelCase / digit transitions so that `reprocessCandidates`,
+/// `reprocess_candidates`, and `reprocess candidates` share the same tokens.
+fn tokenize(text: &str) -> Vec<String> {
+    let mut raw = Vec::new();
+    for chunk in text.split(|ch: char| !ch.is_ascii_alphanumeric()) {
+        push_identifier_parts(chunk, &mut raw);
+    }
     let mut terms = Vec::new();
-    for raw in needle.split(|ch: char| !ch.is_ascii_alphanumeric()) {
-        let slug = raw.to_ascii_lowercase();
+    for token in raw {
+        let slug = token.to_ascii_lowercase();
         if slug.len() < 2 || STOPWORDS.contains(&slug.as_str()) {
             continue;
         }
@@ -730,6 +1026,27 @@ fn query_terms(needle: &str) -> Vec<String> {
         }
     }
     terms
+}
+
+/// Split one alphanumeric run into parts at camelCase and digit boundaries.
+/// Snake_case and other separators are already handled by the caller's split.
+fn push_identifier_parts(chunk: &str, out: &mut Vec<String>) {
+    let bytes = chunk.as_bytes();
+    let mut start = 0usize;
+    for i in 1..bytes.len() {
+        let prev = bytes[i - 1];
+        let cur = bytes[i];
+        let boundary = (prev.is_ascii_lowercase() && cur.is_ascii_uppercase())
+            || (prev.is_ascii_digit() && cur.is_ascii_alphabetic())
+            || (prev.is_ascii_alphabetic() && cur.is_ascii_digit());
+        if boundary {
+            out.push(chunk[start..i].to_string());
+            start = i;
+        }
+    }
+    if start < chunk.len() {
+        out.push(chunk[start..].to_string());
+    }
 }
 
 fn relation_hints(terms: &[String], needle: &str) -> Vec<String> {
@@ -762,6 +1079,62 @@ mod tests {
     }
 
     #[test]
+    fn tokenize_splits_camel_case_and_digits() {
+        // "by" is a stopword and "2" is shorter than the minimum term length,
+        // so both are dropped after the identifier split.
+        assert_eq!(
+            tokenize("selectReprocessCandidatesByColumn"),
+            vec!["select", "reprocess", "candidates", "column"]
+        );
+        assert_eq!(
+            tokenize("buildLeioRowBatch2"),
+            vec!["build", "leio", "row", "batch"]
+        );
+    }
+
+    #[test]
+    fn tokenize_shares_tokens_across_identifier_styles() {
+        let camel = tokenize("selectReprocessCandidates");
+        let snake = tokenize("select_reprocess_candidates");
+        let spaced = tokenize("select reprocess candidates");
+        assert_eq!(camel, snake);
+        assert_eq!(snake, spaced);
+    }
+
+    #[test]
+    fn term_weight_boosts_rare_terms_only() {
+        // Unseen terms get no boost (substring-only matches have no reliable DF).
+        assert_eq!(term_weight(None), 1.0);
+        // A common term (idf near 1) is unchanged.
+        assert_eq!(term_weight(Some(1.0)), 1.0);
+        // A rare term is boosted but clamped to TERM_WEIGHT_MAX.
+        assert_eq!(term_weight(Some(3.0)), 3.0);
+        assert_eq!(term_weight(Some(20.0)), TERM_WEIGHT_MAX);
+    }
+
+    #[test]
+    fn local_score_weights_rare_terms_above_common_ones() {
+        let idf = HashMap::from([("reprocess".to_string(), 4.5), ("column".to_string(), 1.0)]);
+        let rare = local_score(
+            "src/audit.rs",
+            "select_reprocess_candidates",
+            "",
+            "reprocess column",
+            &["reprocess".to_string(), "column".to_string()],
+            &idf,
+        );
+        let common = local_score(
+            "src/util.rs",
+            "column_order",
+            "",
+            "reprocess column",
+            &["column".to_string()],
+            &idf,
+        );
+        assert!(rare > common);
+    }
+
+    #[test]
     fn relation_hints_include_fca_and_topics() {
         let terms = query_terms("rdf namespace");
         let hints = relation_hints(&terms, "rdf namespace");
@@ -773,6 +1146,15 @@ mod tests {
     fn search_hits_empty_without_file() {
         let hits = search_hits(Path::new("/tmp/no-such-leio-repo"), "rdf", 8).expect("ok");
         assert!(hits.is_empty());
+    }
+
+    #[test]
+    fn detailed_search_reports_no_semantic_source_without_file() {
+        let result = search_hits_detailed(Path::new("/tmp/no-such-leio-repo"), "rdf", 8)
+            .expect("detailed search");
+        assert!(result.hits.is_empty());
+        assert_eq!(result.semantic_source, SemanticSource::None);
+        assert_eq!(result.semantic_source.as_str(), "none");
     }
 
     #[test]
@@ -816,7 +1198,7 @@ mod tests {
     }
 
     #[test]
-    fn score_packed_applies_cosine_to_semantic_neighbor() {
+    fn score_packed_requires_positive_local_score_before_semantics() {
         use crate::node_rows::build_leio_row_batch;
         use arrow_ipc::writer::StreamWriter;
         use serde_json::json;
@@ -853,18 +1235,14 @@ mod tests {
             writer.finish().expect("finish");
         }
         let packed = node_search::load_or_build(&arrow_path, &sidecar_path).expect("sidecar");
-        let query = [0.6_f32, 0.8, 0.0, 0.0];
         let hits = score_packed(
             &packed,
             "unrelated-needle",
             &[],
             &[],
-            Some(&query),
-            Some(l2_norm(&query)),
+            &std::collections::HashMap::new(),
         );
-        assert_eq!(hits.len(), 1);
-        assert!(hits[0].cosine.unwrap() > 0.99);
-        assert!(hits[0].score > 0);
+        assert!(hits.is_empty());
     }
 
     #[test]
@@ -883,7 +1261,7 @@ mod tests {
         let mapped = map_batch(batch);
         assert!(mapped.semantic_norms.is_empty());
         assert!(mapped.code_norms.is_empty());
-        assert!(score_batch(&mapped, "x", &[], &[], None, None).is_err());
+        assert!(score_batch(&mapped, "x", &[], &[], &std::collections::HashMap::new()).is_err());
     }
 
     fn write_export_repo(entities: &[serde_json::Value]) -> tempfile::TempDir {
@@ -1038,6 +1416,510 @@ mod tests {
             std::fs::read(crate::nav::session_path(dir.path())).unwrap(),
             session_before
         );
+    }
+
+    #[test]
+    fn semantic_search_with_zero_candidates_calls_neither_encoder() {
+        use std::cell::Cell;
+
+        let dir = write_export_repo(&[sample_nav_entity()]);
+        let query_calls = Cell::new(0);
+        let candidate_calls = Cell::new(0);
+        let ranked = search_ranked_hits_with(
+            dir.path(),
+            "absent-term",
+            8,
+            SearchRanking::Semantic,
+            || {
+                query_calls.set(query_calls.get() + 1);
+                Ok(vec![1.0, 0.0])
+            },
+            |_| {
+                candidate_calls.set(candidate_calls.get() + 1);
+                Ok(Vec::new())
+            },
+        )
+        .expect("search");
+        assert!(ranked.hits.is_empty());
+        assert_eq!(query_calls.get(), 0);
+        assert_eq!(candidate_calls.get(), 0);
+    }
+
+    #[test]
+    fn lexical_search_calls_neither_encoder() {
+        let dir = write_export_repo(&[sample_nav_entity()]);
+        let ranked = search_ranked_hits_with(
+            dir.path(),
+            "run_nav",
+            8,
+            SearchRanking::Lexical,
+            || panic!("lexical search must not embed the query"),
+            |_| panic!("lexical search must not embed candidates"),
+        )
+        .expect("search");
+        assert_eq!(ranked.hits.len(), 1);
+        assert_eq!(ranked.semantic_source, SemanticSource::None);
+    }
+
+    #[test]
+    fn semantic_candidate_cap_is_exact_and_applied_before_embedding() {
+        use std::cell::Cell;
+
+        assert_eq!(semantic_candidate_limit(0), 32);
+        assert_eq!(semantic_candidate_limit(4), 32);
+        assert_eq!(semantic_candidate_limit(5), 40);
+        assert_eq!(semantic_candidate_limit(32), 256);
+        assert_eq!(semantic_candidate_limit(usize::MAX), 256);
+
+        let entities = (0..40)
+            .map(|index| {
+                let mut entity = sample_nav_entity();
+                entity["node_id"] = json!(format!("n{index}"));
+                entity["path"] = json!(format!("src/{index:02}.rs"));
+                entity["symbol"] = json!(format!("matching_{index:02}"));
+                entity["text_snippet"] = json!(format!("matching candidate {index:02}"));
+                entity
+            })
+            .collect::<Vec<_>>();
+        let dir = write_export_repo(&entities);
+        let embedded_count = Cell::new(0);
+        let ranked = search_ranked_hits_with(
+            dir.path(),
+            "matching",
+            1,
+            SearchRanking::Semantic,
+            || Ok(vec![1.0, 0.0]),
+            |texts| {
+                embedded_count.set(texts.len());
+                Ok(vec![vec![1.0, 0.0]; texts.len()])
+            },
+        )
+        .expect("search");
+        assert_eq!(embedded_count.get(), 32);
+        assert_eq!(ranked.hits.len(), 1);
+    }
+
+    #[test]
+    fn semantic_rerank_embeds_only_missing_or_incompatible_candidates() {
+        use std::cell::Cell;
+
+        let mut compatible = sample_nav_entity();
+        compatible["path"] = json!("src/a.rs");
+        compatible["symbol"] = json!("matching_a");
+        compatible["semantic_vec"] = json!([1.0, 0.0]);
+        let mut incompatible = sample_nav_entity();
+        incompatible["path"] = json!("src/b.rs");
+        incompatible["symbol"] = json!("matching_b");
+        incompatible["semantic_vec"] = json!([1.0, 0.0, 0.0]);
+        let mut missing = sample_nav_entity();
+        missing["path"] = json!("src/c.rs");
+        missing["symbol"] = json!("matching_c");
+        missing["semantic_vec"] = json!([0.0, 0.0]);
+        let dir = write_export_repo(&[compatible, incompatible, missing]);
+        let embedded_count = Cell::new(0);
+        let ranked = search_ranked_hits_with(
+            dir.path(),
+            "matching",
+            8,
+            SearchRanking::Semantic,
+            || Ok(vec![1.0, 0.0]),
+            |texts| {
+                embedded_count.set(texts.len());
+                Ok(vec![vec![0.0, 1.0]; texts.len()])
+            },
+        )
+        .expect("search");
+        assert_eq!(embedded_count.get(), 2);
+        assert_eq!(ranked.semantic_source, SemanticSource::OnDemand);
+    }
+
+    #[test]
+    fn all_compatible_candidates_skip_candidate_embedding() {
+        let mut entity = sample_nav_entity();
+        entity["symbol"] = json!("matching");
+        entity["semantic_vec"] = json!([1.0, 0.0]);
+        let dir = write_export_repo(&[entity]);
+        let ranked = search_ranked_hits_with(
+            dir.path(),
+            "matching",
+            8,
+            SearchRanking::Semantic,
+            || Ok(vec![1.0, 0.0]),
+            |_| panic!("compatible precomputed vectors must skip candidate embedding"),
+        )
+        .expect("search");
+        assert_eq!(ranked.semantic_source, SemanticSource::Precomputed);
+        assert!(ranked.hits[0].cosine.is_some());
+    }
+
+    #[test]
+    fn candidate_embedding_failure_preserves_lexical_and_precomputed_scores() {
+        let mut precomputed = sample_nav_entity();
+        precomputed["path"] = json!("src/a.rs");
+        precomputed["symbol"] = json!("matching_a");
+        precomputed["semantic_vec"] = json!([1.0, 0.0]);
+        let mut missing = sample_nav_entity();
+        missing["path"] = json!("src/b.rs");
+        missing["symbol"] = json!("matching_b");
+        missing["semantic_vec"] = json!([0.0, 0.0]);
+        let dir = write_export_repo(&[precomputed, missing]);
+        let lexical = search_ranked_hits_with(
+            dir.path(),
+            "matching",
+            8,
+            SearchRanking::Lexical,
+            || unreachable!(),
+            |_| unreachable!(),
+        )
+        .expect("lexical");
+        let ranked = search_ranked_hits_with(
+            dir.path(),
+            "matching",
+            8,
+            SearchRanking::Semantic,
+            || Ok(vec![1.0, 0.0]),
+            |_| Err("candidate encoder unavailable".to_string()),
+        )
+        .expect("semantic");
+        let lexical_missing = lexical
+            .hits
+            .iter()
+            .find(|hit| hit.path == "src/b.rs")
+            .expect("lexical missing");
+        let ranked_missing = ranked
+            .hits
+            .iter()
+            .find(|hit| hit.path == "src/b.rs")
+            .expect("ranked missing");
+        assert_eq!(ranked_missing.score, lexical_missing.score);
+        assert!(ranked_missing.cosine.is_none());
+        assert!(ranked.hits.iter().any(|hit| hit.cosine.is_some()));
+        assert_eq!(ranked.semantic_source, SemanticSource::Precomputed);
+    }
+
+    #[test]
+    fn invalid_candidate_embedding_shapes_preserve_lexical_scores() {
+        let mut entity = sample_nav_entity();
+        entity["symbol"] = json!("matching");
+        entity["semantic_vec"] = json!([0.0, 0.0]);
+        let dir = write_export_repo(&[entity]);
+        let lexical = search_ranked_hits_with(
+            dir.path(),
+            "matching",
+            8,
+            SearchRanking::Lexical,
+            || unreachable!(),
+            |_| unreachable!(),
+        )
+        .expect("lexical");
+        for vectors in [Vec::new(), vec![vec![1.0]]] {
+            let ranked = search_ranked_hits_with(
+                dir.path(),
+                "matching",
+                8,
+                SearchRanking::Semantic,
+                || Ok(vec![1.0, 0.0]),
+                |_| Ok(vectors.clone()),
+            )
+            .expect("semantic");
+            assert_eq!(ranked.hits[0].score, lexical.hits[0].score);
+            assert!(ranked.hits[0].cosine.is_none());
+            assert_eq!(ranked.semantic_source, SemanticSource::None);
+        }
+    }
+
+    #[test]
+    fn query_embedding_failure_returns_uncapped_lexical_ranking() {
+        let entities = (0..300)
+            .map(|index| {
+                let mut entity = sample_nav_entity();
+                entity["node_id"] = json!(format!("n{index}"));
+                entity["path"] = json!(format!("src/{index:03}.rs"));
+                entity["symbol"] = json!(format!("matching_{index:03}"));
+                entity
+            })
+            .collect::<Vec<_>>();
+        let dir = write_export_repo(&entities);
+        let ranked = search_ranked_hits_with(
+            dir.path(),
+            "matching",
+            300,
+            SearchRanking::Semantic,
+            || Err("query encoder unavailable".to_string()),
+            |_| panic!("candidate encoder must not run after query failure"),
+        )
+        .expect("search");
+        assert_eq!(ranked.hits.len(), 300);
+        assert_eq!(ranked.semantic_source, SemanticSource::None);
+    }
+
+    #[test]
+    fn candidate_text_is_built_only_for_capped_missing_semantic_candidates() {
+        use std::cell::Cell;
+
+        let entities = (0..40)
+            .map(|index| {
+                let mut entity = sample_nav_entity();
+                entity["node_id"] = json!(format!("n{index}"));
+                entity["path"] = json!(format!("src/{index:02}.rs"));
+                entity["symbol"] = json!(format!("matching_{index:02}"));
+                entity["text_snippet"] = json!(format!("matching candidate {index:02}"));
+                entity
+            })
+            .collect::<Vec<_>>();
+        let batch = crate::node_rows::build_leio_row_batch(&entities).expect("batch");
+        let mapped = map_batch(batch);
+        let terms = query_terms("matching");
+        let candidates = score_batch(
+            &mapped,
+            "matching",
+            &terms,
+            &[],
+            &std::collections::HashMap::new(),
+        )
+        .expect("score");
+        let lexical_builds = Cell::new(0);
+        let lexical = rerank_candidates_with_text(
+            candidates,
+            40,
+            SearchRanking::Lexical,
+            || panic!("lexical query encoder"),
+            |_| panic!("lexical candidate encoder"),
+            |fields| {
+                lexical_builds.set(lexical_builds.get() + 1);
+                candidate_embedding_text_fields(
+                    fields.snippet,
+                    fields.symbol,
+                    fields.kind,
+                    fields.path,
+                )
+            },
+        )
+        .expect("lexical");
+        assert_eq!(lexical.hits.len(), 40);
+        assert_eq!(lexical_builds.get(), 0);
+
+        let candidates = score_batch(
+            &mapped,
+            "matching",
+            &terms,
+            &[],
+            &std::collections::HashMap::new(),
+        )
+        .expect("score");
+        let semantic_builds = Cell::new(0);
+        rerank_candidates_with_text(
+            candidates,
+            1,
+            SearchRanking::Semantic,
+            || Ok(vec![1.0, 0.0]),
+            |texts| Ok(vec![vec![1.0, 0.0]; texts.len()]),
+            |fields| {
+                semantic_builds.set(semantic_builds.get() + 1);
+                candidate_embedding_text_fields(
+                    fields.snippet,
+                    fields.symbol,
+                    fields.kind,
+                    fields.path,
+                )
+            },
+        )
+        .expect("semantic");
+        assert_eq!(semantic_builds.get(), 32);
+    }
+
+    #[test]
+    fn arrow_score_batch_rerank_uses_stored_vectors_and_embeds_only_gaps() {
+        let mut semantic = sample_nav_entity();
+        semantic["path"] = json!("src/a.rs");
+        semantic["symbol"] = json!("matching_semantic");
+        semantic["text_snippet"] = json!("matching semantic preference");
+        semantic["semantic_vec"] = json!([1.0, 0.0]);
+        semantic["code_vec"] = json!([0.0, 1.0]);
+        let mut code = sample_nav_entity();
+        code["path"] = json!("src/b.rs");
+        code["symbol"] = json!("matching_code");
+        code["text_snippet"] = json!("matching code fallback");
+        code["semantic_vec"] = json!([0.0, 0.0]);
+        code["code_vec"] = json!([1.0, 0.0]);
+        let mut incompatible = sample_nav_entity();
+        incompatible["path"] = json!("src/c.rs");
+        incompatible["symbol"] = json!("matching_incompatible");
+        incompatible["text_snippet"] = json!("matching incompatible");
+        incompatible["semantic_vec"] = json!([1.0, 0.0, 0.0]);
+        incompatible["code_vec"] = json!([0.0, 1.0, 0.0]);
+        let mut missing = sample_nav_entity();
+        missing["path"] = json!("src/d.rs");
+        missing["symbol"] = json!("matching_missing");
+        missing["text_snippet"] = json!("matching missing");
+        missing["semantic_vec"] = json!([0.0, 0.0]);
+        missing["code_vec"] = json!([0.0, 0.0]);
+        let batch =
+            crate::node_rows::build_leio_row_batch(&[semantic, code, incompatible, missing])
+                .expect("batch");
+        let mapped = map_batch(batch);
+        let terms = query_terms("matching");
+        let candidates = score_batch(
+            &mapped,
+            "matching",
+            &terms,
+            &[],
+            &std::collections::HashMap::new(),
+        )
+        .expect("score");
+        let ranked = rerank_candidates(
+            candidates,
+            8,
+            SearchRanking::Semantic,
+            || Ok(vec![1.0, 0.0]),
+            |texts| {
+                assert_eq!(texts.len(), 2);
+                assert!(texts.iter().any(|text| text.contains("incompatible")));
+                assert!(texts.iter().any(|text| text.contains("missing")));
+                Ok(vec![vec![1.0, 0.0]; texts.len()])
+            },
+        )
+        .expect("rerank");
+        for path in ["src/a.rs", "src/b.rs", "src/c.rs", "src/d.rs"] {
+            let hit = ranked
+                .hits
+                .iter()
+                .find(|hit| hit.path == path)
+                .expect("hit");
+            assert!(hit.cosine.is_some_and(|cosine| cosine > 0.99));
+        }
+        assert_eq!(ranked.semantic_source, SemanticSource::OnDemand);
+    }
+
+    #[test]
+    fn arrow_candidate_failure_preserves_lexical_and_precomputed_cosine() {
+        let mut precomputed = sample_nav_entity();
+        precomputed["path"] = json!("src/a.rs");
+        precomputed["symbol"] = json!("matching_precomputed");
+        precomputed["semantic_vec"] = json!([1.0, 0.0]);
+        let mut missing = sample_nav_entity();
+        missing["path"] = json!("src/b.rs");
+        missing["symbol"] = json!("matching_missing");
+        missing["semantic_vec"] = json!([0.0, 0.0]);
+        missing["code_vec"] = json!([0.0, 0.0]);
+        let batch = crate::node_rows::build_leio_row_batch(&[precomputed, missing]).expect("batch");
+        let mapped = map_batch(batch);
+        let terms = query_terms("matching");
+        let lexical = rerank_candidates(
+            score_batch(
+                &mapped,
+                "matching",
+                &terms,
+                &[],
+                &std::collections::HashMap::new(),
+            )
+            .expect("score"),
+            8,
+            SearchRanking::Lexical,
+            || unreachable!(),
+            |_| unreachable!(),
+        )
+        .expect("lexical");
+        let ranked = rerank_candidates(
+            score_batch(
+                &mapped,
+                "matching",
+                &terms,
+                &[],
+                &std::collections::HashMap::new(),
+            )
+            .expect("score"),
+            8,
+            SearchRanking::Semantic,
+            || Ok(vec![1.0, 0.0]),
+            |_| Err("candidate encoder unavailable".to_string()),
+        )
+        .expect("semantic");
+        let lexical_missing = lexical
+            .hits
+            .iter()
+            .find(|hit| hit.path == "src/b.rs")
+            .expect("lexical missing");
+        let ranked_missing = ranked
+            .hits
+            .iter()
+            .find(|hit| hit.path == "src/b.rs")
+            .expect("ranked missing");
+        assert_eq!(ranked_missing.score, lexical_missing.score);
+        assert!(ranked_missing.cosine.is_none());
+        assert!(
+            ranked
+                .hits
+                .iter()
+                .find(|hit| hit.path == "src/a.rs")
+                .is_some_and(|hit| hit.cosine.is_some_and(|cosine| cosine > 0.99))
+        );
+        assert_eq!(ranked.semantic_source, SemanticSource::Precomputed);
+    }
+
+    #[test]
+    fn envelope_metadata_distinguishes_semantic_sources() {
+        for (source, source_name, strategy, cosine) in [
+            (SemanticSource::None, "none", "arrow_ipc_local", false),
+            (
+                SemanticSource::Precomputed,
+                "precomputed",
+                "arrow_ipc_local+precomputed_cosine",
+                true,
+            ),
+            (
+                SemanticSource::OnDemand,
+                "on_demand",
+                "arrow_ipc_local+on_demand_bge_m3",
+                true,
+            ),
+        ] {
+            let envelope = hits_to_envelope("matching", Vec::new(), source, Instant::now());
+            let meta = envelope.meta.as_ref().expect("meta");
+            assert_eq!(meta["semantic_source"].as_str(), Some(source_name));
+            assert_eq!(meta["cosine"].as_bool(), Some(cosine));
+            assert_eq!(
+                envelope.warnings,
+                vec![format!("search_strategy: {strategy}")]
+            );
+        }
+    }
+
+    #[test]
+    fn on_demand_cosine_reorders_positive_local_candidates() {
+        let mut first = sample_nav_entity();
+        first["path"] = json!("src/a.rs");
+        first["symbol"] = json!("matching_a");
+        first["text_snippet"] = json!("matching orthogonal");
+        first["semantic_vec"] = json!([0.0, 0.0]);
+        let mut second = sample_nav_entity();
+        second["path"] = json!("src/b.rs");
+        second["symbol"] = json!("matching_b");
+        second["text_snippet"] = json!("matching aligned");
+        second["semantic_vec"] = json!([0.0, 0.0]);
+        let dir = write_export_repo(&[first, second]);
+        let ranked = search_ranked_hits_with(
+            dir.path(),
+            "matching",
+            8,
+            SearchRanking::Semantic,
+            || Ok(vec![1.0, 0.0]),
+            |texts| {
+                Ok(texts
+                    .iter()
+                    .map(|text| {
+                        if text.contains("aligned") {
+                            vec![1.0, 0.0]
+                        } else {
+                            vec![0.0, 1.0]
+                        }
+                    })
+                    .collect())
+            },
+        )
+        .expect("search");
+        assert_eq!(ranked.hits[0].path, "src/b.rs");
+        assert_eq!(ranked.semantic_source, SemanticSource::OnDemand);
     }
 
     #[test]
