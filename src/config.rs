@@ -20,6 +20,7 @@ use serde::Deserialize;
 pub const PROFILE_GENERIC: &str = "generic";
 pub const PROFILE_LEIO_CODE: &str = "leio-code";
 pub const PROFILE_EXAMPLE: &str = "example";
+pub const PROFILE_MYCELIA: &str = "mycelia";
 /// Published RDF vocabulary prefix for code-graph terms.
 ///
 /// Chosen as a stable, already-exported Example IRI so existing N-Quads and
@@ -197,7 +198,7 @@ pub fn load_repo_config(root: &Path) -> Option<LeioConfig> {
 }
 
 pub fn repo_profile(root: &Path) -> String {
-    std::env::var("LEIO_CODE_WORKSPACE_PROFILE")
+    let resolved = std::env::var("LEIO_CODE_WORKSPACE_PROFILE")
         .ok()
         .filter(|value| !value.trim().is_empty())
         .or_else(|| {
@@ -207,7 +208,13 @@ pub fn repo_profile(root: &Path) -> String {
         })
         .unwrap_or_else(|| PROFILE_GENERIC.to_string())
         .trim()
-        .to_ascii_lowercase()
+        .to_ascii_lowercase();
+
+    if resolved == PROFILE_MYCELIA {
+        PROFILE_EXAMPLE.to_string()
+    } else {
+        resolved
+    }
 }
 
 /// Env-only embed URL for the **query** path.
@@ -335,6 +342,14 @@ mod tests {
     fn repo_profile_defaults_to_generic() {
         let root = PathBuf::from("/tmp/arbitrary-repo");
         assert_eq!(repo_profile(&root), PROFILE_GENERIC);
+    }
+
+    #[test]
+    fn repo_profile_aliases_mycelia_to_example() {
+        let root = PathBuf::from("/tmp/arbitrary-repo");
+        unsafe { std::env::set_var("LEIO_CODE_WORKSPACE_PROFILE", "mycelia") };
+        assert_eq!(repo_profile(&root), PROFILE_EXAMPLE);
+        unsafe { std::env::remove_var("LEIO_CODE_WORKSPACE_PROFILE") };
     }
 
     #[test]
