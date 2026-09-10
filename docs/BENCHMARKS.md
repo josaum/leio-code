@@ -123,6 +123,8 @@ directory and path matching hits it for free.
 | Previous additive graph bonus | prefixed | 0.157 | 9.1% | 21.0% | 28.3% |
 | Previous additive graph bonus | stripped | 0.083 | 3.7% | 12.3% | 15.1% |
 | Shipped + local Arrow node store, no encoder | prefixed | 0.159 | 9.1% | 22.4% | 27.9% |
+| Shipped + local Arrow node store, on-demand BGE-M3 | prefixed | 0.184 | 11.0% | 25.1% | 31.5% |
+| Shipped + local Arrow node store, on-demand BGE-M3 | stripped | 0.067 | 2.3% | 10.1% | 16.0% |
 
 Read across the rows: the code-graph channel contributes nothing measurable at
 this scale, in either direction. Read down the phrasing: roughly half of the
@@ -134,9 +136,13 @@ file is in the top 10 for 31.1% of tasks, the top 20 for 41.1%, the top 40 for
 recovers some tasks and then stalls. This is a retrieval gap, not a
 re-ranking gap.
 
-Not measured: the BGE-M3 cosine channel over `semantic_vec`, because no
-encoder endpoint (`LEIO_CODE_EMBED_URL`) was configured. The Arrow row above is
-that store's lexical and FCA-relation half only.
+The on-demand BGE-M3 arm embeds the query and a bounded candidate shortlist
+(≤256) through a lab TEI `/embed` endpoint; the Arrow store's vectors are zero
+placeholders, so every semantic result is request-local. On prefixed phrasing it
+raises mean reciprocal rank from 0.159 to 0.184 and Top-1 from 9.1% to 11.0%.
+On stripped phrasing it does not help (0.067), consistent with the scope token
+carrying most of the signal. This arm depends on an external encoder; without
+one, ranking is the lexical/FCA Arrow row above.
 
 Aggregate receipt without task text or paths:
 [`heldout-retrieval.json`](../benchmarks/heldout-retrieval.json). The task

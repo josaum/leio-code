@@ -48,7 +48,8 @@
       "buggy": "flat +16/+18/+22 graph proximity bonus (pre-377ee12)",
       "fixed": "graph proximity as tie-breaker (377ee12, e2ba769)",
       "graphoff": "code-graph query cache moved aside",
-      "arrow": "fixed ranker plus local Arrow node store (lexical + FCA relations, no encoder)"
+      "arrow": "fixed ranker plus local Arrow node store (lexical + FCA relations, no encoder)",
+      "ondemand": "fixed ranker plus local Arrow node store, with bounded on-demand BGE-M3 reranking (lab TEI /embed); stored vectors are zero placeholders"
     }
   },
   "results": {
@@ -107,6 +108,28 @@
       "hit_at_3": 0.2237,
       "hit_at_5": 0.2785,
       "binary_version": "leio-code 2.6.2 (e2ba7697fbc4, clean)"
+    },
+    "ondemand-prefixed": {
+      "tasks": 219,
+      "mean_reciprocal_rank": 0.1843,
+      "hit_at_1": 0.1096,
+      "hit_at_3": 0.2511,
+      "hit_at_5": 0.3151,
+      "binary_version": "leio-code 2.6.2 (587fef08d917, dirty)",
+      "semantic_source_counts": {
+        "on_demand": 219
+      }
+    },
+    "ondemand-stripped": {
+      "tasks": 219,
+      "mean_reciprocal_rank": 0.067,
+      "hit_at_1": 0.0228,
+      "hit_at_3": 0.1005,
+      "hit_at_5": 0.1598,
+      "binary_version": "leio-code 2.6.2 (587fef08d917, dirty)",
+      "semantic_source_counts": {
+        "on_demand": 219
+      }
     }
   },
   "depth_probe": {
@@ -125,6 +148,6 @@
     "Commit subjects are written with hindsight and sometimes name the solution, which makes retrieval easier than a live bug report.",
     "Tasks that only created new files are excluded, biasing toward modification tasks.",
     "Single corpus; no cross-repository generalization claim.",
-    "The BGE-M3 cosine arm was not measured: no encoder endpoint was configured."
+    "The on-demand BGE-M3 arm depends on a lab TEI endpoint; without one, semantic reranking degrades to the lexical/FCA (arrow) baseline."
   ]
 }
