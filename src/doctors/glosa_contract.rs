@@ -18,9 +18,9 @@ use crate::model::{EvidenceItem, QueryEnvelope, RepoIndex};
 ///      (`validation-rules.ttl`).
 pub struct GlosaContractDoctor;
 
-const GATEWAY_GLOSA_RS: &str = "example-gateway/src/reasoning/glosa.rs";
+const GATEWAY_GLOSA_RS: &str = "mycelia-gateway/src/reasoning/glosa.rs";
 const CLIENT_PY: &str = "cartridges/health_audit/glosa_client.py";
-const FINANCIAL_PY: &str = "cartridges/health_audit/financial.py";
+const FINANCIAL_PY: &str = "cartridges/health_audit/domain/financial.py";
 const TABELA38_TTL: &str = "cartridges/health_audit/ontologies/validation-rules.ttl";
 
 impl Doctor for GlosaContractDoctor {
