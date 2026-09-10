@@ -732,6 +732,26 @@ fn working_tree_dirt_auto_refreshes_fresh_index() {
     assert_eq!(entities[0]["name"], "newly_added_agent_symbol");
 }
 #[test]
+fn help_documents_conversation_provenance_exception() {
+    let output = Command::new(bin())
+        .arg("--help")
+        .output()
+        .expect("run help");
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains(
+            "Repository commands append a JSON-LD PROV event; conversation deliberately does not."
+        ),
+        "help must state the conversation journaling exception: {stdout}"
+    );
+    assert!(
+        !stdout.contains("Every command appends a JSON-LD PROV event"),
+        "help must not overstate event coverage: {stdout}"
+    );
+}
+
+#[test]
 fn kind_catalog_exposes_doctor_presets() {
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_leio-code"))
         .args(["--json", "capabilities", "--catalog"])

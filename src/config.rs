@@ -7,7 +7,8 @@
 //! - `rdf.namespace` → `LEIO_CODE_RDF_NAMESPACE` (defaults to
 //!   [`DEFAULT_CODE_RDF_NAMESPACE`]). Used by code-graph N-Quads export.
 //! - `embed.url` / `embed.model` → `LEIO_CODE_EMBED_URL` /
-//!   `LEIO_CODE_EMBED_MODEL` (optional GPU TEI / OpenAI-compatible encoder).
+//!   `LEIO_CODE_EMBED_MODEL` (optional BGE-M3 encoder). Direct TEI URLs end in
+//!   `/embed`; LiteLLM/OpenAI-compatible bases receive `/v1/embeddings`.
 //!
 //! [`repo_namespace`] resolves a stable repo-name slug for cross-graph URN
 //! generation; falls back to the working-dir basename.
@@ -20,6 +21,7 @@ use serde::Deserialize;
 pub const PROFILE_GENERIC: &str = "generic";
 pub const PROFILE_LEIO_CODE: &str = "leio-code";
 pub const PROFILE_EXAMPLE: &str = "example";
+pub const PROFILE_MYCELIA: &str = "mycelia";
 /// Published RDF vocabulary prefix for code-graph terms.
 ///
 /// Chosen as a stable, already-exported Example IRI so existing N-Quads and
@@ -28,7 +30,7 @@ pub const PROFILE_EXAMPLE: &str = "example";
 pub const DEFAULT_CODE_RDF_NAMESPACE: &str = "https://example.local/leio/code#";
 /// Env var that overrides [`DEFAULT_CODE_RDF_NAMESPACE`] / `[rdf] namespace`.
 pub const CODE_RDF_NAMESPACE_ENV: &str = "LEIO_CODE_RDF_NAMESPACE";
-/// OpenAI-compatible or TEI base URL for BGE-M3 (`[embed] url`).
+/// OpenAI-compatible or direct TEI URL for BGE-M3 (`[embed] url`).
 pub const EMBED_URL_ENV: &str = "LEIO_CODE_EMBED_URL";
 /// Encoder model id. Defaults to `BAAI/bge-m3`.
 pub const EMBED_MODEL_ENV: &str = "LEIO_CODE_EMBED_MODEL";
@@ -177,16 +179,19 @@ pub struct OrphanFilesConfig {
 
 /// Remote BGE-M3 encoder under `[embed]` in `.leio-code/config.toml`.
 ///
+/// Direct TEI endpoints use the `/embed` suffix; LiteLLM/OpenAI-compatible
+/// endpoints may use their base URL and receive `/v1/embeddings` automatically.
+///
 /// ```toml
 /// [embed]
-/// url = "http://tei-bge-m3.example:8080"
+/// url = "http://tei-bge-m3.example:8080/embed"
 /// model = "BAAI/bge-m3"
 /// ```
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct EmbedConfig {
-    /// TEI / LiteLLM / OpenAI-compatible base. Env [`EMBED_URL_ENV`] wins.
+    /// Direct TEI `/embed` or LiteLLM/OpenAI-compatible base. Env [`EMBED_URL_ENV`] wins.
     pub url: Option<String>,
-    /// Model id posted to `/v1/embeddings`. Defaults to [`DEFAULT_EMBED_MODEL`].
+    /// Model id posted to the encoder. Defaults to [`DEFAULT_EMBED_MODEL`].
     pub model: Option<String>,
 }
 
@@ -197,7 +202,7 @@ pub fn load_repo_config(root: &Path) -> Option<LeioConfig> {
 }
 
 pub fn repo_profile(root: &Path) -> String {
-    std::env::var("LEIO_CODE_WORKSPACE_PROFILE")
+    let resolved = std::env::var("LEIO_CODE_WORKSPACE_PROFILE")
         .ok()
         .filter(|value| !value.trim().is_empty())
         .or_else(|| {
@@ -207,7 +212,13 @@ pub fn repo_profile(root: &Path) -> String {
         })
         .unwrap_or_else(|| PROFILE_GENERIC.to_string())
         .trim()
-        .to_ascii_lowercase()
+        .to_ascii_lowercase();
+
+    if resolved == PROFILE_MYCELIA {
+        PROFILE_EXAMPLE.to_string()
+    } else {
+        resolved
+    }
 }
 
 /// Env-only embed URL for the **query** path.
@@ -226,7 +237,7 @@ pub fn embed_query_url() -> Option<String> {
         .and_then(|raw| normalize_http_base(&raw))
 }
 
-/// Resolve the remote embedding base URL for **ingest/export**.
+/// Resolve the remote embedding URL for **ingest/export**.
 ///
 /// Precedence: [`EMBED_URL_ENV`], then `EMBEDDING_API_URL`, then `[embed] url`.
 /// Empty values are treated as unset. Scheme is added when missing.
@@ -331,10 +342,41 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
+    /// Env mutation in these tests is unsound under parallel test threads, so
+    /// every workspace-profile test serializes on this lock and restores the
+    /// prior value.
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn restore_workspace_profile(prior: Option<String>) {
+        // SAFETY: serialized test-only process environment mutation.
+        unsafe {
+            match prior {
+                Some(value) => std::env::set_var("LEIO_CODE_WORKSPACE_PROFILE", value),
+                None => std::env::remove_var("LEIO_CODE_WORKSPACE_PROFILE"),
+            }
+        }
+    }
+
     #[test]
     fn repo_profile_defaults_to_generic() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prior = std::env::var("LEIO_CODE_WORKSPACE_PROFILE").ok();
+        // SAFETY: serialized test-only process environment mutation.
+        unsafe { std::env::remove_var("LEIO_CODE_WORKSPACE_PROFILE") };
         let root = PathBuf::from("/tmp/arbitrary-repo");
         assert_eq!(repo_profile(&root), PROFILE_GENERIC);
+        restore_workspace_profile(prior);
+    }
+
+    #[test]
+    fn repo_profile_aliases_mycelia_to_example() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prior = std::env::var("LEIO_CODE_WORKSPACE_PROFILE").ok();
+        // SAFETY: serialized test-only process environment mutation.
+        unsafe { std::env::set_var("LEIO_CODE_WORKSPACE_PROFILE", "mycelia") };
+        let root = PathBuf::from("/tmp/arbitrary-repo");
+        assert_eq!(repo_profile(&root), PROFILE_EXAMPLE);
+        restore_workspace_profile(prior);
     }
 
     #[test]

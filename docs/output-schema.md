@@ -469,10 +469,11 @@ entries:
 | `nav` | `NavNode` |
 | (anything else) | `Entity` |
 
-Every command also appends this JSON-LD document as one NDJSON line to
-`.leio-code/events/events.ndjson` (or `LEIO_EVENTS_DIR`). Paths are
-absolute. `checkout` identifies repo / worktree / branch / HEAD so
-journals from clones and worktrees can be merged.
+Repository-analysis commands also append this JSON-LD document as one NDJSON
+line to `.leio-code/events/events.ndjson` (or `LEIO_EVENTS_DIR`). The
+`conversation` command deliberately writes no LEIO event journal. Repository
+event paths are absolute. `checkout` identifies repo / worktree / branch / HEAD
+so journals from clones and worktrees can be merged.
 
 ### 5.3. Why JSON-LD?
 
@@ -934,7 +935,7 @@ on:
 
 Builds a ranked, bounded working set for a natural-language task. The
 ranking pipeline, intent routes, IDF weighting, and optional graph
-proximity boosts are documented in
+proximity ordering is documented in
 [`docs/CONTEXT_BUNDLE.md`](CONTEXT_BUNDLE.md) — this section pins the
 *output shape*, not the algorithm.
 

@@ -1,34 +1,72 @@
-# LEIO Code
+<p align="center"><img src="assets/icon.png" width="88" alt="LEIO Code icon"></p>
 
-Agent-first code intelligence for one repository at a time.
+<h1 align="center">LEIO Code — Give your coding agent a map.</h1>
 
-Selected conversational files also have a local evidence-and-guidance workflow:
-[`conversation --source <TXT/ZIP/JSON>`](docs/conversation-workflow.md), exposed
-through the local stdio MCP. It prepares provenance,
-temporal context and a semantic/statistical review plan; model-based analysis
-remains a separately executed step.
+<p align="center">Find the right files. Follow the calls. Pick up where you left off.</p>
 
-A local Rust CLI plus stdio MCP server. It indexes the tree you point at,
-answers *where is this, who calls it, is it still wired*, grounds wiki facts
-in SPARQL (or refuses), and writes every artifact under that repo’s
-.leio-code/`. Several agents can share one tree. Nothing leaves the machine
-unless you configure an encoder you operate.
+<p align="center"><a href="https://leio.getjai.com/">See LEIO in action</a> · <a href="docs/install-stdio.md">Install with one prompt</a> · <a href="docs/BENCHMARKS.md">Read the benchmarks</a></p>
 
-```text
-context(task, repo_root) → exact graph follow-up → focused checks
-knowledge compile → knowledge explain | sparql
-nav goto → nav explain
-```
+![LEIO Code: a request becomes bounded context, a code graph, and a persistent navigation session](assets/product-map.svg)
 
-Version **2.6.2**. License: [MIT OR Apache-2.0](LICENSE), at your option.
+**LEIO Code gives your local coding agent repository context it can act on.**
+A Rust CLI and **18-tool stdio MCP** turn a task into a ranked working set,
+expose indexed callers and imports, and keep a session cursor as the agent
+explores. Each repository keeps its own index and JSON-LD evidence trail.
 
-## Install
+**Local stdio · Stateful navigation · Open source: MIT OR Apache-2.0**
 
-For a local coding agent, copy the [one-prompt stdio installation](docs/install-stdio.md).
-It installs and verifies the 18-tool local MCP, including stateful navigation.
+## Less searching. More understanding.
 
-Manual source installation requires Git, a C/C++ toolchain, stable Rust via
-[rustup](https://rustup.rs), and Node.js 22+ with npm:
+| When your agent needs to… | LEIO gives it… |
+| --- | --- |
+| Get oriented in an unfamiliar repository | A bounded context bundle with ranked files and follow-up calls |
+| Check what a change might affect | Indexed callers, callees, imports and concrete callsites |
+| Explore without losing its place | Named sessions, a cursor, selection, back and forward |
+| Leave inspectable evidence | Repository-local artifacts and JSON-LD provenance events |
+
+Code indexing and navigation run locally. Optional configured services have their
+own network behavior. Retrieval is a starting point for inspection; indexed
+relationships do not prove runtime behavior or complete call coverage.
+
+## Watch the workflow
+
+![Illustrative LEIO navigation sequence: context, symbol selection, callees, and back](assets/navigation-demo.gif)
+
+*Illustrative walkthrough, not a recorded terminal or a timing measurement.*
+[Static, motion-free walkthrough](docs/product-tour.md) · [Interactive site](https://leio.getjai.com/)
+
+## Built for the investigation—not just the lookup.
+
+![Three guided investigations complete in median 1.42 to 1.49 seconds through 11 MCP tool calls and a provider reconnect](assets/benchmark-navigation.svg)
+
+Three real code paths. **11 MCP tool calls per run.** Find context, inventory
+symbols, follow a callee, return to the starting symbol, restart the provider,
+and confirm the session cursor is still there.
+
+| Guided investigation | Median full sequence |
+| --- | ---: |
+| Trace context ranking | **1.49 s** |
+| Follow workflow policy dispatch | **1.46 s** |
+| Investigate MCP binary selection | **1.42 s** |
+
+**15 of 15 scripted runs passed**, including cursor restoration after provider
+restart. Measured on this repository's **420 indexed files**, Apple M1,
+release 2.6.2. Five runs per scenario; warm index/graph. Timings include the
+11 calls, checks and reconnect; setup is excluded.
+
+These are guided navigation benchmarks with labeled targets, not autonomous
+bug fixes or an agent productivity comparison. Every sample, including the
+slowest 1.71 s run, is published with the methodology.
+
+**[See the complete benchmark and reproduce it →](docs/BENCHMARKS.md)**
+
+## Install with one prompt
+
+Paste this into a local coding agent with terminal access:
+
+> Install the official LEIO Code local stdio MCP from https://github.com/josaum/leio-code by following docs/install-stdio.md. Inspect the installation script, check prerequisites, build the locked source, and verify the actual MCP handshake, 18 tools, context and session navigation. Register only the leio-code stdio server in this host, preserving other MCP entries. Use absolute paths and the installer output. Do not enable the HTTP integration. Tell me whether a host reconnect is required and report the installed revision and verification results.
+
+Or install from source yourself:
 
 ```bash
 git clone https://github.com/josaum/leio-code.git ~/.local/share/leio-code/source
@@ -36,292 +74,40 @@ cd ~/.local/share/leio-code/source
 bash scripts/install-stdio.sh
 ```
 
-The installer prints an absolute-path MCP configuration after a real handshake
-and navigation check. Register it in your host and reconnect. Keep the checkout;
-it contains the MCP wrapper. No SSH key or hosted HTTP service is required.
+Requires **Git, a C/C++ toolchain, stable Rust, Node.js 22+ and npm**. Compilation
+can take several minutes. The installer verifies the real stdio connection and
+prints MCP configuration. Register it in your host and reconnect; keep the
+checkout. No hosted HTTP service or SSH key is required. This is a source
+installation; prebuilt binaries and npm publication are not claimed.
 
-To update this source installation, preserve any local edits, then run from
-its clean checkout:
+[Complete setup and updates](docs/install-stdio.md) · [Source release](https://github.com/josaum/leio-code/releases/tag/v2.6.2)
 
-```bash
-git pull --ff-only
-bash scripts/install-stdio.sh
-```
-
-Reconnect the host afterward. Existing Cargo/plugin installations can continue
-using `leio-code update`; the standalone stdio installer does not add itself to
-PATH or modify unrelated plugin caches.
-
-Or copy the binaries yourself:
+## Your first useful query
 
 ```bash
-cargo build --release -p leio-code -p leio-harness
-install -m 0755 target/release/leio-code ~/.cargo/bin/leio-code
-install -m 0755 target/release/leio-harness ~/.cargo/bin/leio-harness
+leio-code --repo /absolute/path/to/repo init
+leio-code --repo /absolute/path/to/repo context "fix the payment validation flow"
 ```
 
-crates.io publication is not claimed. First-party crates live in this workspace; `vendor/manifest.json` records no vendored crates. The core stdio installation does not require optional parser/FCA Python wheels or a sibling repository.
+Read the returned files, inspect exact symbols with `graph symbols-in`, then use
+the returned symbol identity to navigate. Pin the repository and an explicit
+session when multiple agents work in the same tree.
 
-## First run
+## Go deeper
 
-Any repository. No Example assumptions.
-
-```bash
-leio-code init --repo /path/to/your-repo
-leio-code status --repo /path/to/your-repo
-leio-code find symbol MyType --repo /path/to/your-repo
-leio-code context "fix the payment validation flow" --repo /path/to/your-repo
-leio-code graph callers-of validate_amount --repo /path/to/your-repo
-leio-code doctor all --repo /path/to/your-repo
-```
-
-`init` writes a commented `.leio-code/config.toml`, builds the index, and
-prints the profile it detected. Default profile is `generic`: symbols, env
-vars, Redis keys, API routes, docker services, binaries, spawn/HTTP edges.
-
-Pass `--repo` on every command (or `cd` there and use `--repo .`).
-
-## Which command
-
-| You want | Use |
+| Guide | Start here for… |
 | --- | --- |
-| Exact ownership of a symbol, env var, Redis key, route | `find` |
-| A ranked working set for a natural-language task | `context` |
-| What a name *means* in this tree (bindings, callers, secrets redacted) | `explain` |
-| Contract / wiring drift | `doctor` |
-| Callers, callees, imports, dead code | `graph` |
-| Walk files, headings, lattice; pin an IRI | `nav` (`explain` = SPARQL proof) |
-| Local wiki + formal graph | `knowledge compile\|status\|explain\|sparql` |
-| Formal context, code graph, Arrow nodes, hypergraph | `export` |
-| Snapshot: profile, facets, packages, session | `status` / `capabilities` |
+| [Product tour](docs/product-tour.md) | Context → graph → navigation, step by step |
+| [Technical guide](docs/CLI-GUIDE.md) | CLI commands, storage, knowledge, profiles and development |
+| [Agent skill](skills/leio-code/SKILL.md) | The canonical tool-routing contract |
+| [Context bundles](docs/CONTEXT_BUNDLE.md) | Ranking and retrieval limits |
+| [Benchmarks](docs/BENCHMARKS.md) | Public measurements and reproducibility |
+| [Conversation evidence](docs/conversation-workflow.md) | Working with explicitly selected conversation files |
+| [Optional HTTP integration](apps-sdk/README.md) | Hosted adapter setup and its separate capabilities |
+| [Contributing](CONTRIBUTING.md) | A focused change, a clear check, and a reviewable PR |
 
-Start an agent task with `leio_code_context(task, repo_root)`: it returns ranked
-files, provider/binary identity, index coverage limitations and exact-file next
-calls. Use `status` for health, `capabilities` for supported kinds, `find` for a
-name, `graph` for topology, and `doctor` for drift. A known exact file can go
-directly to graph; repeating the startup sequence before each edit is unnecessary.
+## Built to inspect
 
-Agent routing: [skills/leio-code/SKILL.md](skills/leio-code/SKILL.md).
-Positioning: [docs/POSITIONING.md](docs/POSITIONING.md).
-
-## MCP
-
-For local development, install only the `leio-code` stdio connection. The
-`leio_code` HTTP Apps SDK is a separate integration surface, not an additional
-local prerequisite.
-
-stdio MCP is the host surface (Claude, Cursor, Grok, Codex). Eighteen tools
-including `leio_code_nav`. Both stdio and the Apps SDK HTTP server follow
-**MCP 2026-07-28** dual-era with **2025-11-25** handshake
-([spec](https://modelcontextprotocol.info/specification/2026-07-28/),
-[LEIO mapping](docs/MCP-SPEC-2025-11-25.md)): `server/discover`, `resultType`,
-`initialize.protocolVersion` (legacy hosts),
-`serverInfo` (`title` / `version` / `description` / `websiteUrl` / `icons`),
-`instructions`, `capabilities.tools`, tool `title` + `annotations` +
-`outputSchema`, `execution.taskSupport: "forbidden"`, structuredContent +
-text dual-write, and `isError: true` for tool execution failures.
-
-The wrapper resolves the binary as
-`LEIO_CODE_BIN` → `~/.cargo/bin` / PATH (skipping `target/{release,debug}`)
-→ walk-up `target/` last.
-
-Project checkout (cwd is this repo):
-
-```json
-{
-  "mcpServers": {
-    "leio-code": {
-      "command": "bash",
-      "args": ["./scripts/launch-stdio-mcp.sh"],
-      "cwd": ".",
-      "env": { "LEIO_CODE_BIN": "/Users/you/.cargo/bin/leio-code" }
-    }
-  }
-}
-```
-
-Claude / Grok plugin install — the host cwd is usually **not** this repo. `.claude-plugin/plugin.json` launches:
-
-```json
-{
-  "leio-code": {
-    "command": "bash",
-    "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/launch-stdio-mcp.sh"]
-  }
-}
-```
-
-A cwd-relative `./scripts/launch-stdio-mcp.sh` from a plugin host fails the handshake (broken pipe). Do not run the hosted HTTP Apps SDK (`leio_code` on `:8181`) and this stdio server in the same session.
-
-Or install this checkout as a Claude Code marketplace:
-
-```bash
-claude plugin marketplace add /absolute/path/to/leio-code
-claude plugin install leio-code@leio-code
-```
-
-HTTP / ChatGPT Apps: [apps-sdk/README.md](apps-sdk/README.md).
-Codex local stdio: [installation guide](docs/install-stdio.md). `codex/connect.sh` is the optional HTTP bootstrap. Gemini: [GEMINI.md](GEMINI.md).
-
-## What stays on disk
-
-Everything under `<repo>/.leio-code/`:
-
-| Path | Role |
-| --- | --- |
-| `index.json` | Symbol / env / Redis / route index |
-| `search.duckdb` | Identifier-aware FTS sidecar |
-| `exports/arrow-nodes-v1/nodes.arrow` | Local FCA / adaptive search (Arrow IPC) |
-| `exports/arrow-nodes-v1/nodes.search` | Packed mmap sidecar (norms + vectors) |
-| `exports/code-graph-v1/` | N-Quads + query cache |
-| `exports/formal-context-v1/lattice.json` | Concept lattice + heading functor (v3) |
-| `exports/formal-context-v1/induced.ttl` | OWL TBox (`rdfs:subClassOf` = cover) |
-| `exports/knowledge-v1/formal.nq` | Formal graph (repo RDF + OWL + wiki cites) |
-| `exports/knowledge-v1/formal.json` | Load stats for that graph |
-| `nav-session.json` | Shared `nav` cursor (no `LEIO_SESSION`) |
-| `sessions/nav-<id>.json` | Per-agent nav cursor |
-| `events/events.ndjson` | JSON-LD PROV journal (full path + checkout) |
-
-**No network by default.** Outbound traffic only if you set it:
-
-- `LEIO_CODE_EMBED_URL` / `EMBEDDING_API_URL` — query embeddings (OpenAI-compatible, e.g. TEI). Inspected-repo `[embed] url` is **not** used on search.
-- Apps SDK `repo_url` clone (host allowlist) and the env-gated Vigoros bridge.
-
-Secrets in `explain` are redacted unless `--show-secrets` on a TTY.
-
-## Knowledge wiki
-
-Markdown in the repo compiles to a local Arrow wiki — same idea as
-`nodes.search`, fully offline.
-
-```bash
-leio-code knowledge compile --repo .
-leio-code knowledge status --repo .          # wiki + meta.formal
-leio-code knowledge explain "hours Alpha" --repo . --json
-leio-code knowledge sparql 'SELECT ?s ?h WHERE { ?s :hoursWeekday ?h }' --repo .
-leio-code knowledge adaptive "knowledge wiki" --repo .
-leio-code export formal-context --repo .
-leio-code nav goto "LEIO Code > Knowledge wiki" --repo .
-leio-code nav explain --repo .     # same SPARQL proof, pinned to current_iri
-leio-code nav related --repo .     # heading parent/siblings + lattice family
-leio-code nav align --repo .       # identity + wiki_heading_to_lattice
-```
-
-Store: `.leio-code/exports/knowledge-v1/articles.search` (+ `articles.arrow`).
-First `text` / `adaptive` call compiles if the store is missing or stale
-(source count + max mtime in the sidecar header). Markdown is split into
-heading sections (`README.md#Knowledge wiki` is its own hit). Unchanged
-files are reused from the previous sidecar. The sidecar carries a packed
-inverted index: BM25 over posting candidates, phrase/title boosts, at
-most two hits per file, then optional BGE-M3 cosine when
-`LEIO_CODE_EMBED_URL` is set. Hits return a match-centered snippet plus
-`heading_path` / `line`.
-
-`compile` also writes `formal.nq`. `explain` binds the needle through SPARQL
-(or returns `grounded: false`). Adaptive/text stay lexical. `status` reports
-wiki counts plus formal triples, prefixes, and cache freshness.
-
-## Concurrent agents
-
-Several CLIs and MCP hosts may hit the same `repo_root` at once. Index, wiki,
-`formal.nq`, and lattice rebuilds take `.leio-code/*.lock` and write with
-temp+rename. Nav is **not** shared: set `--session` or `LEIO_SESSION` (also
-inherited from `CLAUDE_SESSION_ID` / `GROK_SESSION_ID` / …) so each agent
-gets `.leio-code/sessions/nav-<id>.json`.
-
-In a monorepo, pin `--repo` to the package you are editing. `status` lists
-Cargo/pnpm/npm `workspace_members`. `LEIO_MAX_INDEX_FILES` (default 80000)
-caps a whole-tree walk.
-
-`LEIO_INDEX_TTL_SECS` (default 300) is the freshness window before a lookup
-reindexes; set `0` to always rebuild. On-demand concept-lattice induction is
-bounded by `LEIO_LATTICE_MAX_ON_DEMAND_OBJECTS` (default 5000) and
-`LEIO_LATTICE_MAX_ON_DEMAND_PAIRS` (default 100000); oversized contexts
-report the explicit build command instead of hanging.
-
-## Provenance events
-
-Every command appends one JSON-LD line to `.leio-code/events/events.ndjson`:
-absolute `fullPath`, `file://` `@id`, W3C PROV `used` / `wasGeneratedBy`,
-and a `checkout` object (`repoId`, origin, worktree, branch, HEAD, git
-common dir) so multi-repo / multi-worktree / multi-branch journals merge
-without colliding. `--format jsonld` is the same document on stdout.
-`LEIO_EVENTS_DIR` collects `{repoId}/{worktreeHash}-{branch}.ndjson`.
-Disable with `LEIO_DISABLE_EVENTS=1`.
-
-## Retrieval
-
-Adaptive / multi-word `find` / `context` prefer the local Arrow export:
-
-1. mmap `nodes.search` when the layout is valid (magic, version, alignment, no overlap)
-2. else decode the Arrow IPC stream
-3. optional cosine against BGE-M3 (1024-d) only when an **environment** embed URL is set
-4. lexical fallback
-
-Compound path ranking keeps stop words in adjacent pairs (`LEIO Code` →
-`leio-code`).
-
-Numbers: [docs/BENCHMARKS.md](docs/BENCHMARKS.md). Context ranking:
-[docs/CONTEXT_BUNDLE.md](docs/CONTEXT_BUNDLE.md).
-
-## Profiles
-
-`generic` is enough for an arbitrary repo. Facets such as deploy targets,
-cartridges, and large doctor suites are opt-in via `.leio-code/config.toml`.
-
-This repository sets `workspace_profile = "leio-code"` and runs
-`self-contract`, `slop`, `import-boundary`, `repo-hygiene`,
-`codex-orchestration`, and `leio-release-coherence`. Ask `capabilities`
-for the live list — do not hard-code doctor counts.
-
-## Develop
-
-```bash
-cargo test --lib
-node --test mcp/resolve-binary.test.js mcp/export-paths.test.js mcp/watch-state.test.js
-leio-code doctor self-contract --repo .
-```
-
-`make verify` runs the focused crate + JS + start-local checks.
-`make package-plugin` builds the Codex/plugin tarball via
-`scripts/package_codex_plugin.py`.
-
-## Harness
-
-`leio-harness` lives in this repo (`crates/leio-harness`). It indexes
-worktrees in-process through the `leio-code` library, then runs agent lanes
-(leases, worktrees, Arrow Flight bus, GEPA). Lane branches integrate onto an
-`integration/<id>` branch where the objective runs on the *integrated* tree —
-never on isolated lanes — and an improvement gate fast-forwards into the
-target only when the integrated outcome beats the baseline (fail-closed on
-conflict, regression, or collapse). Design:
-[docs/harness/AGENT-FABRIC.md](docs/harness/AGENT-FABRIC.md).
-
-```bash
-leio-harness bus serve --bind 127.0.0.1:8815
-leio-harness integrate --repo . --worktree-root wt --target main --branch agents/a --objective-arg ./objective.sh
-leio-harness gate --repo . --worktree-root wt --target main --baseline main --branch agents/a --objective-arg ./objective.sh --output-dir runs --promote
-leio-harness day --spec day.json
-```
-
-JQuant Code Router (optional desktop/gateway) calls the **installed binary**
-via `LEIO_HARNESS_BIN` or `PATH`. It does not vendor this tree.
-
-## Used from example-workspace
-
-The Example monorepo may pin this checkout as a **git submodule**. This
-repository still builds and runs with no sibling `example-workspace` tree.
-It must not gain path deps back into that monorepo.
-
-## Docs
-
-| Doc | What |
-| --- | --- |
-| [docs/POSITIONING.md](docs/POSITIONING.md) | Why this exists |
-| [skills/leio-code/SKILL.md](skills/leio-code/SKILL.md) | Agent first-pass and tool routing |
-| [docs/AGENT-ROUTING.md](docs/AGENT-ROUTING.md) | Pointer to the skill |
-| [docs/CONTEXT_BUNDLE.md](docs/CONTEXT_BUNDLE.md) | How `context` ranks files |
-| [docs/BENCHMARKS.md](docs/BENCHMARKS.md) | Retrieval latency |
-| [docs/output-schema.md](docs/output-schema.md) | JSON / JSON-LD / `--where` |
-| [docs/RELEASE-CHECKLIST.md](docs/RELEASE-CHECKLIST.md) | Cut a release |
-| [apps-sdk/README.md](apps-sdk/README.md) | HTTP MCP / ChatGPT Apps |
+First-party source is licensed under **[MIT OR Apache-2.0](LICENSE)**, at your
+option. Dependencies retain their own licenses; see [third-party notices](THIRD_PARTY.md).
+The [public source policy](docs/PUBLIC-SOURCE.md) describes the distribution.

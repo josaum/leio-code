@@ -95,7 +95,7 @@ and the `file:line` that found it. That pair is also the retroaliment entry.
 | --- | --- | --- |
 | Route ids and other IRI-like literals (`reference:q_roas_lookup`) | `find symbol` → 0 matches although the literal sits in a TTL/JSON/Python file | `rg -n '<literal>'`; the route is data, not a symbol — say so in the report |
 | Module-level dict assignments (`RESOLVERS = {...}`) | `find symbol` → 0 | `rg -n '^<NAME>\s*='`, then read the dict |
-| Dict-keyed dispatch (`RESOLVERS[route.resolves](...)`) | `graph callers-of <fn>` lists other callers but not the live dispatch site | read the dict and the indexing site; the graph has call edges, not reference edges |
+| Dict-keyed dispatch (`RESOLVERS` indexed by `route.resolves`) | `graph callers-of <fn>` lists other callers but not the live dispatch site | read the dict and the indexing site; the graph has call edges, not reference edges |
 | Doctor count in `status` vs `capabilities` | `status` says "all N green" while `capabilities.doctor_kinds` lists M | cite `capabilities`; never quote the count from `status` |
 | `status` returns a snapshot, not a query envelope | no `query_id` to cite for it | cite `capabilities`/`context` ids instead |
 

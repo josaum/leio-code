@@ -12,9 +12,10 @@
 //!   case-sensitive hits on paths and symbols—high precision for concrete edits.
 //! - **Path-segment boost** when a task term equals a directory or file stem (one extension strip).
 //! - **Reciprocal Rank Fusion (RRF)** across path / symbol / config layers (hybrid retrieval fusion).
-//! - Optional **graph proximity** boosts when `.leio-code/exports/code-graph-v1/query-cache.json` is
-//!   present—reweights neighbors of top seeds via import edges (no synchronous graph rebuild).
-//! - Ties break on **newer `modified_unix_ms`**, then path order.
+//! - Optional **graph proximity** when `.leio-code/exports/code-graph-v1/query-cache.json` is
+//!   present—marks neighbors of top seeds via import and call edges (no synchronous graph
+//!   rebuild). Proximity is indirect evidence and never changes a score.
+//! - Ties break on **graph proximity**, then **newer `modified_unix_ms`**, then path order.
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fs;
@@ -87,6 +88,10 @@ struct ScoredFile {
     score: i64,
     /// Indexer mtime (ms); used only for tie-breaking when scores match.
     modified_unix_ms: i128,
+    /// Code-graph proximity to the top seeds: 3 import+call, 2 import, 1 call, 0 none.
+    /// Breaks ties ahead of mtime. Never folded into `score` — proximity is indirect
+    /// evidence and must not outrank a file the direct channels scored higher.
+    graph_proximity: u8,
     reasons: BTreeSet<String>,
     symbols: Vec<Value>,
     env_vars: Vec<Value>,
@@ -113,6 +118,24 @@ struct ContextZoneInputs<'a> {
     doctor_suggestions: &'a [Value],
     verification_anchors: &'a [Value],
     risk_notes: &'a [String],
+}
+
+fn apply_local_node_hits(
+    files: &mut [ScoredFile],
+    result: &crate::local_nodes::DetailedSearchResult,
+) {
+    for file in files {
+        let mut matching_hits = result.hits.iter().filter(|hit| hit.path == file.path);
+        let Some(first) = matching_hits.next() else {
+            continue;
+        };
+        file.score += 40;
+        file.reasons.insert("local Arrow node/FCA hit".to_string());
+        if first.cosine.is_some() || matching_hits.any(|hit| hit.cosine.is_some()) {
+            file.reasons
+                .insert("BGE-M3 semantic cosine hit".to_string());
+        }
+    }
 }
 
 pub fn build_context_bundle(
@@ -148,24 +171,27 @@ pub fn build_context_bundle(
         &identifier_needles,
         graph_cache.as_ref(),
     );
-    if let Ok(hits) = crate::local_nodes::search_hits(root, task, limit.saturating_mul(3))
-        && !hits.is_empty()
-    {
-        let hit_paths: HashSet<String> = hits.iter().map(|hit| hit.path.clone()).collect();
-        for file in &mut files {
-            if hit_paths.contains(&file.path) {
-                file.score += 40;
-                file.reasons.insert("local Arrow node/FCA hit".to_string());
-            }
-        }
-        files.sort_by(|left, right| {
-            right
-                .score
-                .cmp(&left.score)
-                .then_with(|| right.modified_unix_ms.cmp(&left.modified_unix_ms))
-                .then_with(|| left.path.cmp(&right.path))
-        });
-    }
+    let local_node_semantic_source = if crate::local_nodes::available(root) {
+        crate::local_nodes::search_hits_detailed(root, task, limit.saturating_mul(3))
+            .ok()
+            .map(|result| {
+                let semantic_source = result.semantic_source.as_str();
+                if !result.hits.is_empty() {
+                    apply_local_node_hits(&mut files, &result);
+                    files.sort_by(|left, right| {
+                        right
+                            .score
+                            .cmp(&left.score)
+                            .then_with(|| right.graph_proximity.cmp(&left.graph_proximity))
+                            .then_with(|| right.modified_unix_ms.cmp(&left.modified_unix_ms))
+                            .then_with(|| left.path.cmp(&right.path))
+                    });
+                }
+                semantic_source
+            })
+    } else {
+        None
+    };
     files.truncate(limit);
     let symbols = rank_symbols(index, &task_tokens, limit, &idf);
     let env_vars = rank_env_vars(index, &task_tokens, limit, &idf);
@@ -319,6 +345,7 @@ pub fn build_context_bundle(
         warnings,
         meta: Some(json!({
             "limit": limit,
+            "semantic_source": local_node_semantic_source,
             "workspace_profile": workspace_profile,
             "workspace_capabilities": if full { Some(capabilities) } else { None },
             "next_tools": [
@@ -574,7 +601,7 @@ fn retrieval_signals(intents: IntentHints, needle_count: usize, graph_cache_load
         "code_graph_refresh_hint": if graph_cache_loaded {
             json!(null)
         } else {
-            json!("Run `leio-code export code-graph` from the repo root (after `leio-code index`) to populate `.leio-code/exports/code-graph-v1/query-cache.json` and unlock import + call-chain proximity boosts in context bundles.")
+            json!("Run `leio-code export code-graph` from the repo root (after `leio-code index`) to populate `.leio-code/exports/code-graph-v1/query-cache.json` and let import + call-chain proximity order otherwise-tied context candidates.")
         },
         "reading_order": "Prefer files_to_read from the top down; truncate from the bottom if you must save tokens—later rows are weaker priors (mitigates lost-in-the-middle when consumers clip context).",
         "signal_stack": "lexical_sparse_idf · identifier_needles · intent_path_routes · path_segment_stem · rrf_path_symbol_config_layers · graph_import_proximity · graph_callchain_proximity_optional · mtime_tiebreak",
@@ -630,7 +657,12 @@ fn graph_neighbor_paths(cache: &CodeGraphQueryCache, seeds: &[String]) -> HashSe
     out
 }
 
-/// Paths of symbols that call—or are called from—definitions named in top-ranked files (call graph).
+/// Paths of symbols that call—or are called from—definitions in top-ranked files (call graph).
+///
+/// Seeds resolve through each file's own stable symbol identities. Resolving by bare name
+/// unions the call neighborhood of every same-named symbol in the repository: trait-impl
+/// methods such as `run`, `name` or `description` collide across a hundred files and turn
+/// proximity into a near-random sample of the tree.
 fn graph_symbol_edge_paths(
     cache: &CodeGraphQueryCache,
     top_files: &[&ScoredFile],
@@ -642,6 +674,9 @@ fn graph_symbol_edge_paths(
         if symbol_budget == 0 || out.len() >= MAX_PATHS {
             break;
         }
+        let Some(file_iris) = cache.file_lookup_path.get(file.path.as_str()) else {
+            continue;
+        };
         for sym in &file.symbols {
             if symbol_budget == 0 || out.len() >= MAX_PATHS {
                 break;
@@ -649,27 +684,32 @@ fn graph_symbol_edge_paths(
             let Some(name) = sym.get("name").and_then(Value::as_str) else {
                 continue;
             };
-            let Some(iris) = cache.symbol_lookup_name.get(name) else {
-                continue;
-            };
-            symbol_budget -= 1;
-            for iri in iris {
-                if let Some(callers) = cache.callers_by_symbol.get(iri) {
-                    for neighbor in callers {
-                        out.insert(neighbor.path.clone());
-                        if out.len() >= MAX_PATHS {
-                            return out;
+            let mut expanded = false;
+            for file_iri in file_iris {
+                let Some(definitions) = cache.file_symbols.get(file_iri) else {
+                    continue;
+                };
+                for definition in definitions.iter().filter(|entry| entry.name == name) {
+                    expanded = true;
+                    for neighbors in [
+                        cache.callers_by_symbol.get(&definition.iri),
+                        cache.callees_by_symbol.get(&definition.iri),
+                    ]
+                    .into_iter()
+                    .flatten()
+                    {
+                        for neighbor in neighbors {
+                            out.insert(neighbor.path.clone());
+                            if out.len() >= MAX_PATHS {
+                                return out;
+                            }
                         }
                     }
                 }
-                if let Some(callees) = cache.callees_by_symbol.get(iri) {
-                    for neighbor in callees {
-                        out.insert(neighbor.path.clone());
-                        if out.len() >= MAX_PATHS {
-                            return out;
-                        }
-                    }
-                }
+            }
+            // Spend budget only on a symbol this seed file actually defines.
+            if expanded {
+                symbol_budget -= 1;
             }
         }
     }
@@ -726,36 +766,40 @@ fn finalize_file_ranking(
         let seed_set: HashSet<String> = seeds.iter().cloned().collect();
         let import_neighbors = graph_neighbor_paths(cache, &seeds);
         let chain_neighbors = graph_symbol_edge_paths(cache, &top_refs, 12);
+        // Proximity is indirect evidence: it says a file is coupled to what lexical
+        // retrieval already liked, not that it answers the task. Coupling must not
+        // outrank a file that matched the task directly, so proximity orders files
+        // the direct channels scored equally and never moves one past a better score.
         for (file, _) in rows.iter_mut() {
             if seed_set.contains(&file.path) {
                 continue;
             }
-            let from_import = import_neighbors.contains(&file.path);
-            let from_call = chain_neighbors.contains(&file.path);
-            if from_import && from_call {
-                file.score += 22;
-                file.reasons.insert(
-                    "graph proximity: import edges + symbol caller/callee chain to top seeds"
-                        .to_string(),
-                );
-            } else if from_import {
-                file.score += 18;
-                file.reasons.insert(
-                    "graph proximity to top-ranked seeds (import edge in code-graph cache)"
-                        .to_string(),
-                );
-            } else if from_call {
-                file.score += 16;
-                file.reasons.insert(
-                    "graph proximity via matched symbols (callers/callees in code-graph cache)"
-                        .to_string(),
-                );
-            }
+            let tier = match (
+                import_neighbors.contains(&file.path),
+                chain_neighbors.contains(&file.path),
+            ) {
+                (true, true) => 3,
+                (true, false) => 2,
+                (false, true) => 1,
+                (false, false) => continue,
+            };
+            file.reasons.insert(
+                match tier {
+                    3 => "graph proximity: import edges + symbol caller/callee chain to top seeds",
+                    2 => "graph proximity to top-ranked seeds (import edge in code-graph cache)",
+                    _ => "graph proximity via matched symbols (callers/callees in code-graph cache)",
+                }
+                .to_string(),
+            );
+            // Carried on the row: later stages re-sort, and a tier that lives only
+            // in this function is silently dropped by the next sort.
+            file.graph_proximity = tier;
         }
         rows.sort_by(|(left, _), (right, _)| {
             right
                 .score
                 .cmp(&left.score)
+                .then_with(|| right.graph_proximity.cmp(&left.graph_proximity))
                 .then_with(|| right.modified_unix_ms.cmp(&left.modified_unix_ms))
                 .then_with(|| left.path.cmp(&right.path))
         });
@@ -925,6 +969,7 @@ fn score_file(
     Some((
         ScoredFile {
             path: file.path.clone(),
+            graph_proximity: 0,
             language: file.language.as_str().to_string(),
             score,
             modified_unix_ms: file.modified_unix_ms,
@@ -2012,6 +2057,7 @@ mod tests {
             language: "rust".into(),
             score: 0,
             modified_unix_ms: 0,
+            graph_proximity: 0,
             reasons: BTreeSet::new(),
             symbols: vec![],
             env_vars: vec![],
@@ -2055,6 +2101,72 @@ mod tests {
                 "packaging".to_string(),
                 "self".to_string(),
             ]
+        );
+    }
+
+    #[test]
+    fn local_node_hits_keep_boost_and_only_mark_cosine_files_as_bge_m3() {
+        let file = |path: &str| ScoredFile {
+            path: path.to_string(),
+            language: "rust".to_string(),
+            score: 10,
+            modified_unix_ms: 0,
+            graph_proximity: 0,
+            reasons: BTreeSet::new(),
+            symbols: Vec::new(),
+            env_vars: Vec::new(),
+            redis_keys: Vec::new(),
+        };
+        let hit = |path: &str, cosine| crate::local_nodes::NodeHit {
+            path: path.to_string(),
+            kind: "function".to_string(),
+            symbol: "marker".to_string(),
+            score: 1,
+            matched_relations: Vec::new(),
+            snippet: String::new(),
+            cosine,
+        };
+        let mut files = vec![file("src/semantic.rs"), file("src/lexical.rs")];
+        let result = crate::local_nodes::DetailedSearchResult {
+            hits: vec![
+                hit("src/semantic.rs", Some(0.75)),
+                hit("src/lexical.rs", None),
+            ],
+            semantic_source: crate::local_nodes::SemanticSource::OnDemand,
+        };
+
+        apply_local_node_hits(&mut files, &result);
+
+        for file in &files {
+            assert_eq!(file.score, 50);
+            assert!(file.reasons.contains("local Arrow node/FCA hit"));
+        }
+        let semantic = files
+            .iter()
+            .find(|file| file.path == "src/semantic.rs")
+            .expect("semantic file");
+        let lexical = files
+            .iter()
+            .find(|file| file.path == "src/lexical.rs")
+            .expect("lexical file");
+        assert!(semantic.reasons.contains("BGE-M3 semantic cosine hit"));
+        assert!(!lexical.reasons.contains("BGE-M3 semantic cosine hit"));
+    }
+
+    #[test]
+    fn context_metadata_marks_absent_local_store_unavailable() {
+        let env = build_context_bundle(
+            &test_index(),
+            Path::new("/tmp/no-such-leio-context-repo"),
+            "self contract packaging",
+            5,
+            false,
+        );
+        assert_eq!(
+            env.meta
+                .as_ref()
+                .and_then(|meta| meta.get("semantic_source")),
+            Some(&Value::Null)
         );
     }
 
@@ -2315,6 +2427,210 @@ mod tests {
         assert_eq!(ranked.len(), 2);
         assert_eq!(ranked[0].path, "z/new.rs");
         assert_eq!(ranked[1].path, "z/old.rs");
+    }
+
+    fn marker_file(path: &str) -> FileRecord {
+        FileRecord {
+            path: path.to_string(),
+            language: SourceLanguage::Rust,
+            bytes: 10,
+            modified_unix_ms: 100,
+            symbols: vec![SymbolOccurrence {
+                name: "marker".to_string(),
+                kind: SymbolKind::Function,
+                path: path.to_string(),
+                line: 1,
+                language: SourceLanguage::Rust,
+                qual_name: None,
+            }],
+            env_vars: Vec::new(),
+            redis_keys: Vec::new(),
+            subprocess_calls: Vec::new(),
+            http_calls: Vec::new(),
+            unresolved_edges: Vec::new(),
+        }
+    }
+
+    /// Every seed path imports `z/neighbor.rs`, so proximity fires whichever files
+    /// the lexical channels happen to seed from.
+    fn graph_cache_pointing_at(neighbor: &str, seeds: &[&str]) -> CodeGraphQueryCache {
+        let importers: serde_json::Map<String, Value> = seeds
+            .iter()
+            .map(|seed| {
+                (
+                    (*seed).to_string(),
+                    json!([{
+                        "raw_import": "use crate::neighbor;",
+                        "file_iri": "urn:test:file:neighbor",
+                        "path": neighbor,
+                        "language": "rust",
+                        "line": 1
+                    }]),
+                )
+            })
+            .collect();
+        serde_json::from_value(json!({
+            "version": 1,
+            "revision": "test",
+            "graph_iri": "urn:test:graph",
+            "symbols": {},
+            "symbol_lookup_name": {},
+            "symbol_lookup_qual_name": {},
+            "files": {},
+            "file_lookup_path": {},
+            "callers_by_symbol": {},
+            "callees_by_symbol": {},
+            "callsites_by_symbol": {},
+            "file_symbols": {},
+            "importers_by_target_path": importers
+        }))
+        .expect("graph cache fixture")
+    }
+
+    #[test]
+    fn graph_proximity_reorders_ties_without_changing_any_score() {
+        // Proximity is indirect evidence. It may order files the direct channels
+        // scored equally; it must never rewrite a score and push a weaker match
+        // past a stronger one. A flat additive bonus did exactly that, demoting a
+        // file that led on direct evidence by fewer points than the bonus.
+        let seeds = [
+            "marker/one.rs",
+            "marker/two.rs",
+            "marker/three.rs",
+            "marker/four.rs",
+            "marker/five.rs",
+        ];
+        let mut files: Vec<FileRecord> = seeds.iter().map(|path| marker_file(path)).collect();
+        files.push(marker_file("z/neighbor.rs"));
+        let index = RepoIndex {
+            version: 1,
+            root: "/tmp/repo".to_string(),
+            indexed_at: "2026-01-01T00:00:00Z".to_string(),
+            files,
+            deploy_targets: Vec::new(),
+            profiles: Vec::new(),
+            secret_sets: Vec::new(),
+            env_files: Vec::new(),
+            cross_language: Default::default(),
+            k8s_configmaps: Vec::new(),
+        };
+        let cache = graph_cache_pointing_at("z/neighbor.rs", &seeds);
+
+        let tokens = task_tokens("marker");
+        let idf = sparse_token_idf(&index, &tokens);
+        let intents = classify_intents("marker", &tokens);
+        let needles = extract_identifier_needles("marker");
+        let rank = |cache: Option<&CodeGraphQueryCache>| {
+            rank_files(&index, &tokens, "marker", 10, &idf, intents, &needles, cache)
+        };
+        let plain = rank(None);
+        let with_graph = rank(Some(&cache));
+
+        let plain_scores: Vec<i64> = plain.iter().map(|file| file.score).collect();
+        let graph_scores: Vec<i64> = with_graph.iter().map(|file| file.score).collect();
+        assert_eq!(
+            graph_scores, plain_scores,
+            "graph proximity must order files, never restate their score"
+        );
+        for pair in with_graph.windows(2) {
+            assert!(
+                pair[0].score >= pair[1].score,
+                "proximity must not lift a lower-scoring file above a higher one: {with_graph:?}"
+            );
+        }
+        let neighbor = with_graph
+            .iter()
+            .find(|file| file.path == "z/neighbor.rs")
+            .expect("neighbor stays in the bundle");
+        assert!(
+            neighbor
+                .reasons
+                .iter()
+                .any(|reason| reason.starts_with("graph proximity")),
+            "proximity evidence must still be reported: {:?}",
+            neighbor.reasons
+        );
+        // The tier has to ride on the row. Later stages re-sort the bundle, so a tier
+        // held only inside the ranking function is silently dropped by the next sort.
+        assert_eq!(
+            neighbor.graph_proximity, 2,
+            "import-edge proximity must be carried on the row for later sorts"
+        );
+    }
+
+    #[test]
+    fn call_chain_proximity_ignores_same_named_symbols_in_other_files() {
+        // `marker` is defined in the seed and again in an unrelated file. Resolving
+        // seeds by bare name unions the call neighborhood of every same-named symbol,
+        // and trait-impl names like `run` or `name` recur in a hundred files, so the
+        // set stops describing proximity. Seeds must resolve to their own identity.
+        let index = RepoIndex {
+            version: 1,
+            root: "/tmp/repo".to_string(),
+            indexed_at: "2026-01-01T00:00:00Z".to_string(),
+            files: vec![marker_file("marker/one.rs"), marker_file("z/decoy.rs")],
+            deploy_targets: Vec::new(),
+            profiles: Vec::new(),
+            secret_sets: Vec::new(),
+            env_files: Vec::new(),
+            cross_language: Default::default(),
+            k8s_configmaps: Vec::new(),
+        };
+        let neighbor = |path: &str, iri: &str| {
+            json!({
+                "iri": iri,
+                "name": "marker",
+                "qual_name": "marker",
+                "kind": "function",
+                "path": path,
+                "line": 1
+            })
+        };
+        let cache: CodeGraphQueryCache = serde_json::from_value(json!({
+            "version": 1,
+            "revision": "test",
+            "graph_iri": "urn:test:graph",
+            "symbols": {},
+            // Both definitions share a name; only one lives in the seed file.
+            "symbol_lookup_name": { "marker": ["urn:sym:seed", "urn:sym:far"] },
+            "symbol_lookup_qual_name": {},
+            "files": {},
+            "file_lookup_path": { "marker/one.rs": ["urn:file:one"] },
+            "file_symbols": { "urn:file:one": [neighbor("marker/one.rs", "urn:sym:seed")] },
+            // Only the unrelated definition reaches the decoy.
+            "callees_by_symbol": { "urn:sym:far": [neighbor("z/decoy.rs", "urn:sym:decoy")] },
+            "callers_by_symbol": {},
+            "callsites_by_symbol": {}
+        }))
+        .expect("graph cache fixture");
+
+        let tokens = task_tokens("marker");
+        let idf = sparse_token_idf(&index, &tokens);
+        let intents = classify_intents("marker", &tokens);
+        let needles = extract_identifier_needles("marker");
+        let ranked = rank_files(
+            &index,
+            &tokens,
+            "marker",
+            10,
+            &idf,
+            intents,
+            &needles,
+            Some(&cache),
+        );
+
+        let decoy = ranked
+            .iter()
+            .find(|file| file.path == "z/decoy.rs")
+            .expect("decoy stays in the bundle");
+        assert!(
+            !decoy
+                .reasons
+                .iter()
+                .any(|reason| reason.starts_with("graph proximity")),
+            "a same-named symbol in another file must not create proximity: {:?}",
+            decoy.reasons
+        );
     }
 
     #[test]

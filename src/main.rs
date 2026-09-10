@@ -89,8 +89,9 @@ fn static_catalog() -> serde_json::Value {
     long_about = "Indexes one repo_root at a time. Find/graph/doctor stay local. \
 Knowledge compile writes a wiki plus formal.nq; knowledge explain answers \
 only through SPARQL (or refuses). Nav walks the lattice and headings. \
-Every command appends a JSON-LD PROV event. Concurrent agents share locked \
-sidecars; set LEIO_SESSION / --session to isolate nav."
+Repository commands append a JSON-LD PROV event; conversation deliberately \
+does not. Concurrent agents share locked sidecars; set LEIO_SESSION / --session \
+to isolate nav."
 )]
 struct Cli {
     #[arg(long, global = true)]

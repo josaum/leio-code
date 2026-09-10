@@ -40,10 +40,11 @@ workspace_profile = "generic"
 # Local FCA/node search uses `.leio-code/exports/arrow-nodes-v1/nodes.arrow`
 # — no server required.
 
-# Optional GPU BGE-M3 encoder (TEI / LiteLLM / OpenAI-compatible).
+# Optional BGE-M3 encoder. Direct TEI URLs end in /embed; LiteLLM/
+# OpenAI-compatible bases receive /v1/embeddings automatically.
 # Env LEIO_CODE_EMBED_URL wins. Default model is BAAI/bge-m3 (1024-d).
 # [embed]
-# url = "http://tei-bge-m3.example:8080"
+# url = "http://tei-bge-m3.example:8080/embed"
 # model = "BAAI/bge-m3"
 
 # RDF vocabulary for code-graph exports. Default is the published

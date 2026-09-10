@@ -222,15 +222,17 @@ fn build_execution_text(kind: &str, name: &str, path: &str, lang: &str) -> Strin
     format!("{name} {kind} {path} {lang}")
 }
 
-/// Build a node entity JSON from index data for the textual regime.
+/// Build a node entity JSON with zero-placeholder dense vector fields.
 ///
-/// The three float vectors (`code_vec`/`semantic_vec`/`ontology_vec`) are
-/// emitted as zero placeholders at the BGE-M3 contract dimension (`EMBED_DIM`)
-/// and are replaced in a single batched pass by [`crate::embed::embed_node_entities`]
-/// during export, using the remote encoder over three distinct text
-/// views. If that encoder is unreachable the placeholders survive (graceful
-/// degrade) and the row stays `embed_model: "none"`. Only `execution_vec_bin`
-/// (binary Hamming fingerprint) is computed locally via SimHash.
+/// The three float vectors (`code_vec`/`semantic_vec`/`ontology_vec`) start as
+/// zero placeholders at the BGE-M3 contract dimension (`EMBED_DIM`). An export
+/// with an embed URL may replace them in one batched pass via
+/// [`crate::embed::embed_node_entities`], using three distinct text views;
+/// without a usable encoder, the zero placeholders are written and the row
+/// stays `embed_model: "none"`. Semantic search uses compatible stored vectors
+/// as a fast path and can embed bounded missing candidates on demand without
+/// persisting those request-local vectors. Only `execution_vec_bin` (binary
+/// Hamming fingerprint) is computed locally via SimHash.
 #[allow(clippy::too_many_arguments)]
 fn build_node_entity(
     repo_root: &Path,

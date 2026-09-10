@@ -1,0 +1,153 @@
+{
+  "schema_version": 1,
+  "kind": "held_out_retrieval",
+  "measured_at": "2026-09-10",
+  "corpus": {
+    "description": "private polyglot monorepo, name withheld",
+    "tracked_files_at_base": 11573,
+    "languages_by_file_count": {
+      "python": 2547,
+      "typescript": 2422,
+      "markdown": 1823,
+      "tsx": 1317,
+      "rust": 1142
+    },
+    "base_revision_sha256_prefix": "196dc70019c2",
+    "commits_after_base": 619
+  },
+  "labels": {
+    "source": "commit history after the indexed base revision; task text is the commit subject, labels are the source files that commit changed",
+    "filters": {
+      "merge_commits": "excluded",
+      "source_extensions": [
+        "py",
+        "ts",
+        "tsx",
+        "rs",
+        "js",
+        "jsx"
+      ],
+      "max_changed_source_files": 4,
+      "min_subject_chars": 25,
+      "label_must_exist_at_base": true
+    },
+    "dropped": {
+      "no_source_files": 125,
+      "more_than_four_files": 157,
+      "no_label_existed_at_base": 118
+    },
+    "usable_tasks": 219,
+    "mean_labels_per_task": 1.61,
+    "scope_prefix_note": "'prefixed' keeps the conventional-commit type(scope): prefix; 'stripped' removes it"
+  },
+  "evaluation": {
+    "tool": "scripts/evaluate_retrieval.py",
+    "context_limit": 5,
+    "model_calls": 0,
+    "arms": {
+      "buggy": "flat +16/+18/+22 graph proximity bonus (pre-377ee12)",
+      "fixed": "graph proximity as tie-breaker (377ee12, e2ba769)",
+      "graphoff": "code-graph query cache moved aside",
+      "arrow": "fixed ranker plus local Arrow node store (lexical + FCA relations, no encoder)",
+      "ondemand": "fixed ranker plus local Arrow node store, with bounded on-demand BGE-M3 reranking (lab TEI /embed); stored vectors are zero placeholders"
+    }
+  },
+  "results": {
+    "buggy-prefixed": {
+      "tasks": 219,
+      "mean_reciprocal_rank": 0.1569,
+      "hit_at_1": 0.0913,
+      "hit_at_3": 0.21,
+      "hit_at_5": 0.2831,
+      "binary_version": "leio-code 2.6.2 (a21963badc83, clean)"
+    },
+    "buggy-stripped": {
+      "tasks": 219,
+      "mean_reciprocal_rank": 0.083,
+      "hit_at_1": 0.0365,
+      "hit_at_3": 0.1233,
+      "hit_at_5": 0.1507,
+      "binary_version": "leio-code 2.6.2 (a21963badc83, clean)"
+    },
+    "fixed-prefixed": {
+      "tasks": 219,
+      "mean_reciprocal_rank": 0.1569,
+      "hit_at_1": 0.0913,
+      "hit_at_3": 0.21,
+      "hit_at_5": 0.2831,
+      "binary_version": "leio-code 2.6.2 (377ee12faf61, clean)"
+    },
+    "fixed-stripped": {
+      "tasks": 219,
+      "mean_reciprocal_rank": 0.0829,
+      "hit_at_1": 0.0365,
+      "hit_at_3": 0.1233,
+      "hit_at_5": 0.1461,
+      "binary_version": "leio-code 2.6.2 (377ee12faf61, clean)"
+    },
+    "graphoff-prefixed": {
+      "tasks": 219,
+      "mean_reciprocal_rank": 0.1575,
+      "hit_at_1": 0.0913,
+      "hit_at_3": 0.2146,
+      "hit_at_5": 0.2831,
+      "binary_version": "leio-code 2.6.2 (377ee12faf61, clean)"
+    },
+    "graphoff-stripped": {
+      "tasks": 219,
+      "mean_reciprocal_rank": 0.0829,
+      "hit_at_1": 0.0365,
+      "hit_at_3": 0.1233,
+      "hit_at_5": 0.1461,
+      "binary_version": "leio-code 2.6.2 (377ee12faf61, clean)"
+    },
+    "arrow-prefixed": {
+      "tasks": 219,
+      "mean_reciprocal_rank": 0.1589,
+      "hit_at_1": 0.0913,
+      "hit_at_3": 0.2237,
+      "hit_at_5": 0.2785,
+      "binary_version": "leio-code 2.6.2 (e2ba7697fbc4, clean)"
+    },
+    "ondemand-prefixed": {
+      "tasks": 219,
+      "mean_reciprocal_rank": 0.1843,
+      "hit_at_1": 0.1096,
+      "hit_at_3": 0.2511,
+      "hit_at_5": 0.3151,
+      "binary_version": "leio-code 2.6.2 (587fef08d917, dirty)",
+      "semantic_source_counts": {
+        "on_demand": 219
+      }
+    },
+    "ondemand-stripped": {
+      "tasks": 219,
+      "mean_reciprocal_rank": 0.067,
+      "hit_at_1": 0.0228,
+      "hit_at_3": 0.1005,
+      "hit_at_5": 0.1598,
+      "binary_version": "leio-code 2.6.2 (587fef08d917, dirty)",
+      "semantic_source_counts": {
+        "on_demand": 219
+      }
+    }
+  },
+  "depth_probe": {
+    "arm": "fixed-prefixed",
+    "limit": 40,
+    "hit_at_1": 0.0913,
+    "hit_at_3": 0.21,
+    "hit_at_5": 0.2831,
+    "hit_at_10": 0.3105,
+    "hit_at_20": 0.411,
+    "hit_at_40": 0.484,
+    "not_in_top_40": 0.516
+  },
+  "limitations": [
+    "Files changed by a commit approximate the files a developer must read; they are not the same set.",
+    "Commit subjects are written with hindsight and sometimes name the solution, which makes retrieval easier than a live bug report.",
+    "Tasks that only created new files are excluded, biasing toward modification tasks.",
+    "Single corpus; no cross-repository generalization claim.",
+    "The on-demand BGE-M3 arm depends on a lab TEI endpoint; without one, semantic reranking degrades to the lexical/FCA (arrow) baseline."
+  ]
+}

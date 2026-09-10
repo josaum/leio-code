@@ -330,11 +330,13 @@ All notable changes to LEIO Code. Format follows [Keep a Changelog](https://keep
   plus a packed inverted index; search is BM25 on posting candidates,
   collapses sibling sections, and optionally reranks with BGE-M3 when
   `LEIO_CODE_EMBED_URL` is set. Unchanged files are reused.
-- Remote BGE-M3 encoder: `[embed] url` / `LEIO_CODE_EMBED_URL` posts to
-  OpenAI `/v1/embeddings` (TEI on Proxmox GPU). Fallback remains Example
-  `/v2/embed`.
-- Local Arrow adaptive/find ranks with query-time BGE-M3 cosine against
-  `semantic_vec` / `code_vec` when the encoder is configured.
+- Remote BGE-M3 encoder: `[embed] url` / `LEIO_CODE_EMBED_URL` supports direct
+  TEI `/embed` and OpenAI-compatible `/v1/embeddings`. Fallback remains
+  Example `/v2/embed`.
+- Local Arrow adaptive/find uses bounded query-time BGE-M3 reranking: compatible
+  stored `semantic_vec` / `code_vec` values are the fast path, while zero or
+  incompatible candidates are embedded on demand without persisting request-local
+  vectors; lexical/FCA ranking remains the fallback.
 - Stateful node navigation: `leio-code nav` / MCP `leio_code_nav`
   (here/goto/select/callers/callees/neighbors/related/back/forward/reset)
   persists `.leio-code/nav-session.json`.
