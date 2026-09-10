@@ -41,11 +41,14 @@ Symbols, env vars, Redis keys, and deploy targets use the **same IDF-weighted le
 |-------|---------|
 | **`selection_policy`** | Strategy name, reranker id string, limits, **`intent_routes_considered`**. |
 | **`retrieval_signals`** | **`sparse_idf_weighting`**, **`intent_routes_considered`**, **`identifier_needles_extracted`**, **`graph_cache_loaded`**, optional **`code_graph_refresh_hint`** when no cache, **`signal_stack`** one-line summary of signals. |
-| **`files_to_read`** | Ordered strongest-first; use **`modified_unix_ms`** as a secondary freshness cue when scores tie in display-only tools. |
+| **`files_to_read`** | Ordered strongest-first. Equal scores break on code-graph proximity, then **`modified_unix_ms`** as a freshness cue in display-only tools. |
 
-## Enabling graph proximity boosts
+## Enabling graph proximity
 
-Graph boosts are **optional** and **read-only** at context time:
+Proximity is **optional**, **read-only** at context time, and **never changes a
+score**. It orders candidates the direct channels scored equally, so a file that
+matched the task directly is never displaced by one that is merely coupled to a
+top result:
 
 1. **`cargo run -- index --repo <root>`** (or your usual index refresh).
 2. **`cargo run -- export code-graph --repo <root>`** — writes `graph.nq`, `manifest.json`, and **`query-cache.json`** under `.leio-code/exports/code-graph-v1/`.

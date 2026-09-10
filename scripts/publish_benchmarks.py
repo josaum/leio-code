@@ -177,6 +177,14 @@ def public_results(latency: dict[str, Any], retrieval: dict[str, Any]) -> dict[s
     }
 
 
+def _repetition_phrase(rows: list[dict[str, Any]]) -> str:
+    """Describe the sample count actually recorded, not the one we hoped for."""
+    counts = {len(row["runs"]) for row in rows}
+    if len(counts) == 1:
+        return f"{counts.pop()} repetitions per task"
+    return f"{min(counts)}-{max(counts)} repetitions per task"
+
+
 def _nice_axis_max(maximum: float, step: int) -> int:
     return max(step, int(math.ceil(maximum / step) * step))
 
@@ -238,7 +246,7 @@ def render_latency_svg(public: dict[str, Any]) -> str:
     lines.extend(
         [
             f'<line x1="{plot_x}" y1="470" x2="{plot_x + plot_width}" y2="470" stroke="{TEXT_MUTED}" stroke-width="1"/>',
-            f'<text x="45" y="535" font-family="Arial,sans-serif" font-size="14" fill="{TEXT_MUTED}">Ten repetitions per task · existing index · complete samples and exit codes in the benchmark receipt</text>',
+            f'<text x="45" y="535" font-family="Arial,sans-serif" font-size="14" fill="{TEXT_MUTED}">{_repetition_phrase(rows)} · existing index · complete samples and exit codes in the benchmark receipt</text>',
             '</svg>\n',
         ]
     )
@@ -247,9 +255,13 @@ def render_latency_svg(public: dict[str, Any]) -> str:
 
 def render_navigation_svg(receipt: dict[str, Any]) -> str:
     validate_navigation(receipt)
+    # Order the scenarios we know about, then append any the receipt adds. Selecting
+    # only known names silently drops new scenarios, and counting runs over the
+    # filtered rows would then understate the coverage the chart claims.
     by_name = {row["name"]: row for row in receipt["rows"]}
-    rows = [by_name[name] for name in NAVIGATION_ORDER]
-    run_count = sum(len(row["runs"]) for row in rows)
+    ordered = [by_name[name] for name in NAVIGATION_ORDER if name in by_name]
+    rows = ordered + [row for row in receipt["rows"] if row["name"] not in set(NAVIGATION_ORDER)]
+    run_count = sum(len(row["runs"]) for row in receipt["rows"])
     axis_max = _nice_axis_max(max(row["median_ms"] for row in rows), 500)
     plot_x = 355
     plot_width = 720

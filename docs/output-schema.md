@@ -935,7 +935,7 @@ on:
 
 Builds a ranked, bounded working set for a natural-language task. The
 ranking pipeline, intent routes, IDF weighting, and optional graph
-proximity boosts are documented in
+proximity ordering is documented in
 [`docs/CONTEXT_BUNDLE.md`](CONTEXT_BUNDLE.md) — this section pins the
 *output shape*, not the algorithm.
 

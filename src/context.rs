@@ -88,6 +88,10 @@ struct ScoredFile {
     score: i64,
     /// Indexer mtime (ms); used only for tie-breaking when scores match.
     modified_unix_ms: i128,
+    /// Code-graph proximity to the top seeds: 3 import+call, 2 import, 1 call, 0 none.
+    /// Breaks ties ahead of mtime. Never folded into `score` — proximity is indirect
+    /// evidence and must not outrank a file the direct channels scored higher.
+    graph_proximity: u8,
     reasons: BTreeSet<String>,
     symbols: Vec<Value>,
     env_vars: Vec<Value>,
@@ -163,6 +167,7 @@ pub fn build_context_bundle(
             right
                 .score
                 .cmp(&left.score)
+                .then_with(|| right.graph_proximity.cmp(&left.graph_proximity))
                 .then_with(|| right.modified_unix_ms.cmp(&left.modified_unix_ms))
                 .then_with(|| left.path.cmp(&right.path))
         });
@@ -744,7 +749,6 @@ fn finalize_file_ranking(
         // retrieval already liked, not that it answers the task. Coupling must not
         // outrank a file that matched the task directly, so proximity orders files
         // the direct channels scored equally and never moves one past a better score.
-        let mut proximity: HashMap<String, u8> = HashMap::new();
         for (file, _) in rows.iter_mut() {
             if seed_set.contains(&file.path) {
                 continue;
@@ -766,14 +770,15 @@ fn finalize_file_ranking(
                 }
                 .to_string(),
             );
-            proximity.insert(file.path.clone(), tier);
+            // Carried on the row: later stages re-sort, and a tier that lives only
+            // in this function is silently dropped by the next sort.
+            file.graph_proximity = tier;
         }
-        let tier_of = |path: &str| proximity.get(path).copied().unwrap_or(0);
         rows.sort_by(|(left, _), (right, _)| {
             right
                 .score
                 .cmp(&left.score)
-                .then_with(|| tier_of(&right.path).cmp(&tier_of(&left.path)))
+                .then_with(|| right.graph_proximity.cmp(&left.graph_proximity))
                 .then_with(|| right.modified_unix_ms.cmp(&left.modified_unix_ms))
                 .then_with(|| left.path.cmp(&right.path))
         });
@@ -943,6 +948,7 @@ fn score_file(
     Some((
         ScoredFile {
             path: file.path.clone(),
+            graph_proximity: 0,
             language: file.language.as_str().to_string(),
             score,
             modified_unix_ms: file.modified_unix_ms,
@@ -2030,6 +2036,7 @@ mod tests {
             language: "rust".into(),
             score: 0,
             modified_unix_ms: 0,
+            graph_proximity: 0,
             reasons: BTreeSet::new(),
             symbols: vec![],
             env_vars: vec![],
@@ -2455,6 +2462,12 @@ mod tests {
                 .any(|reason| reason.starts_with("graph proximity")),
             "proximity evidence must still be reported: {:?}",
             neighbor.reasons
+        );
+        // The tier has to ride on the row. Later stages re-sort the bundle, so a tier
+        // held only inside the ranking function is silently dropped by the next sort.
+        assert_eq!(
+            neighbor.graph_proximity, 2,
+            "import-edge proximity must be carried on the row for later sorts"
         );
     }
 

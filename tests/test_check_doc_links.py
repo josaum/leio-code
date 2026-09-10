@@ -81,6 +81,34 @@ class CheckDocLinksTests(unittest.TestCase):
             result = self.run_check(root)
             self.assertEqual(result.returncode, 0, msg=result.stderr)
 
+    def test_snake_case_fragments_keep_their_underscores(self) -> None:
+        # GitHub only treats `_` as emphasis at a word boundary, so an identifier
+        # heading slugs with its underscores intact.
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "README.md").write_text(
+                "[a](docs/x.md#query_dead_code)\n[b](docs/x.md#italic)\n", encoding="utf-8"
+            )
+            (root / "docs").mkdir()
+            (root / "docs" / "x.md").write_text(
+                "# query_dead_code\n\n# _italic_\n", encoding="utf-8"
+            )
+            result = self.run_check(root)
+            self.assertEqual(result.returncode, 0, msg=result.stdout + result.stderr)
+
+    def test_root_named_like_a_skipped_directory_still_scans(self) -> None:
+        # Skip names must match below the root. Matching the absolute path made a
+        # checkout under any `target/` or `vendor/` ancestor report a green run
+        # having checked nothing at all.
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "target" / "repo"
+            (root / "docs").mkdir(parents=True)
+            (root / "README.md").write_text("[missing](docs/nope.md)\n", encoding="utf-8")
+            result = self.run_check(root)
+            self.assertNotEqual(
+                result.returncode, 0, msg="a broken link under such a root must still fail"
+            )
+
     def test_nested_worktrees_are_not_scanned(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

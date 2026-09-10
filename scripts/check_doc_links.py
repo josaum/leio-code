@@ -18,6 +18,7 @@ from urllib.parse import unquote
 # Authoritative monorepo path prefix used by older generated documentation links.
 _WS_PREFIX = Path("/Users/josaum/projects/example-workspace")
 _SKIP_PARTS = {"node_modules", "target", ".git", ".leio-code", "vendor"}
+_WORD_BOUNDARY_EMPHASIS = re.compile(r"(?<![0-9A-Za-z_])_([^_]+)_(?![0-9A-Za-z_])")
 _LINK_PATTERNS = (
     re.compile(r"\]\(([^)]+)\)"),  # [text](url)
     re.compile(r"^\[[^\]]+\]:\s+(\S+)", re.MULTILINE),  # [ref]: url
@@ -93,7 +94,14 @@ def _is_nested_worktree(path: Path, root: Path) -> bool:
 def _iter_markdown_files(root: Path) -> list[Path]:
     files: list[Path] = []
     for path in root.rglob("*.md"):
-        if any(part in _SKIP_PARTS for part in path.parts):
+        # Match below the root only: an absolute path carries ancestor segments the
+        # caller never chose, so a checkout under any directory named `target` or
+        # `vendor` would skip every file and report a green run over nothing.
+        try:
+            relative_parts = path.relative_to(root).parts
+        except ValueError:
+            continue
+        if any(part in _SKIP_PARTS for part in relative_parts):
             continue
         if _is_nested_worktree(path, root):
             continue
@@ -148,7 +156,10 @@ def _heading_text(markdown: str) -> str:
     text = _REFERENCE_LINK_LABEL.sub(r"\1", text)
     text = _HTML_TAG.sub("", text)
     text = text.replace("\\", "")
-    text = text.translate(str.maketrans("", "", "`*_~"))
+    # Underscores only mark emphasis at a word boundary; GitHub keeps the intra-word
+    # ones, so `query_dead_code` must slug to `query_dead_code`, not `querydeadcode`.
+    text = _WORD_BOUNDARY_EMPHASIS.sub(r"\1", text)
+    text = text.translate(str.maketrans("", "", "`*~"))
     return html.unescape(text).strip()
 
 

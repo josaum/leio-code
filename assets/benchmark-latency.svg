@@ -41,5 +41,5 @@
 <path d="M355.0 452.0 H402.4 Q406.4 452.0 406.4 456.0 V468.0 Q406.4 472.0 402.4 472.0 H355.0 Z" fill="#d95926"/>
 <text x="416.4" y="468.0" font-family="Arial,sans-serif" font-size="15" font-weight="700" fill="#ffffff">12.5 ms</text>
 <line x1="355" y1="470" x2="1075" y2="470" stroke="#898781" stroke-width="1"/>
-<text x="45" y="535" font-family="Arial,sans-serif" font-size="14" fill="#898781">Ten repetitions per task · existing index · complete samples and exit codes in the benchmark receipt</text>
+<text x="45" y="535" font-family="Arial,sans-serif" font-size="14" fill="#898781">10 repetitions per task · existing index · complete samples and exit codes in the benchmark receipt</text>
 </svg>
