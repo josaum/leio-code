@@ -96,8 +96,66 @@ results. The existing script's ratio is `rg_ms / leio_ms`, not a product speedup
 
 ## Retrieval quality
 
-Seven pre-existing, labeled tasks; each asks for at most five context files.
-Expected files are development labels, not exhaustive relevance judgments.
+Two measurements, and they disagree by a factor of three. Both are published
+because the second one is the honest figure and the first is easy to over-read.
+
+### Held-out corpus: 219 tasks, 11,573 files
+
+A private polyglot monorepo (Python, TypeScript, Rust; name withheld) indexed at
+a base revision, with tasks drawn from the 619 commits that landed **after** it,
+so the change being sought is not yet in the tree. The task text is the commit
+subject. The labels are the source files that commit changed and that already
+existed at the base. Merge commits, commits touching more than four source
+files, and commits whose files did not yet exist were dropped, leaving 219
+tasks with a mean of 1.6 labels each. No model calls; labels never came from
+LEIO output. Each task asks `context` for five files.
+
+"Prefixed" keeps the conventional-commit `type(scope):` prefix a developer
+would also have. "Stripped" removes it, because the scope often names a
+directory and path matching hits it for free.
+
+| Ranker state | Phrasing | Mean reciprocal rank | Top 1 | Top 3 | Top 5 |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Shipped (graph proximity as tie-breaker) | prefixed | 0.157 | 9.1% | 21.0% | 28.3% |
+| Shipped | stripped | 0.083 | 3.7% | 12.3% | 14.6% |
+| Code graph removed entirely | prefixed | 0.158 | 9.1% | 21.5% | 28.3% |
+| Code graph removed entirely | stripped | 0.083 | 3.7% | 12.3% | 14.6% |
+| Previous additive graph bonus | prefixed | 0.157 | 9.1% | 21.0% | 28.3% |
+| Previous additive graph bonus | stripped | 0.083 | 3.7% | 12.3% | 15.1% |
+| Shipped + local Arrow node store, no encoder | prefixed | 0.159 | 9.1% | 22.4% | 27.9% |
+
+Read across the rows: the code-graph channel contributes nothing measurable at
+this scale, in either direction. Read down the phrasing: roughly half of the
+signal is the scope token matching a directory name.
+
+Looking past the five-file cut on the shipped ranker (prefixed): the labeled
+file is in the top 10 for 31.1% of tasks, the top 20 for 41.1%, the top 40 for
+48.4%, and **never appears in the top 40 for 51.6%**. Widening the bundle
+recovers some tasks and then stalls. This is a retrieval gap, not a
+re-ranking gap.
+
+Not measured: the BGE-M3 cosine channel over `semantic_vec`, because no
+encoder endpoint (`LEIO_CODE_EMBED_URL`) was configured. The Arrow row above is
+that store's lexical and FCA-relation half only.
+
+Aggregate receipt without task text or paths:
+[`heldout-retrieval.json`](../benchmarks/heldout-retrieval.json). The task
+file itself is not published; it contains the corpus's paths and commit
+subjects.
+
+Limits. Files a commit changed approximate the files a developer must read;
+they are not the same set. Commit subjects are written with hindsight and
+sometimes name the solution, which makes this easier than a live bug report.
+Creation-only tasks are excluded, biasing toward modifications. One corpus, so
+no cross-repository claim.
+
+### In-repository development suite: 7 tasks, 420 files
+
+Seven labeled tasks in this repository, each asking for at most five context
+files. Labels are development annotations, not exhaustive relevance judgments.
+This suite is small, used during development, and not held out. It is kept for
+reproducibility and regression checks; **it is not evidence of retrieval
+quality**, and the held-out figure above is the one to quote.
 
 | Measure | Result |
 | --- | ---: |
@@ -106,9 +164,9 @@ Expected files are development labels, not exhaustive relevance judgments.
 | Mean reciprocal rank | 0.493 |
 
 Every task and returned path is included in the JSON report, including misses.
-The suite is small and used during development, not held out. This does not
-measure architecture correctness, call-edge completeness, code quality, or
-application runtime behavior. No before/after or competitor quality claim is made.
+This does not measure architecture correctness, call-edge completeness, code
+quality, or application runtime behavior. No before/after or competitor
+quality claim is made.
 
 ## Reproduce
 
