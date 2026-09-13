@@ -7,6 +7,14 @@ All notable changes to LEIO Code. Format follows [Keep a Changelog](https://keep
 ## [2.6.3] — 2026-09-12
 
 ### Added
+- **MCP: bundled binary install and stdio/hosted surface parity.** The stdio
+  package downloads the release binary into `mcp/vendor/` from a postinstall
+  step (soft-fails offline, on an unsupported platform, or when the release is
+  missing), and both transports prefer it right after `LEIO_CODE_BIN`.
+  `apps-sdk/tool-name-map.js` is the single source of truth for the
+  stdio→hosted remap; `apps-sdk/surface-parity.test.js` fails when either
+  surface gains a tool that is neither remapped nor declared local-only or
+  hosted-only, and `docs/MCP-SURFACE-GAP.md` lists both sets.
 - **RDF 1.2 support** across the knowledge stack. Oxigraph is upgraded from
   0.4 to 0.5.10 with the `rdf-12` feature, so formal.nq ingestion, dumping,
   and SPARQL now understand RDF 1.2: `<<(...)>>` triple terms
