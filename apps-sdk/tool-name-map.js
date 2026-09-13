@@ -21,9 +21,6 @@ export const appToolNameMap = {
   leio_code_doctor: "audit_repository_contracts",
   leio_code_audit: "audit_repository_rollup",
   leio_code_graph: "graph_repository",
-  // Deliberate many-to-one: the hosted status tool answers export questions
-  // too, and no separate hosted export tool exists.
-  leio_code_export: "inspect_repository_status",
 };
 
 /** Hosted Apps SDK tools with no stdio counterpart. */
@@ -33,9 +30,16 @@ export const hostedOnlyTools = [
   "clear_repository_target",
 ];
 
-/** stdio tools that stay local: files, cursors and artifacts on this machine. */
+/**
+ * stdio tools that stay local: files, cursors and artifacts on this machine.
+ *
+ * leio_code_export belongs here on purpose: it writes or streams artifacts
+ * (out/output_dir, Arrow/JSON-LD/N-Quads payloads) and has no hosted
+ * counterpart. It is not an alias for inspect_repository_status.
+ */
 export const stdioLocalOnlyTools = [
   "leio_code_conversation",
+  "leio_code_export",
   "leio_code_index",
   "leio_code_init",
   "leio_code_kb",

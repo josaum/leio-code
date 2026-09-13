@@ -2007,6 +2007,12 @@ function getServer() {
           .max(40)
           .default(8)
           .describe("Maximum number of ranked files/entities to include."),
+        full: z
+          .boolean()
+          .optional()
+          .describe(
+            "Emit the exhaustive bundle (uncapped per-file entity lists and the full workspace capabilities block). The default bundle is the diet shape; use full only when exhaustive detail is required.",
+          ),
       },
       securitySchemes: auth.getSecuritySchemes("prepare_repository_context"),
       annotations: readOnlyAnnotations,
@@ -2017,12 +2023,16 @@ function getServer() {
         auth.getSecuritySchemes("prepare_repository_context"),
       ),
     },
-    async ({ repo_root, repo_url, git_ref, task, limit }, extra) => {
+    async ({ repo_root, repo_url, git_ref, task, limit, full }, extra) => {
       const authError = auth.ensureToolAccess("prepare_repository_context", extra);
       if (authError) {
         return authError;
       }
-      return invokeLeioTool(["context", task, "--limit", String(limit ?? 8)], {
+      const contextArgs = ["context", task, "--limit", String(limit ?? 8)];
+      if (full) {
+        contextArgs.push("--full");
+      }
+      return invokeLeioTool(contextArgs, {
         repoRoot: repo_root,
         repoUrl: repo_url,
         gitRef: git_ref,

@@ -52,14 +52,20 @@ surfaces by [`apps-sdk/surface-parity.test.js`](../apps-sdk/surface-parity.test.
 | `leio_code_doctor` | `audit_repository_contracts` |
 | `leio_code_audit` | `audit_repository_rollup` |
 | `leio_code_graph` | **`graph_repository`** (real graph — not find) |
-| `leio_code_export` | `inspect_repository_status` (deliberate many-to-one: the hosted status tool answers export questions too) |
 
 Hosted-only tools (no stdio counterpart): `search_repository_memory`,
 `select_repository_target`, `clear_repository_target`.
 
 Local-only tools (no hosted counterpart — they need files, a cursor or artifacts on the
-caller's machine): `leio_code_conversation`, `leio_code_index`, `leio_code_init`,
-`leio_code_kb`, `leio_code_knowledge`, `leio_code_nav`, `leio_code_verify`, `leio_code_watch`.
+caller's machine): `leio_code_conversation`, `leio_code_export` (writes or streams
+artifacts), `leio_code_index`, `leio_code_init`, `leio_code_kb`, `leio_code_knowledge`,
+`leio_code_nav`, `leio_code_verify`, `leio_code_watch`.
+
+Remapped tools keep the stdio parameter set and its enum values. The hosted surface drops
+only `index_path` and `timeout_ms` (the hosting server owns the checkout, the index and the
+execution budget) and adds `repo_url` / `git_ref`. Both the parameter contract and the
+enum equality are asserted against a live `tools/list` by
+[`apps-sdk/submission-contract.test.js`](../apps-sdk/submission-contract.test.js).
 
 Domain tool `consult_carlos_motta_specialist` registers only when `LEIO_VIGOROS_MCP_URL` is set.
 

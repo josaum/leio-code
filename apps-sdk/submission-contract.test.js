@@ -6,6 +6,8 @@ import { spawn } from "node:child_process";
 import net from "node:net";
 import { fileURLToPath } from "node:url";
 
+import { appToolNameMap } from "./tool-name-map.js";
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 function getOpenPort() {
@@ -134,6 +136,60 @@ test("submission contract tools match live MCP surface (VIGOROS unset)", async (
       tool.outputSchema,
       `${tool.name} should expose outputSchema for Scan Tools`,
     );
+  }
+
+  // Feature parity: every remapped hosted tool must keep the stdio tool's
+  // parameters (including enum values), so a capability cannot quietly
+  // disappear when a transport is remapped. Only two drops are allowed, and
+  // both are owned by the hosting server rather than the caller.
+  const stdioDescriptor = JSON.parse(
+    fs.readFileSync(
+      path.join(__dirname, "..", "schema", "leio-code-mcp-service-descriptor.json"),
+      "utf8",
+    ),
+  );
+  const hostedOnlyParams = new Set(["repo_url", "git_ref"]);
+  const droppedStdioParams = new Map([
+    ["index_path", "the hosted server owns the checkout and index"],
+    ["timeout_ms", "the hosted server owns its execution budget"],
+  ]);
+  const stdioByHostedName = new Map(
+    Object.entries(appToolNameMap).map(([stdio, hosted]) => [hosted, stdio]),
+  );
+
+  for (const tool of listed.tools) {
+    const stdioName = stdioByHostedName.get(tool.name);
+    if (!stdioName) {
+      continue; // hosted-only tool
+    }
+    const stdioProps = stdioDescriptor.methods[stdioName].inputSchema.properties ?? {};
+    const hostedProps = tool.inputSchema?.properties ?? {};
+
+    for (const name of Object.keys(stdioProps)) {
+      if (droppedStdioParams.has(name)) {
+        continue;
+      }
+      assert.ok(
+        hostedProps[name],
+        `${tool.name} drops the stdio parameter ${name} from ${stdioName}`,
+      );
+    }
+    for (const name of Object.keys(hostedProps)) {
+      assert.ok(
+        stdioProps[name] || hostedOnlyParams.has(name),
+        `${tool.name} adds parameter ${name} with no stdio counterpart`,
+      );
+    }
+    for (const [name, prop] of Object.entries(stdioProps)) {
+      if (!prop.enum || !hostedProps[name]?.enum) {
+        continue;
+      }
+      assert.deepEqual(
+        [...hostedProps[name].enum].sort(),
+        [...prop.enum].sort(),
+        `${tool.name}.${name} must expose the same values as ${stdioName}.${name}`,
+      );
+    }
   }
 });
 

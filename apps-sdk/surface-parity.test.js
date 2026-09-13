@@ -78,5 +78,5 @@ test("unmapped names pass through unchanged, so hosted-only tools keep their nam
   }
   assert.equal(mapToolNameToAppSurface("leio_code_find"), "search_repository");
   assert.equal(mapToolNameToAppSurface("leio_code_graph"), "graph_repository");
-  assert.equal(mapToolNameToAppSurface("leio_code_export"), "inspect_repository_status");
+  assert.equal(mapToolNameToAppSurface("leio_code_export"), "leio_code_export");
 });
