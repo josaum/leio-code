@@ -1,6 +1,6 @@
 {
   "name": "@leio/leio-code-apps-sdk",
-  "version": "2.6.2",
+  "version": "2.6.3",
   "private": true,
   "type": "module",
   "description": "OpenAI Apps SDK / ChatGPT MCP app for LEIO Code (self-host production-capable; private package)",

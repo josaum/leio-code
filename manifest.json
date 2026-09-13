@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "leio-code",
   "display_name": "LEIO Code",
-  "version": "2.6.2",
+  "version": "2.6.3",
   "description": "Agent-first code intelligence. Index, find, graph, doctors, SPARQL knowledge, lattice nav over one repo_root.",
   "author": {
     "name": "LEIO Code contributors",

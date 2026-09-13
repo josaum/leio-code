@@ -4,6 +4,8 @@ All notable changes to LEIO Code. Format follows [Keep a Changelog](https://keep
 
 ## [Unreleased]
 
+## [2.6.3] — 2026-09-12
+
 ### Added
 - **RDF 1.2 support** across the knowledge stack. Oxigraph is upgraded from
   0.4 to 0.5.10 with the `rdf-12` feature, so formal.nq ingestion, dumping,
