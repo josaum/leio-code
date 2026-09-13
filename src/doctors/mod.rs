@@ -27,7 +27,7 @@ use std::time::Instant;
 use rayon::prelude::*;
 use serde_json::json;
 
-use crate::config::{PROFILE_EXAMPLE, PROFILE_GENERIC, PROFILE_LEIO_CODE, repo_profile};
+use crate::config::{PROFILE_GENERIC, PROFILE_LEIO_CODE, PROFILE_EXAMPLE, repo_profile};
 use crate::model::{QueryEnvelope, RepoIndex};
 
 pub mod active_cartridges_env_drift;

@@ -1,9 +1,14 @@
 # Contributing to LEIO Code
 
-Start with a focused issue or pull request: the problem, the expected behavior,
-and a small reproduction. For feature proposals, describe an agent workflow the
-change would improve. Never include credentials, private repository contents,
-or personal conversation transcripts in issues or fixtures.
+**This repository is generated** (see [PUBLIC-SOURCE.md](docs/PUBLIC-SOURCE.md)):
+it is not edited by hand, and a commit applied here is deleted by the next export.
+Start with a focused **issue** instead: the problem, the expected behavior, and a
+small reproduction. For feature proposals, describe an agent workflow the change
+would improve. Maintainers apply accepted changes in the source tree, and they
+arrive here on the next export.
+
+Never include credentials, private repository contents, or personal conversation
+transcripts in issues or fixtures.
 
 ## Local development
 

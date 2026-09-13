@@ -1,15 +1,33 @@
 # Public source distribution
 
-This repository starts with a clean source snapshot of LEIO Code 2.6.2. It does
-not include historical Git objects, private operational runbooks, external
-repository benchmark reports, legacy release archives, or optional binary wheels.
-Original LEIO source, local tests, protocol contracts and dual-license notices
-are retained. Runtime dependencies are resolved from the committed lockfiles.
+This repository is **generated** from a private source tree. It is not the source
+of truth and it is not edited by hand: every commit here is written by the export
+pipeline in that tree, which
 
-Install the local 18-tool MCP using [the one-prompt guide](install-stdio.md).
-No private repository credentials or sibling checkout is required. Optional
-external accelerators and hosted integrations are separate installations.
+- replaces private workspace and product names with neutral placeholders,
+- withholds operator runbooks, release archives, prebuilt wheels and internal
+  benchmark reports,
+- supplies curated public-only files (this document, the CLI guide, the product
+  README, the benchmark narrative, the submission harness),
+- scans the generated tree for private names and for credentials before
+  committing anything.
 
-The optional `example` workspace profile uses synthetic application paths and
-configuration names to demonstrate repository checks. Adapt those contracts to
-your repository; they are not deployment instructions for a real service.
+Send a change that belongs to LEIO Code itself to the source tree; it reaches this
+repository on the next export. A patch applied here directly is deleted by the
+following export.
+
+## What is here
+
+- The Rust CLI and the stdio MCP server, the Apps SDK, the harness crate, the
+  skills, the tests, the protocol contracts and the dual-license notices.
+- The optional `example` workspace profile, which uses synthetic application paths
+  and configuration names to demonstrate repository checks. Adapt those contracts
+  to your repository; they are not deployment instructions for a real service.
+
+## Install
+
+- Local 18-tool MCP: [install with one prompt](install-stdio.md).
+- Apps SDK / hosted HTTP: [apps-sdk](../apps-sdk/README.md).
+
+Runtime dependencies resolve from the committed lockfiles. No credentials and no
+sibling checkout are required.

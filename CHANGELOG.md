@@ -23,6 +23,18 @@ All notable changes to LEIO Code. Format follows [Keep a Changelog](https://keep
   stdio→hosted remap; `apps-sdk/surface-parity.test.js` fails when either
   surface gains a tool that is neither remapped nor declared local-only or
   hosted-only, and `docs/MCP-SURFACE-GAP.md` lists both sets.
+- **Retrieval: on-demand BGE-M3 reranking, IDF-weighted lexical scoring, and
+  multi-endpoint encoders** (recovered from the public source line). `find`,
+  `context` and the local node store rerank a bounded lexical + FCA shortlist
+  with query-time BGE-M3 cosine: compatible stored vectors are the fast path,
+  zero or incompatible candidates are embedded on demand and never persisted,
+  and the envelope reports the semantic source (`none` / `precomputed` /
+  `on_demand`). Encoders accept a direct TEI `/embed` endpoint or a
+  LiteLLM/OpenAI-compatible base that receives `/v1/embeddings`. Lexical term
+  bonuses are weighted by inverse document frequency so rare terms outrank
+  substring floods, and code-graph proximity orders score ties on the row
+  instead of rewriting scores. `scripts/evaluate_retrieval.py` reports rank
+  quality beside the semantic source; both retrieval suites run in `make verify`.
 - **RDF 1.2 support** across the knowledge stack. Oxigraph is upgraded from
   0.4 to 0.5.10 with the `rdf-12` feature, so formal.nq ingestion, dumping,
   and SPARQL now understand RDF 1.2: `<<(...)>>` triple terms
@@ -348,13 +360,11 @@ All notable changes to LEIO Code. Format follows [Keep a Changelog](https://keep
   plus a packed inverted index; search is BM25 on posting candidates,
   collapses sibling sections, and optionally reranks with BGE-M3 when
   `LEIO_CODE_EMBED_URL` is set. Unchanged files are reused.
-- Remote BGE-M3 encoder: `[embed] url` / `LEIO_CODE_EMBED_URL` supports direct
-  TEI `/embed` and OpenAI-compatible `/v1/embeddings`. Fallback remains
-  Example `/v2/embed`.
-- Local Arrow adaptive/find uses bounded query-time BGE-M3 reranking: compatible
-  stored `semantic_vec` / `code_vec` values are the fast path, while zero or
-  incompatible candidates are embedded on demand without persisting request-local
-  vectors; lexical/FCA ranking remains the fallback.
+- Remote BGE-M3 encoder: `[embed] url` / `LEIO_CODE_EMBED_URL` posts to
+  OpenAI `/v1/embeddings` (TEI on Proxmox GPU). Fallback remains Example
+  `/v2/embed`.
+- Local Arrow adaptive/find ranks with query-time BGE-M3 cosine against
+  `semantic_vec` / `code_vec` when the encoder is configured.
 - Stateful node navigation: `leio-code nav` / MCP `leio_code_nav`
   (here/goto/select/callers/callees/neighbors/related/back/forward/reset)
   persists `.leio-code/nav-session.json`.

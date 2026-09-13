@@ -3323,39 +3323,16 @@ app.Run();
         )
         .expect("top-level C# graph should parse");
 
-        assert_eq!(
-            parsed.imports[0].module_specifiers,
-            vec!["F22.Client.Web.F22Dashboard.Components"]
-        );
-        assert!(
-            parsed.definitions.is_empty(),
-            "top-level statements have no named declarations"
-        );
-        assert!(
-            parsed
-                .calls
-                .iter()
-                .any(|call| call.callee_name == "CreateBuilder")
-        );
-        assert!(
-            parsed
-                .calls
-                .iter()
-                .any(|call| call.callee_name == "MapF22BlazorWeb")
-        );
+        assert_eq!(parsed.imports[0].module_specifiers, vec!["F22.Client.Web.F22Dashboard.Components"]);
+        assert!(parsed.definitions.is_empty(), "top-level statements have no named declarations");
+        assert!(parsed.calls.iter().any(|call| call.callee_name == "CreateBuilder"));
+        assert!(parsed
+            .calls
+            .iter()
+            .any(|call| call.callee_name == "MapF22BlazorWeb"));
         assert!(parsed.calls.iter().any(|call| call.callee_name == "Run"));
-        assert!(
-            parsed
-                .calls
-                .iter()
-                .any(|call| call.callee_name == "AddScoped")
-        );
-        assert!(
-            !parsed
-                .calls
-                .iter()
-                .any(|call| ["App", "HomeContentService"].contains(&call.callee_name.as_str()))
-        );
+        assert!(parsed.calls.iter().any(|call| call.callee_name == "AddScoped"));
+        assert!(!parsed.calls.iter().any(|call| ["App", "HomeContentService"].contains(&call.callee_name.as_str())));
     }
 
     #[test]
@@ -3366,39 +3343,13 @@ app.Run();
     private void Refresh() {}
 }
 "#;
-        let parsed = parse_file_graph(
-            "Pages/Index.razor",
-            SourceLanguage::Razor,
-            source,
-            "repo",
-            "rev1",
-        )
-        .expect("Razor graph should parse");
+        let parsed = parse_file_graph("Pages/Index.razor", SourceLanguage::Razor, source, "repo", "rev1")
+            .expect("Razor graph should parse");
 
-        assert!(
-            parsed
-                .definitions
-                .iter()
-                .any(|definition| definition.name == "Save")
-        );
-        assert!(
-            parsed
-                .definitions
-                .iter()
-                .any(|definition| definition.name == "Refresh")
-        );
-        assert!(
-            parsed
-                .calls
-                .iter()
-                .any(|call| call.callee_name == "Refresh")
-        );
-        assert!(
-            !parsed
-                .definitions
-                .iter()
-                .any(|definition| definition.name == "Hello")
-        );
+        assert!(parsed.definitions.iter().any(|definition| definition.name == "Save"));
+        assert!(parsed.definitions.iter().any(|definition| definition.name == "Refresh"));
+        assert!(parsed.calls.iter().any(|call| call.callee_name == "Refresh"));
+        assert!(!parsed.definitions.iter().any(|definition| definition.name == "Hello"));
     }
 
     #[test]

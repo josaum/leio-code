@@ -1813,13 +1813,17 @@ impl ArticleLike for Article<'_> {
 mod tests {
     use super::*;
     use crate::arrow_ipc::read_ipc_stream_path;
+    use std::time::SystemTime;
 
     fn temp_repo() -> PathBuf {
-        let dir = tempfile::Builder::new()
-            .prefix("leio-kb-")
-            .tempdir()
-            .unwrap()
-            .keep();
+        let dir = std::env::temp_dir().join(format!(
+            "leio-kb-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
         fs::create_dir_all(dir.join("docs")).unwrap();
         fs::create_dir_all(dir.join("fixtures")).unwrap();
         fs::write(

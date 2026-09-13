@@ -1,0 +1,866 @@
+- generic [ref=f12e1]:
+  - link "Skip to content" [ref=f12e2] [cursor=pointer]:
+    - /url: "#main"
+  - generic [ref=f12e5]:
+    - generic [ref=f12e7]:
+      - navigation "Sidebar" [ref=f12e1038]:
+        - button "Open sidebar" [ref=f12e1042]
+        - generic [ref=f12e1048]:
+          - link "New chat" [ref=f12e1050] [cursor=pointer]:
+            - /url: /
+          - link "Images" [ref=f12e1057] [cursor=pointer]:
+            - /url: /images
+          - button "Search" [ref=f12e1064] [cursor=pointer]
+          - button "Pinned" [ref=f12e1071] [cursor=pointer]
+          - button "Recents" [ref=f12e1078] [cursor=pointer]
+        - button "Open usage settings. Weekly limit · 1% remaining. Resets in 6d 3h" [ref=f12e1280] [cursor=pointer]:
+          - generic [ref=f12e1170]: W
+        - button "Open profile menu" [ref=f12e1086] [cursor=pointer]:
+          - img "Profile image" [ref=f12e1089]
+      - generic:
+        - heading "Chat history" [level=2]
+        - generic:
+          - navigation "Chat history":
+            - generic:
+              - generic:
+                - generic:
+                  - link "Home":
+                    - /url: /
+                    - generic: ChatGPT
+                  - generic:
+                    - button "Search"
+                    - button "Close sidebar"
+            - generic:
+              - list:
+                - listitem:
+                  - link "New chat Shift Command O":
+                    - /url: /
+                    - generic: New chat
+                    - generic:
+                      - generic:
+                        - generic "Shift": ⇧
+                        - generic "Command": ⌘
+                        - generic: O
+                - listitem:
+                  - link "Images Updated":
+                    - /url: /images
+                    - generic:
+                      - generic: Images
+                      - generic: Updated
+                - listitem
+            - link "Library":
+              - /url: /library?entry_point=sidebar
+            - link "Scheduled":
+              - /url: /scheduled
+            - link "Plugins":
+              - /url: /plugins
+            - generic: More
+            - generic:
+              - generic:
+                - button "Pinned" [expanded]:
+                  - heading "Pinned" [level=2]
+              - list:
+                - listitem:
+                  - generic:
+                    - button "ASIMI PMO"
+                    - generic:
+                      - button "Open project home" [ref=f12e193] [cursor=pointer]
+                      - button "Open project options for ASIMI PMO" [ref=f12e197] [cursor=pointer]
+                - listitem:
+                  - generic:
+                    - button "ASIMI AI"
+                    - generic:
+                      - button "Open project home" [ref=f12e221] [cursor=pointer]
+                      - button "Open project options for ASIMI AI" [ref=f12e225] [cursor=pointer]
+                - listitem:
+                  - generic:
+                    - button "sisfron - mpcot"
+                    - generic:
+                      - button "Open project home" [ref=f12e249] [cursor=pointer]
+                      - button "Open project options for sisfron - mpcot" [ref=f12e253] [cursor=pointer]
+            - generic:
+              - generic:
+                - button "Projects" [expanded]:
+                  - heading "Projects" [level=2]
+                - generic:
+                  - button "New project" [ref=f12e262] [cursor=pointer]
+                  - button "Organize chats" [ref=f12e266] [cursor=pointer]
+              - list:
+                - listitem:
+                  - generic:
+                    - button "BASA"
+                    - generic:
+                      - button "Open project home" [ref=f12e291] [cursor=pointer]
+                      - button "Open project options for BASA" [ref=f12e295] [cursor=pointer]
+                - listitem:
+                  - generic:
+                    - button "Lupa"
+                    - generic:
+                      - button "Open project home" [ref=f12e319] [cursor=pointer]
+                      - button "Open project options for Lupa" [ref=f12e323] [cursor=pointer]
+                - listitem:
+                  - generic:
+                    - button "Custom color Writing VIGOROS":
+                      - generic:
+                        - generic:
+                          - img "Custom color Writing"
+                      - generic: VIGOROS
+                    - generic:
+                      - button "Open project home" [ref=f12e340] [cursor=pointer]
+                      - button "Open project options for VIGOROS" [ref=f12e344] [cursor=pointer]
+                - listitem:
+                  - generic:
+                    - button "revops formal"
+                    - generic:
+                      - button "Open project home" [ref=f12e368] [cursor=pointer]
+                      - button "Open project options for revops formal" [ref=f12e372] [cursor=pointer]
+                - listitem:
+                  - generic:
+                    - button "Custom color Writing JAI Receita Recorrente":
+                      - generic:
+                        - generic:
+                          - img "Custom color Writing"
+                      - generic: JAI Receita Recorrente
+                    - generic:
+                      - button "Open project home" [ref=f12e389] [cursor=pointer]
+                      - button "Open project options for JAI Receita Recorrente" [ref=f12e393] [cursor=pointer]
+                - listitem:
+                  - button "Show more"
+            - generic:
+              - generic:
+                - button "Chats" [expanded]:
+                  - heading "Chats" [level=2]
+                - generic:
+                  - link "New chat" [ref=f12e406] [cursor=pointer]:
+                    - /url: /
+                  - button "Organize chats" [ref=f12e410] [cursor=pointer]
+              - generic:
+                - list:
+                  - listitem:
+                    - link "Update LEIO Website, Work":
+                      - /url: /c/6aa0f400-46ac-83e9-b14b-526a327d12a7
+                      - generic: Update LEIO Website
+                      - generic:
+                        - generic:
+                          - button "Pin Update LEIO Website" [ref=f12e1189] [cursor=pointer]
+                          - button "Open conversation options for Update LEIO Website" [ref=f12e1190] [cursor=pointer]
+                  - listitem:
+                    - link "Paper overview request, unread":
+                      - /url: /c/6aa0db58-48d8-83e9-b1b5-bea78ffb1cef?messageId=finalAgentTurnStart
+                      - generic: Paper overview request
+                      - generic:
+                        - generic:
+                          - generic:
+                            - button "Pin Paper overview request" [ref=f12e427] [cursor=pointer]
+                            - button "Open conversation options for Paper overview request" [ref=f12e431] [cursor=pointer]
+                  - listitem:
+                    - link "Daily AI Reading Briefing, Work, unread":
+                      - /url: /c/6a9c24fc-d918-83e9-8b77-8c139875ca5d?messageId=finalAgentTurnStart
+                      - generic: Daily AI Reading Briefing
+                      - generic:
+                        - generic:
+                          - generic:
+                            - button "Pin Daily AI Reading Briefing" [ref=f12e450] [cursor=pointer]
+                            - button "Open conversation options for Daily AI Reading Briefing" [ref=f12e454] [cursor=pointer]
+                  - listitem:
+                    - link "AI agents and governance reading list":
+                      - /url: /c/6a4c69d7-1bd0-83e9-a8e9-5c354747d3f5?messageId=finalAgentTurnStart
+                      - generic:
+                        - generic:
+                          - button "Pin AI agents and governance reading list" [ref=f12e470] [cursor=pointer]
+                          - button "Open conversation options for AI agents and governance reading list" [ref=f12e474] [cursor=pointer]
+                  - listitem:
+                    - link "Layout de quarto infantil, Work":
+                      - /url: /c/6a9f170e-23e0-83e9-bdb3-6ce3696a82fc
+                      - generic: Layout de quarto infantil
+                      - generic:
+                        - generic:
+                          - button "Pin Layout de quarto infantil" [ref=f12e490] [cursor=pointer]
+                          - button "Open conversation options for Layout de quarto infantil" [ref=f12e494] [cursor=pointer]
+                  - listitem:
+                    - link "Refazer consultando repositório, Work":
+                      - /url: /c/6a9eed5c-6e2c-83e9-bcdd-48d2400b0c2a
+                      - generic: Refazer consultando repositório
+                      - generic:
+                        - generic:
+                          - button "Pin Refazer consultando repositório" [ref=f12e510] [cursor=pointer]
+                          - button "Open conversation options for Refazer consultando repositório" [ref=f12e514] [cursor=pointer]
+                  - listitem:
+                    - link "Avaliação Da Estratégia Copy":
+                      - /url: /c/6a9d93f9-fd94-83e9-ba1b-472420a5a36d
+                      - generic:
+                        - generic:
+                          - button "Pin Avaliação Da Estratégia Copy" [ref=f12e528] [cursor=pointer]
+                          - button "Open conversation options for Avaliação Da Estratégia Copy" [ref=f12e532] [cursor=pointer]
+                  - listitem:
+                    - link "Verificar Dados Analíticos do eSIM, Work":
+                      - /url: /c/6a9d5537-1ae4-83e9-b5a4-8841049b545c
+                      - generic: Verificar Dados Analíticos do eSIM
+                      - generic:
+                        - generic:
+                          - button "Pin Verificar Dados Analíticos do eSIM" [ref=f12e548] [cursor=pointer]
+                          - button "Open conversation options for Verificar Dados Analíticos do eSIM" [ref=f12e552] [cursor=pointer]
+                  - listitem:
+                    - link "Dramatic improvement ideas":
+                      - /url: /c/6a95d80d-18e4-83e9-98c3-5ff7f05930a5
+                      - generic:
+                        - generic:
+                          - button "Pin Dramatic improvement ideas" [ref=f12e566] [cursor=pointer]
+                          - button "Open conversation options for Dramatic improvement ideas" [ref=f12e570] [cursor=pointer]
+                  - listitem:
+                    - link "Compare DSP Terms":
+                      - /url: /c/6a9a37dc-c7ec-83e9-9765-0319b8068846
+                      - generic:
+                        - generic:
+                          - button "Pin Compare DSP Terms" [ref=f12e584] [cursor=pointer]
+                          - button "Open conversation options for Compare DSP Terms" [ref=f12e588] [cursor=pointer]
+                  - listitem:
+                    - link "Acne adulta repentina":
+                      - /url: /c/6a9a021c-8370-83e9-b529-88501c77acde
+                      - generic:
+                        - generic:
+                          - button "Pin Acne adulta repentina" [ref=f12e602] [cursor=pointer]
+                          - button "Open conversation options for Acne adulta repentina" [ref=f12e606] [cursor=pointer]
+                  - listitem:
+                    - link "Central Company Research":
+                      - /url: /c/6a979694-caf4-83e9-be27-b3a51c2de465
+                      - generic:
+                        - generic:
+                          - button "Pin Central Company Research" [ref=f12e620] [cursor=pointer]
+                          - button "Open conversation options for Central Company Research" [ref=f12e624] [cursor=pointer]
+                  - listitem:
+                    - link "Improve This":
+                      - /url: /c/6a9710cf-9638-83e9-865a-62adc8712a3b
+                      - generic:
+                        - generic:
+                          - button "Pin Improve This" [ref=f12e638] [cursor=pointer]
+                          - button "Open conversation options for Improve This" [ref=f12e642] [cursor=pointer]
+                  - listitem:
+                    - link "Escolha de ducha Leroy":
+                      - /url: /c/6a96b8d3-6630-83e9-a614-3b3fa882e05a
+                      - generic:
+                        - generic:
+                          - button "Pin Escolha de ducha Leroy" [ref=f12e656] [cursor=pointer]
+                          - button "Open conversation options for Escolha de ducha Leroy" [ref=f12e660] [cursor=pointer]
+                  - listitem:
+                    - link "Flipper Zero Algorithm Ideas":
+                      - /url: /c/6a964781-e3e0-83e9-b00f-666254eb599c
+                      - generic:
+                        - generic:
+                          - button "Pin Flipper Zero Algorithm Ideas" [ref=f12e674] [cursor=pointer]
+                          - button "Open conversation options for Flipper Zero Algorithm Ideas" [ref=f12e678] [cursor=pointer]
+                  - listitem:
+                    - link "Innovative FAT32 Reader, Work":
+                      - /url: /c/6a95d497-a4f0-83e9-8135-2c0a5442e7b3
+                      - generic: Innovative FAT32 Reader
+                      - generic:
+                        - generic:
+                          - button "Pin Innovative FAT32 Reader" [ref=f12e694] [cursor=pointer]
+                          - button "Open conversation options for Innovative FAT32 Reader" [ref=f12e698] [cursor=pointer]
+                  - listitem:
+                    - link "Comprar J Link oficial Brasil":
+                      - /url: /c/6a958821-e500-83e9-9833-8943c09627fd
+                      - generic:
+                        - generic:
+                          - button "Pin Comprar J Link oficial Brasil" [ref=f12e712] [cursor=pointer]
+                          - button "Open conversation options for Comprar J Link oficial Brasil" [ref=f12e716] [cursor=pointer]
+                  - listitem:
+                    - link "Complicações da sinusite crônica":
+                      - /url: /c/6a938d5b-b5fc-83e9-934a-994d3d46865f
+                      - generic:
+                        - generic:
+                          - button "Pin Complicações da sinusite crônica" [ref=f12e730] [cursor=pointer]
+                          - button "Open conversation options for Complicações da sinusite crônica" [ref=f12e734] [cursor=pointer]
+                  - listitem:
+                    - link "Write about Victoria Pedro":
+                      - /url: /c/6a8e1131-e268-83e9-bd20-c2e2f5b19c72
+                      - generic:
+                        - generic:
+                          - button "Pin Write about Victoria Pedro" [ref=f12e748] [cursor=pointer]
+                          - button "Open conversation options for Write about Victoria Pedro" [ref=f12e752] [cursor=pointer]
+                  - listitem:
+                    - link "Avaliar contrato societário":
+                      - /url: /c/6a8c2258-4710-83e9-bf9d-626916e4c5be
+                      - generic:
+                        - generic:
+                          - button "Pin Avaliar contrato societário" [ref=f12e766] [cursor=pointer]
+                          - button "Open conversation options for Avaliar contrato societário" [ref=f12e770] [cursor=pointer]
+                  - listitem:
+                    - link "Compare Csharp Rust Integration":
+                      - /url: /c/6a848507-b4a4-83e9-a56a-8c0297ecee40
+                      - generic:
+                        - generic:
+                          - button "Pin Compare Csharp Rust Integration" [ref=f12e784] [cursor=pointer]
+                          - button "Open conversation options for Compare Csharp Rust Integration" [ref=f12e788] [cursor=pointer]
+                  - listitem:
+                    - link "Parcelas atrasadas e ajuizamento":
+                      - /url: /c/6a8344b4-a218-83e9-bc33-117b4fb9c606
+                      - generic:
+                        - generic:
+                          - button "Pin Parcelas atrasadas e ajuizamento" [ref=f12e802] [cursor=pointer]
+                          - button "Open conversation options for Parcelas atrasadas e ajuizamento" [ref=f12e806] [cursor=pointer]
+                  - listitem:
+                    - link "Your simple weekly budget check-in":
+                      - /url: /c/6a4b1266-1aa4-83e9-b3b0-71dac057c397?messageId=finalAgentTurnStart
+                      - generic:
+                        - generic:
+                          - button "Pin Your simple weekly budget check-in" [ref=f12e820] [cursor=pointer]
+                          - button "Open conversation options for Your simple weekly budget check-in" [ref=f12e824] [cursor=pointer]
+                  - listitem:
+                    - link "Test request":
+                      - /url: /c/6a81c105-4db8-83e9-9b72-5056e0b60064
+                      - generic:
+                        - generic:
+                          - button "Pin Test request" [ref=f12e838] [cursor=pointer]
+                          - button "Open conversation options for Test request" [ref=f12e842] [cursor=pointer]
+                  - listitem:
+                    - link "Princeton ECE PhD Advice":
+                      - /url: /c/6a8113eb-f05c-83e9-ba08-90d4c8e006ac
+                      - generic:
+                        - generic:
+                          - button "Pin Princeton ECE PhD Advice" [ref=f12e856] [cursor=pointer]
+                          - button "Open conversation options for Princeton ECE PhD Advice" [ref=f12e860] [cursor=pointer]
+                  - listitem:
+                    - link "Vigoros Brain Test":
+                      - /url: /c/6a7a35e9-d8c8-83e9-b885-272e89261ace
+                      - generic:
+                        - generic:
+                          - button "Pin Vigoros Brain Test" [ref=f12e874] [cursor=pointer]
+                          - button "Open conversation options for Vigoros Brain Test" [ref=f12e878] [cursor=pointer]
+                  - listitem:
+                    - link "Deep research":
+                      - /url: /c/6a7fb110-4f14-83e9-ab79-ef0bdd998a8d
+                      - generic:
+                        - generic:
+                          - button "Pin Deep research" [ref=f12e892] [cursor=pointer]
+                          - button "Open conversation options for Deep research" [ref=f12e896] [cursor=pointer]
+                  - listitem:
+                    - link "Teste vigoros-brain, Work":
+                      - /url: /c/6a7e2be1-3f34-83e9-9ff7-147e3e1fd601
+                      - generic: Teste vigoros-brain
+                      - generic:
+                        - generic:
+                          - button "Pin Teste vigoros-brain" [ref=f12e912] [cursor=pointer]
+                          - button "Open conversation options for Teste vigoros-brain" [ref=f12e916] [cursor=pointer]
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - 'button "Open Work usage details. Weekly limit: 1% remaining."'
+                    - generic:
+                      - generic:
+                        - generic:
+                          - heading [level=2]: Work usage
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - button "Weekly limit" [ref=f12e1181]
+                              - generic: 1% remaining
+                    - button
+              - button "Dionisio Agourakis Personal account, open profile menu":
+                - generic:
+                  - generic:
+                    - generic:
+                      - img "Profile image"
+                  - generic:
+                    - generic: Dionisio Agourakis
+                    - generic: Personal account
+                - button "Download apps" [ref=f12e87] [cursor=pointer]
+    - generic [ref=f12e91]:
+      - main [ref=f12e94]:
+        - generic [ref=f12e96]:
+          - navigation "Site breadcrumb" [ref=f12e99]:
+            - link "Sites" [ref=f12e100] [cursor=pointer]:
+              - /url: /sites
+          - generic [ref=f12e106]:
+            - region "LEIO" [ref=f12e942]:
+              - generic [ref=f12e943]:
+                - generic [ref=f12e948]:
+                  - generic [ref=f12e949]:
+                    - heading "LEIO" [level=1] [ref=f12e950]
+                    - generic [ref=f12e952]:
+                      - status
+                  - paragraph [ref=f12e953]: leio.getjai.com
+                - generic [ref=f12e956]:
+                  - link "Visit" [ref=f12e957] [cursor=pointer]:
+                    - /url: https://leio.getjai.com
+                  - button "Edit" [ref=f12e961] [cursor=pointer]
+            - navigation "Site details" [ref=f12e116]:
+              - link "Settings" [ref=f12e117] [cursor=pointer]:
+                - /url: /sites/appgprj_6a50286c14308191ad438f9f8da5f353/settings
+              - link "Analytics" [ref=f12e119] [cursor=pointer]:
+                - /url: /sites/appgprj_6a50286c14308191ad438f9f8da5f353/analytics
+            - generic [ref=f12e965]:
+              - generic [ref=f12e966]:
+                - heading "General" [level=2] [ref=f12e969]
+                - generic [ref=f12e970]:
+                  - generic [ref=f12e972]:
+                    - generic [ref=f12e973]:
+                      - generic [ref=f12e974]: Name
+                      - generic [ref=f12e975]: Name for your site
+                    - textbox "Site title" [ref=f12e979]: LEIO
+                  - generic [ref=f12e981]:
+                    - generic [ref=f12e982]:
+                      - generic [ref=f12e983]: URL
+                      - generic [ref=f12e984]: Web address
+                    - generic [ref=f12e986]:
+                      - generic "leio-site.josaum.chatgpt.site" [ref=f12e987]
+                      - button "Change" [ref=f12e988] [cursor=pointer]
+                  - group "Custom domain" [ref=f12e990]:
+                    - status [ref=f12e991]
+                    - generic [ref=f12e993]:
+                      - generic [ref=f12e994]: Custom domain
+                      - generic [ref=f12e995]:
+                        - generic [ref=f12e996]: leio.getjai.com
+                        - button "Remove leio.getjai.com" [ref=f12e999] [cursor=pointer]
+                  - generic [ref=f12e1004]:
+                    - generic [ref=f12e1005]:
+                      - generic [ref=f12e1006]: Sharing
+                      - generic [ref=f12e1007]: Who can view your site
+                    - generic [ref=f12e1008]:
+                      - generic [ref=f12e1009]: Everyone
+                      - button "Manage" [ref=f12e1013] [cursor=pointer]
+              - generic [ref=f12e1017]:
+                - generic [ref=f12e1018]:
+                  - heading "Environment variables" [level=2] [ref=f12e1019]
+                  - generic [ref=f12e1020]: Add API keys and other environment variables your site needs
+                - button "Add variable" [ref=f12e1022] [cursor=pointer]
+              - generic [ref=f12e1026]:
+                - heading "Danger zone" [level=2] [ref=f12e1029]
+                - generic [ref=f12e1032]:
+                  - generic [ref=f12e1033]:
+                    - generic [ref=f12e1034]: Delete site
+                    - generic [ref=f12e1035]: Permanently delete this site
+                  - button "Delete site" [ref=f12e1036] [cursor=pointer]
+      - dialog "Preview LEIO" [ref=f12e1090]:
+        - banner [ref=f12e1091]:
+          - button "Close fullscreen view" [ref=f12e1092] [cursor=pointer]
+          - generic [ref=f12e1095]:
+            - generic [ref=f12e1096]: LEIO
+            - generic [ref=f12e1097]:
+              - generic [ref=f12e1100]: leio.getjai.com
+              - generic [ref=f12e1101]: Public
+          - generic [ref=f12e1102]:
+            - button "More actions" [ref=f12e1103] [cursor=pointer]
+            - button "Screenshot" [ref=f12e1107] [cursor=pointer]
+            - link "Visit LEIO in a new tab" [ref=f12e1111] [cursor=pointer]:
+              - /url: https://leio.getjai.com
+              - generic [ref=f12e1112]: Visit
+            - button "Share LEIO" [ref=f12e1116] [cursor=pointer]:
+              - generic [ref=f12e1117]: Share
+        - generic [ref=f12e1121]:
+          - iframe [ref=f12e1288]:
+            - iframe [ref=f55e2]:
+              - main [ref=f56e2]:
+                - generic [ref=f56e3]:
+                  - link "LEIO Code home" [ref=f56e4] [cursor=pointer]:
+                    - /url: "#top"
+                    - generic [ref=f56e5]: L/
+                    - text: LEIO
+                    - generic [ref=f56e6]: CODE
+                  - navigation "Primary navigation" [ref=f56e7]:
+                    - button "Product" [ref=f56e8] [cursor=pointer]
+                    - button "How it works" [ref=f56e9] [cursor=pointer]
+                    - button "Capabilities" [ref=f56e10] [cursor=pointer]
+                    - button "Trust" [ref=f56e11] [cursor=pointer]
+                    - button "Developers" [ref=f56e12] [cursor=pointer]
+                    - link "Sign in" [ref=f56e13] [cursor=pointer]:
+                      - /url: https://chatgpt.com
+                    - button "See the workflow" [ref=f56e14] [cursor=pointer]
+                - generic [ref=f56e15]:
+                  - generic [ref=f56e16]:
+                    - paragraph [ref=f56e17]: LEIO Code 2.6.2 · Local stdio MCP
+                    - heading "Repository context that remembers where your agent is." [level=1] [ref=f56e18]
+                    - paragraph [ref=f56e19]: The local-first LEIO Code gives Codex and other local agents 18 MCP tools, bounded task context, and stateful graph, FCA, and heading navigation. Start with a task and an absolute repository root; continue through exact evidence with a session-pinned cursor.
+                    - generic [ref=f56e20]:
+                      - button "Set up local LEIO" [ref=f56e21] [cursor=pointer]
+                      - button "See stateful navigation" [ref=f56e22] [cursor=pointer]
+                    - paragraph [ref=f56e23]: 18 local tools Persistent session cursor Inspectable evidence
+                  - generic "Synthetic local LEIO navigation example" [ref=f56e26]:
+                    - generic [ref=f56e27]:
+                      - generic [ref=f56e28]: SYNTHETIC EXAMPLE / LOCAL STDIO
+                      - generic [ref=f56e29]: SESSION PINNED
+                    - paragraph [ref=f56e31]:
+                      - code [ref=f56e32]: leio_code_context
+                      - text: "task: “Change token validation safely”repo_root:"
+                      - code [ref=f56e33]: /workspace/example-service
+                      - code [ref=f56e34]: leio_code_graph(repo_root="/workspace/example-service", kind="symbols-in", needle="src/auth.rs")
+                      - text: Copy a returned stable symbol URN; the synthetic file may contain several definitions.
+                    - generic [ref=f56e35]:
+                      - generic [ref=f56e36]:
+                        - strong [ref=f56e37]: "18"
+                        - generic [ref=f56e38]: local MCP tools
+                      - generic [ref=f56e39]:
+                        - strong [ref=f56e40]: "1"
+                        - generic [ref=f56e41]: named session
+                      - generic [ref=f56e42]:
+                        - strong [ref=f56e43]: "6"
+                        - generic [ref=f56e44]: walk candidates
+                      - generic [ref=f56e45]:
+                        - strong [ref=f56e46]: "0"
+                        - generic [ref=f56e47]: selected result
+                      - generic [ref=f56e48]:
+                        - strong [ref=f56e49]: "3"
+                        - generic [ref=f56e50]: limitations
+                    - generic [ref=f56e51]:
+                      - generic [ref=f56e52]:
+                        - generic [ref=f56e53]: GO TO SYMBOL
+                        - code [ref=f56e54]: leio_code_nav(repo_root="/workspace/example-service", session="token-change", kind="goto", needle="<paste returned stable symbol URN>")
+                        - generic [ref=f56e55]: use the value returned by symbols-in · no URN is fabricated
+                      - generic [ref=f56e56]:
+                        - generic [ref=f56e57]: LIST CALLEES
+                        - code [ref=f56e58]: leio_code_nav(repo_root="/workspace/example-service", session="token-change", kind="callees")
+                        - generic [ref=f56e59]: returns choices · cursor does not move
+                      - generic [ref=f56e60]:
+                        - generic [ref=f56e61]: SELECT RESULT
+                        - code [ref=f56e62]: leio_code_nav(repo_root="/workspace/example-service", session="token-change", kind="select", index=0)
+                        - generic [ref=f56e63]: only when a result exists · cursor moves
+                      - generic [ref=f56e64]:
+                        - generic [ref=f56e65]: ORIENT
+                        - code [ref=f56e66]: leio_code_nav(repo_root="/workspace/example-service", session="token-change", kind="here")leio_code_nav(repo_root="/workspace/example-service", session="token-change", kind="back")leio_code_nav(repo_root="/workspace/example-service", session="token-change", kind="forward")
+                        - generic [ref=f56e67]: same session · inspect and restore cursor history
+                    - generic [ref=f56e68]:
+                      - text: NAVIGATION RULE
+                      - paragraph [ref=f56e69]: Listing callees or neighbors never moves the cursor. If a result exists, select its zero-based index before walking again; use here, back, and forward to inspect session state.
+                - generic [ref=f56e70]:
+                  - generic [ref=f56e71]:
+                    - paragraph [ref=f56e72]: Local product surface
+                    - heading "Eighteen tools around one persistent investigation." [level=2] [ref=f56e73]
+                  - table "Local LEIO product capabilities" [ref=f56e74]:
+                    - generic [ref=f56e75]:
+                      - generic [ref=f56e76]: Local stdio capability
+                      - generic [ref=f56e77]: What it gives the agent
+                    - generic [ref=f56e78]:
+                      - generic [ref=f56e79]: Bounded context
+                      - generic [ref=f56e80]: Task-specific files, symbols, checks, identity, provenance, and limitations
+                    - generic [ref=f56e81]:
+                      - generic [ref=f56e82]: Stateful navigation
+                      - generic [ref=f56e83]: A session-pinned cursor across graph, FCA, and heading walks
+                    - generic [ref=f56e84]:
+                      - generic [ref=f56e85]: Candidate selection
+                      - generic [ref=f56e86]: List without moving; select a zero-based result before continuing
+                    - generic [ref=f56e87]:
+                      - generic [ref=f56e88]: Cursor history
+                      - generic [ref=f56e89]: Inspect here and move back or forward within the same session
+                    - generic [ref=f56e90]:
+                      - generic [ref=f56e91]: Exact evidence
+                      - generic [ref=f56e92]: Source locations, stable symbol identities, observed calls, and imports
+                    - generic [ref=f56e93]:
+                      - generic [ref=f56e94]: Focused checks
+                      - generic [ref=f56e95]: Supported repository checks chosen for the current task
+                  - paragraph [ref=f56e96]: Local LEIO is the primary product for Codex and local agents. The hosted HTTP Apps SDK integration is optional and separate.
+                - generic [ref=f56e97]:
+                  - generic [ref=f56e98]:
+                    - paragraph [ref=f56e99]: Primary local workflow
+                    - heading "Context first. Then a stateful evidence walk." [level=2] [ref=f56e100]
+                  - generic [ref=f56e101]:
+                    - article [ref=f56e102]:
+                      - generic [ref=f56e103]: 01 / PROVIDE
+                      - heading "State the task and absolute repository root." [level=3] [ref=f56e104]
+                      - paragraph [ref=f56e105]:
+                        - text: Call
+                        - code [ref=f56e106]: leio_code_context(task, repo_root)
+                        - text: . The absolute root makes repository scope explicit and returns a bounded context bundle.
+                    - article [ref=f56e107]:
+                      - generic [ref=f56e108]: 02 / INSPECT
+                      - heading "Review identity, evidence, and limits." [level=3] [ref=f56e109]
+                      - paragraph [ref=f56e110]: Check provider and CLI identity, index repository and age, observed indexed languages, ranked candidates, local JSON-LD provenance, and explicit limitations.
+                    - article [ref=f56e111]:
+                      - generic [ref=f56e112]: 03 / NAVIGATE
+                      - heading "Pin graph, FCA, or heading navigation to a session." [level=3] [ref=f56e113]
+                      - paragraph [ref=f56e114]:
+                        - text: Every
+                        - code [ref=f56e115]: leio_code_nav
+                        - text: call includes the absolute
+                        - code [ref=f56e116]: repo_root
+                        - text: and an explicit session. A neighbors call lists results without moving the cursor.
+                    - article [ref=f56e117]:
+                      - generic [ref=f56e118]: 04 / SELECT + CHECK
+                      - heading "If a result exists, select its zero-based index." [level=3] [ref=f56e119]
+                      - paragraph [ref=f56e120]: Then continue walking or use here, back, and forward within the same session. The host agent inspects source, makes authorized edits, and runs focused verification.
+                  - button "Explore the local surfaces →" [ref=f56e121] [cursor=pointer]
+                - generic [ref=f56e122]:
+                  - generic [ref=f56e123]:
+                    - paragraph [ref=f56e124]: 18-tool local MCP
+                    - heading "Context, stateful navigation, evidence, and checks." [level=2] [ref=f56e125]
+                    - paragraph [ref=f56e126]: The tools form a local repository-intelligence surface. Availability for a given repository is reported by capabilities; status is reserved for health diagnostics.
+                  - generic [ref=f56e127]:
+                    - tablist "LEIO local capabilities" [ref=f56e128]:
+                      - tab "01 Context Prepare a bounded task bundle." [selected] [ref=f56e129] [cursor=pointer]:
+                        - generic [ref=f56e130]: "01"
+                        - generic [ref=f56e131]: Context
+                        - generic [ref=f56e132]: Prepare a bounded task bundle.
+                      - tab "02 Navigate Keep your place across questions." [ref=f56e133] [cursor=pointer]:
+                        - generic [ref=f56e134]: "02"
+                        - generic [ref=f56e135]: Navigate
+                        - generic [ref=f56e136]: Keep your place across questions.
+                      - tab "03 Graph Walk observed calls and imports." [ref=f56e137] [cursor=pointer]:
+                        - generic [ref=f56e138]: "03"
+                        - generic [ref=f56e139]: Graph
+                        - generic [ref=f56e140]: Walk observed calls and imports.
+                      - tab "04 FCA Explore shared attributes carefully." [ref=f56e141] [cursor=pointer]:
+                        - generic [ref=f56e142]: "04"
+                        - generic [ref=f56e143]: FCA
+                        - generic [ref=f56e144]: Explore shared attributes carefully.
+                      - tab "05 Check Run focused repository checks." [ref=f56e145] [cursor=pointer]:
+                        - generic [ref=f56e146]: "05"
+                        - generic [ref=f56e147]: Check
+                        - generic [ref=f56e148]: Run focused repository checks.
+                    - article [ref=f56e149]:
+                      - paragraph [ref=f56e150]: Context
+                      - heading "Prepare a bounded task bundle." [level=3] [ref=f56e151]
+                      - paragraph [ref=f56e152]: Provide a task and absolute repository root. LEIO returns ranked files, symbols, checks, repository identity, provenance, and explicit limitations for inspection.
+                      - generic [ref=f56e153]:
+                        - generic [ref=f56e154]: SYNTHETIC EXAMPLE
+                        - code [ref=f56e155]: Inspect the returned evidence before relying on it.
+                      - code [ref=f56e156]: leio_code_context
+                - generic [ref=f56e157]:
+                  - generic [ref=f56e158]:
+                    - paragraph [ref=f56e159]: Context identity
+                    - heading "Know which index answered—and what it cannot prove." [level=2] [ref=f56e160]
+                    - paragraph [ref=f56e161]: LEIO reports provider and CLI identity, index repository and age, observed indexed languages, and explicit limitations so the agent can interpret a result before relying on it.
+                    - paragraph [ref=f56e162]: Index age describes the index. It does not prove that the working tree or remote source is fresh.
+                  - generic "Synthetic context identity example" [ref=f56e163]:
+                    - generic [ref=f56e164]: SYNTHETIC EXAMPLE
+                    - generic [ref=f56e165]:
+                      - generic [ref=f56e166]: PROVIDER / CLI
+                      - strong [ref=f56e167]: local / leio-code
+                    - generic [ref=f56e168]:
+                      - generic [ref=f56e169]: INDEX
+                      - paragraph [ref=f56e170]: "/workspace/example-serviceage: 14 minutesobserved: TypeScript, SQL"
+                    - generic [ref=f56e171]:
+                      - generic [ref=f56e172]: LIMITATIONS
+                      - paragraph [ref=f56e173]: "Excluded-file count: unknownSource freshness: not establishedCandidate coverage: not guaranteed"
+                    - generic [ref=f56e174]: Illustrative metadata only. Values are not production measurements.
+                - generic [ref=f56e175]:
+                  - generic [ref=f56e176]:
+                    - paragraph [ref=f56e177]: Stateful navigation
+                    - heading "Keep one cursor across graph, FCA, and headings." [level=2] [ref=f56e178]
+                    - paragraph [ref=f56e179]: A named session preserves navigation history. Candidate lists are previews; selecting a result is the explicit move.
+                  - generic "Synthetic stateful navigation sequence" [ref=f56e180]:
+                    - generic [ref=f56e181]:
+                      - generic [ref=f56e182]: SYNTHETIC EXAMPLE / EVERY CALL USES THE SAME ROOT + SESSION
+                      - strong [ref=f56e183]: repo_root="/workspace/example-service" · session="token-change"
+                    - generic [ref=f56e184]:
+                      - generic [ref=f56e185]: 1 · FIND SYMBOLS IN SYNTHETIC FILE
+                      - code [ref=f56e186]: leio_code_graph(repo_root="/workspace/example-service", kind="symbols-in", needle="src/auth.rs")
+                      - paragraph [ref=f56e187]: Inspect the exact synthetic file. Several definitions may be returned.
+                    - generic [ref=f56e188]:
+                      - generic [ref=f56e189]: 2 · GO TO A RETURNED SYMBOL
+                      - code [ref=f56e190]: leio_code_nav(repo_root="/workspace/example-service", session="token-change", kind="goto", needle="<paste returned stable symbol URN>")
+                      - paragraph [ref=f56e191]: Copy the stable URN from the response; do not invent one.
+                    - generic [ref=f56e192]:
+                      - generic [ref=f56e193]: 3 · LIST CALLEES
+                      - code [ref=f56e194]: leio_code_nav(repo_root="/workspace/example-service", session="token-change", kind="callees")
+                      - paragraph [ref=f56e195]: Inspect returned results. Cursor stays put.
+                    - generic [ref=f56e196]:
+                      - generic [ref=f56e197]: 4 · SELECT IF PRESENT
+                      - code [ref=f56e198]: leio_code_nav(repo_root="/workspace/example-service", session="token-change", kind="select", index=0)
+                      - paragraph [ref=f56e199]: Call only if result 0 exists. Cursor moves.
+                    - generic [ref=f56e200]:
+                      - generic [ref=f56e201]: 5 · ORIENT
+                      - code [ref=f56e202]: leio_code_nav(repo_root="/workspace/example-service", session="token-change", kind="here")leio_code_nav(repo_root="/workspace/example-service", session="token-change", kind="back")leio_code_nav(repo_root="/workspace/example-service", session="token-change", kind="forward")
+                  - paragraph [ref=f56e203]: Call and import evidence remains distinct from FCA shared-attribute similarity. FCA does not establish runtime coupling.
+                - generic [ref=f56e204]:
+                  - generic [ref=f56e205]:
+                    - paragraph [ref=f56e206]: Evidence semantics
+                    - heading "Observed relationships and similarity answer different questions." [level=2] [ref=f56e207]
+                    - paragraph [ref=f56e208]: Exact-file graph navigation follows supported calls, callers, callees, imports, importers, and membership evidence without inventing symbol identifiers.
+                    - paragraph [ref=f56e209]: FCA groups entities by shared attributes. It can suggest useful neighbors, but cannot by itself prove a call path, import edge, dependency, complete runtime trace, working application, or deployment.
+                  - generic "Synthetic evidence interpretation example" [ref=f56e210]:
+                    - generic [ref=f56e211]:
+                      - generic [ref=f56e212]: SYNTHETIC EXAMPLE / INTERPRETATION
+                      - generic [ref=f56e213]: INSPECT
+                    - generic [ref=f56e214]:
+                      - generic [ref=f56e215]: GRAPH
+                      - paragraph [ref=f56e216]: Observed call or import evidence from an exact file or selected candidate.
+                    - generic [ref=f56e217]:
+                      - generic [ref=f56e218]: FCA
+                      - paragraph [ref=f56e219]: Shared attributes that may guide discovery; runtime coupling is not established.
+                    - generic [ref=f56e220]:
+                      - generic [ref=f56e221]: NEXT ACTION
+                      - paragraph [ref=f56e222]: Open the cited source, verify the relationship, then run focused checks.
+                - generic [ref=f56e223]:
+                  - generic [ref=f56e224]:
+                    - paragraph [ref=f56e225]: Official source installation
+                    - heading "Install with one prompt." [level=2] [ref=f56e226]
+                    - paragraph [ref=f56e227]: Paste this into a local coding agent with terminal access, such as Codex or Claude Code. It asks the agent to inspect the official installer, preserve your other MCP entries, build locked source, and verify the real local stdio connection.
+                    - paragraph [ref=f56e228]: A browser-only chat cannot install software on your machine. Source installation requires Git, C/C++ build tools, stable Rust, and Node.js 22+ with npm, and can take several minutes. This is a source download and build—not a prebuilt binary or npm-published package.
+                    - generic [ref=f56e229]:
+                      - link "Official source ↗" [ref=f56e230] [cursor=pointer]:
+                        - /url: https://github.com/josaum/leio-code
+                      - link "Installation guide ↗" [ref=f56e231] [cursor=pointer]:
+                        - /url: https://github.com/josaum/leio-code/blob/main/docs/install-stdio.md
+                      - link "Download source ZIP ↓" [ref=f56e232] [cursor=pointer]:
+                        - /url: https://github.com/josaum/leio-code/archive/refs/heads/main.zip
+                    - paragraph [ref=f56e233]:
+                      - text: Licensed
+                      - link "MIT" [ref=f56e234] [cursor=pointer]:
+                        - /url: https://github.com/josaum/leio-code/blob/main/LICENSE-MIT
+                      - text: OR
+                      - link "Apache-2.0" [ref=f56e235] [cursor=pointer]:
+                        - /url: https://github.com/josaum/leio-code/blob/main/LICENSE-APACHE
+                      - text: .
+                  - generic [ref=f56e236]:
+                    - text: SOURCE INSTALL PROMPT
+                    - paragraph [ref=f56e237]: Install the official LEIO Code local stdio MCP from https://github.com/josaum/leio-code by following docs/install-stdio.md. Inspect the installation script, check prerequisites, build the locked source, and verify the actual MCP handshake, 18 tools, context and session navigation. Register only the leio-code stdio server in this host, preserving other MCP entries. Use absolute paths and the installer output. Do not enable the HTTP integration. Tell me whether a host reconnect is required and report the installed revision and verification results.
+                    - generic [ref=f56e238]:
+                      - button "Copy prompt" [ref=f56e239] [cursor=pointer]
+                      - status [ref=f56e240]: Copies the exact prompt above.
+                - generic [ref=f56e241]:
+                  - generic [ref=f56e242]:
+                    - paragraph [ref=f56e243]: Developer material
+                    - heading "Local stdio first. Hosted HTTP when ChatGPT needs it." [level=2] [ref=f56e244]
+                    - paragraph [ref=f56e245]: The two integrations are alternatives for different hosts. Local agents do not need both, and the hosted surface does not inherit the local tool count or its stateful cursor model.
+                  - generic [ref=f56e246]:
+                    - article [ref=f56e247]:
+                      - generic [ref=f56e248]: PRIMARY · 18 LOCAL MCP TOOLS
+                      - heading "Local leio-code stdio" [level=3] [ref=f56e249]
+                      - paragraph [ref=f56e250]: Recommended for Codex and local agents. Prepare context once, then keep navigation pinned to an explicit session.
+                      - generic [ref=f56e251]:
+                        - generic [ref=f56e252]: SYNTHETIC EXAMPLE / CONTEXT
+                        - code [ref=f56e253]: leio_code_context( task="Change token validation safely", repo_root="/workspace/example-service")
+                      - generic [ref=f56e254]:
+                        - generic [ref=f56e255]: SYNTHETIC EXAMPLE / STATEFUL NAVIGATION
+                        - code [ref=f56e256]: leio_code_graph( repo_root="/workspace/example-service", kind="symbols-in", needle="src/auth.rs")leio_code_nav( repo_root="/workspace/example-service", session="token-change", kind="goto", needle="<paste returned stable symbol URN>")leio_code_nav( repo_root="/workspace/example-service", session="token-change", kind="callees")leio_code_nav( repo_root="/workspace/example-service", session="token-change", kind="select", index=0)
+                        - paragraph [ref=f56e257]: A file may return several definitions. Copy a returned stable symbol URN, list candidates without moving, and select index 0 only if that result exists.
+                      - paragraph [ref=f56e258]:
+                        - text: Use
+                        - code [ref=f56e259]: status
+                        - text: for health diagnostics and
+                        - code [ref=f56e260]: capabilities
+                        - text: to choose supported operations. Neither is a mandatory startup call before every edit.
+                    - article [ref=f56e261]:
+                      - generic [ref=f56e262]: SECONDARY · BROWSER + HOSTED SURFACES
+                      - heading "Native WebMCP and optional HTTP" [level=3] [ref=f56e263]
+                      - paragraph [ref=f56e264]:
+                        - text: When
+                        - code [ref=f56e265]: document.modelContext
+                        - text: is available and browser policy permits, this page registers the read-only tool
+                        - code [ref=f56e266]: leio.describe_semantics
+                        - text: . It returns the site graph and referenced TBox as JSON-LD. The separate HTTP Apps SDK surface remains optional for ChatGPT and uses stateless graph queries.
+                      - generic [ref=f56e267]:
+                        - generic [ref=f56e268]: MACHINE-READABLE DISCOVERY
+                        - paragraph [ref=f56e269]:
+                          - link "RDF 1.2 site graph ↗" [ref=f56e270] [cursor=pointer]:
+                            - /url: /.well-known/webmcp
+                          - link "LEIO TBox ↗" [ref=f56e271] [cursor=pointer]:
+                            - /url: /.well-known/leio-tbox
+                      - link "View developer reference ↗" [ref=f56e272] [cursor=pointer]:
+                        - /url: https://leio-code.getjai.com/support
+                  - generic [ref=f56e273]:
+                    - generic [ref=f56e274]:
+                      - paragraph [ref=f56e275]:
+                        - generic [ref=f56e276]: "01"
+                        - strong [ref=f56e277]: Provide
+                        - generic [ref=f56e278]: Task + absolute repository root
+                      - paragraph [ref=f56e279]:
+                        - generic [ref=f56e280]: "02"
+                        - strong [ref=f56e281]: Inspect
+                        - generic [ref=f56e282]: Identity, ranked evidence, provenance, and limitations
+                      - paragraph [ref=f56e283]:
+                        - generic [ref=f56e284]: "03"
+                        - strong [ref=f56e285]: Navigate
+                        - generic [ref=f56e286]: Explicit session on every leio_code_nav call
+                      - paragraph [ref=f56e287]:
+                        - generic [ref=f56e288]: "04"
+                        - strong [ref=f56e289]: Select
+                        - generic [ref=f56e290]: Zero-based candidate before the next walk
+                      - paragraph [ref=f56e291]:
+                        - generic [ref=f56e292]: "05"
+                        - strong [ref=f56e293]: Orient
+                        - generic [ref=f56e294]: here, back, and forward within the session
+                      - paragraph [ref=f56e295]:
+                        - generic [ref=f56e296]: "06"
+                        - strong [ref=f56e297]: Verify
+                        - generic [ref=f56e298]: Authorized edits and focused checks remain with the host agent
+                    - generic [ref=f56e299]:
+                      - text: EXECUTION BOUNDARY
+                      - heading "Repository evidence is context, not authority." [level=3] [ref=f56e300]
+                      - paragraph [ref=f56e301]: LEIO does not grant permission to execute, edit, or deploy. The host agent remains responsible for authorization and verification.
+                - generic [ref=f56e302]:
+                  - generic [ref=f56e303]:
+                    - paragraph [ref=f56e304]: Trust and context
+                    - heading "Useful evidence, with concise limits attached." [level=2] [ref=f56e305]
+                  - generic [ref=f56e306]:
+                    - article [ref=f56e307]:
+                      - heading "Bounded retrieval" [level=3] [ref=f56e308]
+                      - paragraph [ref=f56e309]: Ranked candidates require inspection. They are not calibrated confidence or a guarantee that every relevant file was found.
+                    - article [ref=f56e310]:
+                      - heading "Local provenance" [level=3] [ref=f56e311]
+                      - paragraph [ref=f56e312]: Paths, locations, observed relationships, and local JSON-LD provenance support review.
+                    - article [ref=f56e313]:
+                      - heading "Freshness stated carefully" [level=3] [ref=f56e314]
+                      - paragraph [ref=f56e315]: Index repository and age are reported. Index age alone does not establish source freshness.
+                    - article [ref=f56e316]:
+                      - heading "Unknown stays unknown" [level=3] [ref=f56e317]
+                      - paragraph [ref=f56e318]: If excluded-file counts are unavailable, they remain unknown rather than estimated.
+                    - article [ref=f56e319]:
+                      - heading "Graph and FCA stay distinct" [level=3] [ref=f56e320]
+                      - paragraph [ref=f56e321]: Observed calls and imports are not conflated with FCA shared-attribute similarity.
+                    - article [ref=f56e322]:
+                      - heading "Authority stays with the host" [level=3] [ref=f56e323]
+                      - paragraph [ref=f56e324]: The host agent performs approved edits and checks. A graph or passing build alone is not proof of runtime behavior or deployment.
+                - generic [ref=f56e325]:
+                  - generic [ref=f56e326]:
+                    - paragraph [ref=f56e327]: Use cases
+                    - heading "Built for the moments when guessing is expensive." [level=2] [ref=f56e328]
+                  - generic [ref=f56e329]:
+                    - article [ref=f56e330]:
+                      - generic [ref=f56e331]: "01"
+                      - heading "Before an edit" [level=3] [ref=f56e332]
+                      - paragraph [ref=f56e333]: Bound the task, inspect likely owners, and identify tests and constraints.
+                    - article [ref=f56e334]:
+                      - generic [ref=f56e335]: "02"
+                      - heading "During code review" [level=3] [ref=f56e336]
+                      - paragraph [ref=f56e337]: Follow exact file, symbol, call, and import evidence beyond the visible diff.
+                    - article [ref=f56e338]:
+                      - generic [ref=f56e339]: "03"
+                      - heading "During navigation" [level=3] [ref=f56e340]
+                      - paragraph [ref=f56e341]: Keep a session-pinned cursor and return with here, back, or forward.
+                    - article [ref=f56e342]:
+                      - generic [ref=f56e343]: "04"
+                      - heading "During incidents" [level=3] [ref=f56e344]
+                      - paragraph [ref=f56e345]: Use health, index, language, and limitation metadata to interpret evidence.
+                    - article [ref=f56e346]:
+                      - generic [ref=f56e347]: "05"
+                      - heading "During onboarding" [level=3] [ref=f56e348]
+                      - paragraph [ref=f56e349]: Ask evidence-backed questions without pretending the index replaces source inspection.
+                    - article [ref=f56e350]:
+                      - generic [ref=f56e351]: "06"
+                      - heading "Across agent hosts" [level=3] [ref=f56e352]
+                      - paragraph [ref=f56e353]: Use local stdio for stateful navigation; use hosted HTTP only when ChatGPT needs it.
+                - generic [ref=f56e354]:
+                  - paragraph [ref=f56e355]: LEIO Code 2.6.2 · Local stdio
+                  - heading "Eighteen tools. One persistent line of investigation." [level=2] [ref=f56e356]
+                  - paragraph [ref=f56e357]: Start with a bounded context bundle, keep navigation pinned to a session, and finish with inspected evidence and focused checks.
+                  - generic [ref=f56e358]:
+                    - button "View local setup" [ref=f56e359] [cursor=pointer]
+                    - button "Explore capabilities" [ref=f56e360] [cursor=pointer]
+                  - link "Read the developer reference ↗" [ref=f56e361] [cursor=pointer]:
+                    - /url: https://leio-code.getjai.com/support
+                - generic [ref=f56e362]:
+                  - link "L/ LEIO CODE" [ref=f56e363] [cursor=pointer]:
+                    - /url: "#top"
+                    - generic [ref=f56e364]: L/
+                    - text: LEIO
+                    - generic [ref=f56e365]: CODE
+                  - paragraph [ref=f56e366]: Stateful repository context for local agents
+                  - paragraph [ref=f56e367]: JAI · getjai.com · © 2026
+          - generic [ref=f12e1130]:
+            - generic [ref=f12e1135]:
+              - button "Add files and more" [ref=f12e1138] [cursor=pointer]
+              - textbox "Describe website edits" [active] [ref=f12e1141]:
+                - paragraph [ref=f12e1159]: Edit website…
+              - generic [ref=f12e1144]:
+                - button "Start dictation" [ref=f12e1146] [cursor=pointer]
+                - button "Stop answering" [ref=f12e1160] [cursor=pointer]
+              - generic [ref=f12e1163]: Thinking
+            - button [ref=f12e1153]
+            - button [ref=f12e1154]
+            - button [ref=f12e1155]
+            - generic [ref=f12e1156]: ChatGPT can make mistakes. Check important info.
+  - alert [ref=f12e151]
+  - status [ref=f12e152]

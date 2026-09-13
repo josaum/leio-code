@@ -46,6 +46,3 @@ benchmarks/experiments/
 
 # Local LEIO trio snapshots and reports (generated verification evidence).
 .trio-runs/
-
-# Local browser automation traces are never source artifacts.
-.playwright-mcp/

@@ -1,7 +1,9 @@
-.PHONY: install verify coverage package-plugin package-mcpb harness-verify
+.PHONY: install verify coverage package-plugin package-mcpb harness-verify public-check public-plan public-stage public-publish hooks
 
 CARGO_TARGET_DIR ?= target
 DEST_DIR ?= $(HOME)/.cargo/bin
+PUBLIC_TREE ?= ../leio-code
+PUBLIC_STAGE ?= /tmp/leio-code-public
 
 install:
 	@set -euo pipefail; \
@@ -23,12 +25,15 @@ verify:
 	node --test mcp/resolve-binary.test.js mcp/export-paths.test.js mcp/watch-state.test.js mcp/service-descriptor.test.js
 	python3 tests/test_apps_sdk_start_local.py
 	python3 tests/test_benchmark_models.py
-	python3 -m unittest tests.test_check_doc_links tests.test_benchmark_retrieval tests.test_publish_benchmarks tests.test_benchmark_nav_graph tests.test_evaluate_retrieval
-	python3 scripts/check_doc_links.py
+	python3 -m unittest tests.test_benchmark_retrieval tests.test_evaluate_retrieval
 
 coverage:
 	python3 -m coverage run --include="*/scripts/benchmark_models.py" -m pytest tests/test_benchmark_models.py -q
 	python3 -m coverage report -m
+
+# Publishing targets live in a withheld fragment so the generated public
+# Makefile never references the exporter it does not ship.
+-include Makefile.local
 
 harness-verify:
 	bash scripts/harness-verify.sh

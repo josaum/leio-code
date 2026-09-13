@@ -60,6 +60,13 @@ docker pull jquant/leio-code:latest   # multi-arch when published that way
 9. Tag `leio-code-vX.Y.Z` (or monorepo release process) and attach release notes pointing at this checklist + Docker image digest when published.
 10. Do **not** mark ChatGPT store listing ready unless OAuth issuer, legal env vars (`LEIO_APPS_SDK_PUBLISHER_NAME`, company URL, support/privacy/security emails, support hours), and hosted public URL are configured with `legal.configured=true` on `/health` (same `legal` object as `GET /`). Canonical public box is GCP: [DEPLOY-GCP.md](DEPLOY-GCP.md). Fly Apps SDK is legacy; Keycloak issuer notes: [DEPLOY-FLY.md](DEPLOY-FLY.md).
 11. ChatGPT directory: complete [apps-sdk/SUBMISSION.md](../apps-sdk/SUBMISSION.md), run `npm test` in `apps-sdk` (includes submission-contract), portal **Scan Tools** against [chatgpt-app-submission.json](../apps-sdk/chatgpt-app-submission.json).
+12. Public source (`josaum/leio-code`) is **generated**, never edited by hand:
+    `make public-plan` reviews the delta against the published checkout and
+    `make public-publish` regenerates and pushes it; the `leio-code-plugin-v*` tag
+    does the same through `.github/workflows/publish-public.yml`, which needs the
+    `PUBLIC_REPO_TOKEN` secret. Publishing refuses a dirty tree, and a change made
+    directly in the public repository is deleted by the next export. `make hooks`
+    installs the pre-push contract gate (private names and credentials).
 
 ## Arbitrary-repo smoke
 

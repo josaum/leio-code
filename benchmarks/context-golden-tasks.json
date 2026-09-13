@@ -113,6 +113,150 @@
         "cargo run -- verify",
         "python3 -m unittest"
       ]
+    },
+    {
+      "name": "unified_ops_auth_brokering",
+      "repo": "workspace",
+      "task": "fix unified Example Ops auth brokering and upstream token forwarding",
+      "limit": 8,
+      "min_files": 3,
+      "min_confidence": 0.8,
+      "min_context_zones": 7,
+      "expected_context_zone_order": [
+        "instructions",
+        "memory",
+        "anchors",
+        "ranked_files",
+        "graph_followups",
+        "verification",
+        "risks"
+      ],
+      "expected_context_zone_names": [
+        "instructions",
+        "memory",
+        "anchors",
+        "ranked_files",
+        "verification"
+      ],
+      "expected_instruction_paths_any": [
+        "AGENTS.md",
+        "CLAUDE.md",
+        "GEMINI.md"
+      ],
+      "expected_instruction_kinds_any": [
+        "agent_instructions",
+        "claude_instructions",
+        "gemini_instructions"
+      ],
+      "expected_paths_any": [
+        "example-ops/src/app/api/auth/shared.ts",
+        "example-ops/src/app/api/gateway/auth-forwarding.ts",
+        "example-api/example/routers/auth.py"
+      ],
+      "expected_doctor_kinds_any": [
+        "auth-brokering"
+      ],
+      "expected_tests_any": [
+        "pnpm --dir example-ops typecheck",
+        "pnpm --dir example-ops test"
+      ]
+    },
+    {
+      "name": "redis_key_ttl_hygiene",
+      "repo": "workspace",
+      "task": "fix Redis SET phone_route biz_123 memory session privacy dsar TTL test",
+      "limit": 8,
+      "min_files": 3,
+      "min_confidence": 0.8,
+      "min_context_zones": 7,
+      "expected_context_zone_order": [
+        "instructions",
+        "memory",
+        "anchors",
+        "ranked_files",
+        "graph_followups",
+        "verification",
+        "risks"
+      ],
+      "expected_context_zone_names": [
+        "instructions",
+        "memory",
+        "anchors",
+        "ranked_files",
+        "verification"
+      ],
+      "expected_instruction_paths_any": [
+        "AGENTS.md",
+        "CLAUDE.md",
+        "GEMINI.md"
+      ],
+      "expected_instruction_kinds_any": [
+        "agent_instructions",
+        "claude_instructions",
+        "gemini_instructions"
+      ],
+      "expected_paths_any": [
+        "example-api/example/tests/core/test_privacy_dsar.py",
+        "example-api/example/tests/api/test_internal_router.py",
+        "example-api/scripts/test_whatsapp_webhook.py"
+      ],
+      "expected_doctor_kinds_any": [
+        "redis-key-hygiene"
+      ],
+      "expected_tests_any": [
+        "python3 -m unittest",
+        "pytest"
+      ]
+    },
+    {
+      "name": "frontend_engine_shared_view",
+      "repo": "workspace",
+      "task": "fix models engine view shared ModelsPage ops-console example-ops frontend client drift",
+      "limit": 8,
+      "min_files": 3,
+      "min_confidence": 0.8,
+      "min_context_zones": 7,
+      "expected_context_zone_order": [
+        "instructions",
+        "memory",
+        "anchors",
+        "ranked_files",
+        "graph_followups",
+        "verification",
+        "risks"
+      ],
+      "expected_context_zone_names": [
+        "instructions",
+        "memory",
+        "anchors",
+        "ranked_files",
+        "verification"
+      ],
+      "expected_instruction_paths_any": [
+        "AGENTS.md",
+        "CLAUDE.md",
+        "GEMINI.md"
+      ],
+      "expected_instruction_kinds_any": [
+        "agent_instructions",
+        "claude_instructions",
+        "gemini_instructions"
+      ],
+      "expected_paths_any": [
+        "packages/trpc/src/views/engine/ModelsPage.tsx",
+        "example-ops/vendor/jai-trpc/src/views/engine/ModelsPage.tsx",
+        "ops-console/vendor/jai-trpc/src/views/engine/ModelsPage.tsx",
+        "ops-console/src/components/engine/views/models/page.tsx",
+        "example-ops/src/components/engine/views/models/page.tsx"
+      ],
+      "expected_doctor_kinds_any": [
+        "frontend-engine-client"
+      ],
+      "expected_tests_any": [
+        "pnpm -C packages/trpc typecheck",
+        "pnpm -C ops-console typecheck",
+        "pnpm -C example-ops typecheck"
+      ]
     }
   ]
 }

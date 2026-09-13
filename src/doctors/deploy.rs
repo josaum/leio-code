@@ -12,7 +12,8 @@ use crate::deploy_support::{
     readiness_lineage_matches,
 };
 use crate::model::{
-    DeclaredVar, EvidenceItem, ProfileRecord, QueryEnvelope, RepoIndex, SecretSetRecord,
+    DeclaredVar, DeployTargetRecord, EvidenceItem, ProfileRecord, QueryEnvelope, RepoIndex,
+    SecretSetRecord,
 };
 
 pub struct DeployDoctor;
@@ -1213,6 +1214,7 @@ pub fn doctor_deploy(index: &RepoIndex, root: &Path) -> QueryEnvelope {
             .filter(|value| !is_http_url(value))
             .cloned()
             .collect::<Vec<_>>();
+        let unserved = unserved_health_checks(root, target);
         let customer_ops_has_align_readiness = target.name != "customer_ops_unified"
             || target
                 .health_checks
@@ -1320,6 +1322,25 @@ pub fn doctor_deploy(index: &RepoIndex, root: &Path) -> QueryEnvelope {
                 invalid_health_checks.join(", ")
             ));
         }
+        if !unserved.is_empty() {
+            warnings.push(format!(
+                "{}: edge config deploy/nginx/{}.conf does not route declared health_checks: {}",
+                target.name,
+                target.name,
+                unserved.join(", ")
+            ));
+            for value in &unserved {
+                evidence.push(EvidenceItem {
+                    kind: "unserved_health_check".to_string(),
+                    path: format!("deploy/targets/{}.toml", target.name),
+                    detail: format!(
+                        "`{}` is declared but not routed by deploy/nginx/{}.conf, so it cannot fail a promotion — it only 404s while other checks pass",
+                        value, target.name
+                    ),
+                    line: None,
+                });
+            }
+        }
         if target.name == "health_audit" && runtime_provider.as_deref() != Some("aws") {
             warnings.push(
                 "health_audit: target must declare runtime_provider=\"aws\" because Health Audit is no longer deployed on the GCP customer-ops VM"
@@ -1370,6 +1391,7 @@ pub fn doctor_deploy(index: &RepoIndex, root: &Path) -> QueryEnvelope {
                 .map(|path| path.display().to_string()),
             "local_secret_has_pacto_credentials": local_secret_has_pacto_credentials,
             "invalid_health_checks": invalid_health_checks,
+            "unserved_health_checks": unserved,
             "smoke_exists": smoke_exists,
             "smoke_target": smoke_target,
             "rollback_exists": rollback_exists,
@@ -1407,6 +1429,88 @@ pub fn doctor_deploy(index: &RepoIndex, root: &Path) -> QueryEnvelope {
 
 fn is_http_url(value: &str) -> bool {
     value.starts_with("http://") || value.starts_with("https://")
+}
+
+/// Edge paths served by an nginx site config, as declared by its `location` blocks.
+fn nginx_declared_locations(src: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for line in src.lines() {
+        let trimmed = line.trim_start();
+        let Some(rest) = trimmed.strip_prefix("location") else {
+            continue;
+        };
+        let Some(open) = rest.find('{') else { continue };
+        let mut selector = rest[..open].trim();
+        // `location = /healthz`, `location ^~ /v2/`, `location /docs`.
+        if let Some(stripped) = selector.strip_prefix('=') {
+            selector = stripped.trim();
+        } else if let Some(stripped) = selector.strip_prefix("^~") {
+            selector = stripped.trim();
+        } else if let Some(stripped) = selector.strip_prefix('~') {
+            selector = stripped.trim_start_matches('*').trim();
+        }
+        if selector.starts_with('/') {
+            out.push(selector.to_string());
+        }
+    }
+    out
+}
+
+/// True when `path` would actually be routed by the edge.
+///
+/// A declared health check that the edge does not serve cannot fail a deploy
+/// promotion — it just 404s while every other check passes. That is how
+/// `http://localhost/healthz` sat in the health_audit target returning 404 on
+/// the live host: the URL was well-formed, so shape validation passed.
+fn path_is_served(locations: &[String], path: &str) -> bool {
+    locations
+        .iter()
+        .any(|loc| loc == path || (loc.ends_with('/') && path.starts_with(loc.as_str())))
+}
+
+/// Declared health-check paths that the target's edge config would not route.
+///
+/// Only the edge-routed checks can be judged this way; checks that address a
+/// service port directly (`:8000`, `:9382`) bypass the edge and are skipped.
+/// Returns an empty list when no edge config is available, so an absent config
+/// is never reported as drift.
+///
+/// SCOPE: this compares the target against the edge config **in the repo**. It
+/// cannot see a host running a stale copy — that is a different failure and
+/// needs a live probe. Verified on 2026-09-11 against the real incident: the
+/// health_audit target's `http://localhost/healthz` returns 404 on the live
+/// customer host while `deploy/nginx/health-audit.conf` does route `/healthz`,
+/// so this check correctly reports nothing for it. It guards the other
+/// direction — declaring an edge check the config would never serve.
+fn unserved_health_checks(root: &std::path::Path, target: &DeployTargetRecord) -> Vec<String> {
+    let config_path = root.join(format!("deploy/nginx/{}.conf", target.name));
+    let Ok(src) = std::fs::read_to_string(&config_path) else {
+        return Vec::new();
+    };
+    let locations = nginx_declared_locations(&src);
+    if locations.is_empty() {
+        return Vec::new();
+    }
+    target
+        .health_checks
+        .iter()
+        .filter(|value| {
+            let Some(rest) = value
+                .strip_prefix("http://localhost")
+                .or_else(|| value.strip_prefix("https://localhost"))
+            else {
+                return false;
+            };
+            // A check addressing an explicit port bypasses the edge.
+            if rest.starts_with(':') {
+                return false;
+            }
+            let raw = rest.split(['?', '#']).next().unwrap_or(rest);
+            let path = if raw.is_empty() { "/" } else { raw };
+            !path_is_served(&locations, path)
+        })
+        .cloned()
+        .collect()
 }
 
 fn declares_multi_platform_build(src: &str) -> bool {
@@ -1984,10 +2088,88 @@ mod tests {
         rollback_script_syncs_secret_overrides, secret_set_declares_pacto_credentials,
         supported_snapshot_rollback,
     };
-    use crate::model::{DeclaredVar, ProfileRecord, SecretSetRecord};
+    use super::unserved_health_checks;
+    use crate::model::{DeclaredVar, DeployTargetRecord, ProfileRecord, SecretSetRecord};
 
     fn keys(names: &[&str]) -> BTreeSet<String> {
         names.iter().map(|name| (*name).to_string()).collect()
+    }
+
+    fn target(name: &str, checks: &[&str]) -> DeployTargetRecord {
+        DeployTargetRecord {
+            name: name.to_string(),
+            path: format!("deploy/targets/{name}.toml"),
+            profile: None,
+            readiness_target: None,
+            deploy_class: None,
+            topology: None,
+            ui_role: None,
+            ui_path: None,
+            frontend_project: None,
+            backend_profile: None,
+            secret_set: None,
+            health_checks: checks.iter().map(|check| (*check).to_string()).collect(),
+            smoke_suite: None,
+            rollback_command: None,
+            cartridges: Vec::new(),
+            required_integrations: Vec::new(),
+            promotion_policy: None,
+        }
+    }
+
+    fn write_edge_config(root: &std::path::Path, name: &str, body: &str) {
+        let dir = root.join("deploy/nginx");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(format!("{name}.conf")), body).unwrap();
+    }
+
+    #[test]
+    fn edge_unrouted_health_check_is_reported() {
+        let dir = tempfile::tempdir().unwrap();
+        write_edge_config(
+            dir.path(),
+            "demo",
+            "server {\n  location /healthz { proxy_pass http://demo; }\n}\n",
+        );
+        let target = target(
+            "demo",
+            &["http://localhost/readyz", "http://localhost/healthz"],
+        );
+
+        assert_eq!(
+            unserved_health_checks(dir.path(), &target),
+            vec!["http://localhost/readyz".to_string()]
+        );
+    }
+
+    #[test]
+    fn edge_bypassed_and_edge_served_checks_are_silent() {
+        let dir = tempfile::tempdir().unwrap();
+        write_edge_config(
+            dir.path(),
+            "demo",
+            "server {\n  location = /ping { }\n  location /animals/ { }\n}\n",
+        );
+        let target = target(
+            "demo",
+            &[
+                // An explicit port addresses the service, not the edge.
+                "http://localhost:8000/readyz",
+                // Exact and prefix locations both serve the path.
+                "http://localhost/ping",
+                "https://localhost/animals/cats?page=2",
+            ],
+        );
+
+        assert!(unserved_health_checks(dir.path(), &target).is_empty());
+    }
+
+    #[test]
+    fn absent_edge_config_reports_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = target("demo", &["http://localhost/healthz"]);
+
+        assert!(unserved_health_checks(dir.path(), &target).is_empty());
     }
 
     fn declared(name: &str, value_preview: Option<&str>) -> DeclaredVar {
