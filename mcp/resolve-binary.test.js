@@ -164,6 +164,45 @@ test("resolveBinaryPath prefers LEIO_CODE_BIN over cargo bin and target/", () =>
   );
 });
 
+test("resolveBinaryPath prefers a bundled vendor binary over cargo and target", () => {
+  const bundled = "/pkg/mcp/vendor/leio-code";
+  const cargoBin = "/Users/test/.cargo/bin/leio-code";
+  const target = "/ws/target/release/leio-code";
+  const present = new Set([bundled, cargoBin, target]);
+
+  assert.equal(
+    resolveBinaryPath({
+      binaryName: "leio-code",
+      startDir: "/ws/leio-code",
+      envPath: "",
+      bundledBinaryPath: bundled,
+      homeDir: "/Users/test",
+      pathValue: "/usr/bin",
+      exists: (candidate) => present.has(candidate),
+    }),
+    path.resolve(bundled),
+  );
+});
+
+test("resolveBinaryPath still prefers LEIO_CODE_BIN over the bundled binary", () => {
+  const envPath = "/opt/explicit/leio-code";
+  const bundled = "/pkg/mcp/vendor/leio-code";
+  const present = new Set([envPath, bundled]);
+
+  assert.equal(
+    resolveBinaryPath({
+      binaryName: "leio-code",
+      startDir: "/ws/leio-code",
+      envPath,
+      bundledBinaryPath: bundled,
+      homeDir: "/Users/test",
+      pathValue: "/usr/bin",
+      exists: (candidate) => present.has(candidate),
+    }),
+    path.resolve(envPath),
+  );
+});
+
 test("resolveBinaryPath prefers cargo bin over any target/ walk-up", () => {
   const cargoBin = "/Users/test/.cargo/bin/leio-code";
   const target = "/ws/target/release/leio-code";

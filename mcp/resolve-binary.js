@@ -151,13 +151,15 @@ export function findInstalledBinary(
 /**
  * Resolve `leio-code` for MCP / Apps SDK.
  *
- * Order: `LEIO_CODE_BIN` (explicit regular file) → cargo-installed / PATH
- * (never cargo target artifacts) → walk-up `target/` last, stopping at $HOME.
+ * Order: `LEIO_CODE_BIN` (explicit regular file) → bundled `vendor/` binary
+ * shipped by the package's postinstall → cargo-installed / PATH (never cargo
+ * target artifacts) → walk-up `target/` last, stopping at $HOME.
  */
 export function resolveBinaryPath({
   binaryName,
   startDir,
   envPath = process.env.LEIO_CODE_BIN ?? "",
+  bundledBinaryPath = "",
   pathValue = process.env.PATH ?? "",
   cargoHome = process.env.CARGO_HOME ?? "",
   cargoTargetDir = process.env.CARGO_TARGET_DIR ?? "",
@@ -168,6 +170,10 @@ export function resolveBinaryPath({
   const trimmed = String(envPath ?? "").trim();
   if (trimmed && isTrustedEnvBinary(trimmed, { exists, stat })) {
     return path.resolve(trimmed);
+  }
+  const bundled = String(bundledBinaryPath ?? "").trim();
+  if (bundled && isTrustedEnvBinary(bundled, { exists, stat })) {
+    return path.resolve(bundled);
   }
   if (!binaryName) {
     return null;

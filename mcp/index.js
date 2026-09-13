@@ -378,6 +378,7 @@ function resolveBinaryPath() {
   return resolveTrustedBinary({
     startDir: cargoWorkspaceRoot,
     binaryName,
+    bundledBinaryPath: path.join(__dirname, "vendor", binaryName),
   });
 }
 

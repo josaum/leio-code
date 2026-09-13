@@ -35,6 +35,9 @@ metadata.json
 /releases/
 /dist/
 
+# Prebuilt binary downloaded by the MCP postinstall (never committed).
+/mcp/vendor/
+
 # python tooling + model-sweep outputs
 .coverage
 benchmarks/model-sweep/

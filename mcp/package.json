@@ -7,8 +7,9 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
+    "postinstall": "node install-binary.mjs",
     "test": "node --test",
-    "check": "node --check index.js && node --check resolve-binary.js && node --check watch-state.js && node --check export-paths.js && node --check mcp-spec-2025-11-25.js && node --check output-schemas.js && node --check evidence-contract.js && node --check workflow.js && node --check envelope.js && node --check guide.js"
+    "check": "node --check index.js && node --check install-binary.mjs && node --check resolve-binary.js && node --check watch-state.js && node --check export-paths.js && node --check mcp-spec-2025-11-25.js && node --check output-schemas.js && node --check evidence-contract.js && node --check workflow.js && node --check envelope.js && node --check guide.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.28.0",
