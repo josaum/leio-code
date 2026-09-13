@@ -7,6 +7,14 @@ All notable changes to LEIO Code. Format follows [Keep a Changelog](https://keep
 ## [2.6.3] — 2026-09-12
 
 ### Added
+- **Knowledge: a failed SPARQL call names the prefix that broke it.**
+  `knowledge sparql` / `explain` / `exec` now triage a failed query against the
+  formal graph's prefix bindings instead of reporting only a parse error: an
+  unknown prefix is named with the nearest known binding, and declarations that
+  are unused or that shadow the graph's own binding are flagged. Grounding stays
+  separate from executability — the envelope keeps `grounded: false`, adds
+  `unknown-prefix` / `shadowed-prefix` / `unused-prefix` warnings, and exposes
+  `meta.prefix_triage` for machine readers.
 - **MCP: bundled binary install and stdio/hosted surface parity.** The stdio
   package downloads the release binary into `mcp/vendor/` from a postinstall
   step (soft-fails offline, on an unsupported platform, or when the release is

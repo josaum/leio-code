@@ -5,13 +5,15 @@
 //! and functor witnesses. They never substitute for a missing binding.
 // Rust guideline compliant 2026-02-21
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
+use std::sync::LazyLock;
 use std::time::Instant;
 
 use anyhow::Result;
 use leio_knowledge_core::sparql::{SparqlOutcome, execute};
 use oxigraph::sparql::QueryResults;
+use regex::Regex;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -108,9 +110,9 @@ pub fn explain_knowledge_scoped(
             }
             Ok(_) => {}
             Err(err) => {
-                return Ok(refuse(
+                return Ok(refuse_sparql_error(
                     needle,
-                    &format!("refused: SPARQL error ({err})"),
+                    &err.to_string(),
                     &formal,
                     &lattice,
                     started,
@@ -142,9 +144,9 @@ pub fn explain_knowledge_scoped(
             }
             Ok(_) => {}
             Err(err) => {
-                return Ok(refuse(
+                return Ok(refuse_sparql_error(
                     needle,
-                    &format!("refused: SPARQL error ({err})"),
+                    &err.to_string(),
                     &formal,
                     &lattice,
                     started,
@@ -157,9 +159,9 @@ pub fn explain_knowledge_scoped(
         sparql = grounding_sparql(&tokens);
         candidates = match collect_subjects(&formal, &sparql) {
             Err(err) => {
-                return Ok(refuse(
+                return Ok(refuse_sparql_error(
                     needle,
-                    &format!("refused: SPARQL error ({err})"),
+                    &err.to_string(),
                     &formal,
                     &lattice,
                     started,
@@ -750,9 +752,9 @@ fn sparql_to_envelope(
                 true,
             )
         }
-        SparqlOutcome::Error(err) => refuse(
+        SparqlOutcome::Error(err) => refuse_sparql_error(
             query,
-            &format!("refused: SPARQL error ({err})"),
+            &err,
             formal,
             lattice,
             started,
@@ -906,6 +908,288 @@ fn reasoning_steps(subjects: &[GroundedSubject], lattice: &LatticeArtifact) -> V
     }
     let _ = n;
     steps
+}
+
+/// Prefixes a SPARQL query uses, declares, or shadows, as seen by the store.
+///
+/// The formal store injects every prefix it knows before execution, so the
+/// failure this catches is a namespace the query uses that neither the query
+/// nor the graph binds. Query-text metrics cannot see it: the query looks
+/// well-formed and the store returns only a parse error. Named after the
+/// prefix-mismatch diagnostic used in KGQA evaluation, where the same failure
+/// silently costs correct answers while executability still looks healthy.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct PrefixTriage {
+    /// Used by the query, neither declared there nor known to the store.
+    unknown: Vec<String>,
+    /// Declared by the query and never used.
+    unused: Vec<String>,
+    /// Declared with a different IRI than the store already binds.
+    shadowed: Vec<String>,
+    /// Unknown prefix -> nearest known prefix.
+    suggestions: BTreeMap<String, String>,
+}
+
+impl PrefixTriage {
+    fn is_empty(&self) -> bool {
+        self.unknown.is_empty() && self.unused.is_empty() && self.shadowed.is_empty()
+    }
+
+    fn warning_labels(&self) -> Vec<&'static str> {
+        let mut labels = Vec::new();
+        if !self.unknown.is_empty() {
+            labels.push("unknown-prefix");
+        }
+        if !self.shadowed.is_empty() {
+            labels.push("shadowed-prefix");
+        }
+        if !self.unused.is_empty() {
+            labels.push("unused-prefix");
+        }
+        labels
+    }
+
+    /// One operator-facing line, or None when the query has nothing to report.
+    fn summary(&self) -> Option<String> {
+        if self.is_empty() {
+            return None;
+        }
+        let mut notes = Vec::new();
+        if !self.unknown.is_empty() {
+            let names = join_prefixes(&self.unknown);
+            let hint = if self.suggestions.is_empty() {
+                "declare it with PREFIX or use a namespace the graph binds".to_string()
+            } else {
+                let pairs = self
+                    .suggestions
+                    .iter()
+                    .map(|(unknown, known)| format!("{} -> {}", show_prefix(unknown), show_prefix(known)))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("did you mean {pairs}?")
+            };
+            notes.push(format!("unknown prefix {names} ({hint})"));
+        }
+        if !self.shadowed.is_empty() {
+            notes.push(format!(
+                "declaration shadows the graph binding for {}",
+                join_prefixes(&self.shadowed)
+            ));
+        }
+        if !self.unused.is_empty() {
+            notes.push(format!(
+                "unused prefix declaration {}",
+                join_prefixes(&self.unused)
+            ));
+        }
+        Some(notes.join("; "))
+    }
+
+    fn to_json(&self) -> Value {
+        json!({
+            "unknown": self.unknown,
+            "unused": self.unused,
+            "shadowed": self.shadowed,
+            "suggestions": self.suggestions,
+        })
+    }
+}
+
+fn join_prefixes(names: &[String]) -> String {
+    names
+        .iter()
+        .map(|name| show_prefix(name))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Render a prefix name the way a query spells it: leio: or :.
+fn show_prefix(name: &str) -> String {
+    if name.is_empty() {
+        ":".to_string()
+    } else {
+        format!("{name}:")
+    }
+}
+
+static PREFIX_DECL: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)(?:@prefix|PREFIX)\s+([A-Za-z_][A-Za-z0-9_.-]*|):\s*<([^>]+)>")
+        .expect("prefix decl regex")
+});
+
+static PREFIX_USE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?:^|[^A-Za-z0-9_:])([A-Za-z_][A-Za-z0-9_.-]*|):([A-Za-z0-9_%][A-Za-z0-9_%.-]*)")
+        .expect("prefix use regex")
+});
+
+fn triage_prefixes(query: &str, known: &BTreeMap<String, String>) -> PrefixTriage {
+    let mut declared: BTreeMap<String, String> = BTreeMap::new();
+    for capture in PREFIX_DECL.captures_iter(query) {
+        let name = capture.get(1).map_or("", |mat| mat.as_str());
+        let iri = capture.get(2).map_or("", |mat| mat.as_str());
+        if !iri.is_empty() {
+            declared
+                .entry(name.to_string())
+                .or_insert_with(|| iri.to_string());
+        }
+    }
+
+    let body = strip_sparql_noise(query);
+    let mut used: BTreeSet<String> = BTreeSet::new();
+    for capture in PREFIX_USE.captures_iter(&body) {
+        used.insert(capture.get(1).map_or("", |mat| mat.as_str()).to_string());
+    }
+
+    let mut triage = PrefixTriage::default();
+    for name in &used {
+        if declared.contains_key(name) || known.contains_key(name) {
+            continue;
+        }
+        triage.unknown.push(name.clone());
+        if let Some(nearest) = nearest_known_prefix(name, known.keys()) {
+            triage.suggestions.insert(name.clone(), nearest);
+        }
+    }
+    triage.unused = declared
+        .keys()
+        .filter(|name| !used.contains(*name))
+        .cloned()
+        .collect();
+    triage.shadowed = declared
+        .iter()
+        .filter(|(name, iri)| known.get(*name).is_some_and(|bound| bound != *iri))
+        .map(|(name, _)| name.clone())
+        .collect();
+    triage
+}
+
+fn nearest_known_prefix<'a, I>(name: &str, candidates: I) -> Option<String>
+where
+    I: Iterator<Item = &'a String>,
+{
+    let mut best: Option<(usize, String)> = None;
+    for candidate in candidates {
+        // The default binding is never a useful suggestion for a named prefix.
+        if candidate.is_empty() && !name.is_empty() {
+            continue;
+        }
+        let distance = edit_distance(name, candidate);
+        let better = match &best {
+            None => true,
+            Some((best_distance, best_name)) => {
+                distance < *best_distance || (distance == *best_distance && candidate < best_name)
+            }
+        };
+        if better {
+            best = Some((distance, candidate.clone()));
+        }
+    }
+    // Short prefixes are within a couple of edits of everything, so scale the
+    // tolerance with the name length instead of suggesting an unrelated binding.
+    let limit = (name.chars().count() / 3).max(1);
+    best.filter(|(distance, _)| *distance <= limit)
+        .map(|(_, name)| name)
+}
+
+fn edit_distance(left: &str, right: &str) -> usize {
+    let right: Vec<char> = right.chars().collect();
+    let mut previous: Vec<usize> = (0..=right.len()).collect();
+    let mut current = vec![0; right.len() + 1];
+    for (row, left_char) in left.chars().enumerate() {
+        current[0] = row + 1;
+        for (column, right_char) in right.iter().enumerate() {
+            let substitute = previous[column] + usize::from(left_char != *right_char);
+            current[column + 1] = substitute
+                .min(previous[column + 1] + 1)
+                .min(current[column] + 1);
+        }
+        std::mem::swap(&mut previous, &mut current);
+    }
+    previous[right.len()]
+}
+
+/// Drop comments, IRIs and literals so prefix scanning sees only names.
+fn strip_sparql_noise(query: &str) -> String {
+    let chars: Vec<char> = query.chars().collect();
+    let mut out = String::with_capacity(query.len());
+    let mut index = 0;
+    while index < chars.len() {
+        let ch = chars[index];
+        if ch == '#' {
+            while index < chars.len() && chars[index] != '\n' {
+                index += 1;
+            }
+            continue;
+        }
+        if ch == '<' {
+            while index < chars.len() && chars[index] != '>' {
+                index += 1;
+            }
+            index += 1;
+            out.push(' ');
+            continue;
+        }
+        if ch == '"' || ch == '\'' {
+            let triple =
+                index + 2 < chars.len() && chars[index + 1] == ch && chars[index + 2] == ch;
+            index += if triple { 3 } else { 1 };
+            while index < chars.len() {
+                if chars[index] == '\\' {
+                    index += 2;
+                    continue;
+                }
+                if triple {
+                    if index + 2 < chars.len()
+                        && chars[index] == ch
+                        && chars[index + 1] == ch
+                        && chars[index + 2] == ch
+                    {
+                        index += 3;
+                        break;
+                    }
+                } else if chars[index] == ch {
+                    index += 1;
+                    break;
+                }
+                index += 1;
+            }
+            out.push(' ');
+            continue;
+        }
+        out.push(ch);
+        index += 1;
+    }
+    out
+}
+
+/// Refuse a failed SPARQL call with the prefix triage attached.
+fn refuse_sparql_error(
+    needle: &str,
+    err: &str,
+    formal: &FormalStore,
+    lattice: &LatticeArtifact,
+    started: Instant,
+    sparql: Vec<String>,
+) -> QueryEnvelope {
+    let triage = triage_prefixes(
+        sparql.first().map_or("", String::as_str),
+        &formal.stats.prefixes,
+    );
+    let mut summary = format!("refused: SPARQL error ({err})");
+    if let Some(note) = triage.summary() {
+        summary.push_str(" \u{2014} ");
+        summary.push_str(&note);
+    }
+    let mut envelope = refuse(needle, &summary, formal, lattice, started, sparql);
+    if !triage.is_empty() {
+        if let Some(meta) = envelope.meta.as_mut() {
+            meta["prefix_triage"] = triage.to_json();
+        }
+        for label in triage.warning_labels() {
+            envelope.warnings.push(label.to_string());
+        }
+    }
+    envelope
 }
 
 fn refuse(
@@ -1295,4 +1579,82 @@ SELECT ?s ?hours WHERE { ?s :hoursWeekday ?hours }"#,
             "http://example.org/kb#"
         );
     }
+
+    #[test]
+    fn triage_prefixes_flags_unknown_unused_and_shadowed() {
+        let known = BTreeMap::from([
+            (String::new(), "http://example.org/kb#".to_string()),
+            (
+                "rdfs".to_string(),
+                "http://www.w3.org/2000/01/rdf-schema#".to_string(),
+            ),
+            ("leio".to_string(), "urn:leio:concept/".to_string()),
+        ]);
+        let query = "PREFIX zzz: <http://zzz.example/>\nPREFIX rdfs: <http://wrong.example/>\nPREFIX owl: <http://www.w3.org/2002/07/owl#>\nSELECT ?s WHERE { ?s zzz:thing ?o . ?s rdfs:label ?label . ?s leio:kind ?k }";
+
+        let triage = triage_prefixes(query, &known);
+
+        assert!(
+            triage.unknown.is_empty(),
+            "a prefix declared in the query is bound by the query: {triage:?}"
+        );
+        assert_eq!(triage.unused, vec!["owl".to_string()]);
+        assert_eq!(triage.shadowed, vec!["rdfs".to_string()]);
+        let summary = triage.summary().expect("summary");
+        assert!(summary.contains("shadows"), "{summary}");
+        assert!(summary.contains("unused prefix declaration owl:"), "{summary}");
+    }
+
+    #[test]
+    fn triage_prefixes_suggests_the_nearest_known_prefix() {
+        let known = BTreeMap::from([("leio".to_string(), "urn:leio:concept/".to_string())]);
+
+        let triage = triage_prefixes("SELECT ?s WHERE { ?s leioo:kind ?k }", &known);
+
+        assert_eq!(triage.unknown, vec!["leioo".to_string()]);
+        assert_eq!(triage.suggestions.get("leioo"), Some(&"leio".to_string()));
+        let summary = triage.summary().expect("summary");
+        assert!(summary.contains("unknown prefix leioo:"), "{summary}");
+        assert!(summary.contains("leioo: -> leio:"), "{summary}");
+    }
+
+    #[test]
+    fn triage_ignores_iris_literals_and_comments() {
+        let known = BTreeMap::from([("leio".to_string(), "urn:leio:concept/".to_string())]);
+        let query = "# zzz:comment <http://zzz.example/>\nSELECT ?s WHERE {\n  ?s leio:label \"a:b c:d\" .\n  ?s leio:source <http://zzz.example/thing> .\n}";
+
+        let triage = triage_prefixes(query, &known);
+
+        assert!(triage.is_empty(), "{triage:?}");
+    }
+
+    #[test]
+    fn sparql_error_reports_the_unknown_prefix() {
+        let repo = fixture_repo();
+        crate::knowledge::compile_knowledge(repo.path()).unwrap();
+        knowledge_graph::compile_formal_graph(repo.path()).unwrap();
+
+        let envelope =
+            sparql_knowledge(repo.path(), "SELECT ?s WHERE { ?s zzz:thing ?o }", 8).unwrap();
+
+        assert_eq!(envelope.meta.as_ref().unwrap()["grounded"], false);
+        assert!(
+            envelope
+                .warnings
+                .iter()
+                .any(|row| row == "unknown-prefix"),
+            "{:?}",
+            envelope.warnings
+        );
+        assert!(
+            envelope.summary.contains("unknown prefix zzz:"),
+            "{}",
+            envelope.summary
+        );
+        assert_eq!(
+            envelope.meta.as_ref().unwrap()["prefix_triage"]["unknown"][0],
+            "zzz"
+        );
+    }
 }
+
