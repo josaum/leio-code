@@ -153,6 +153,18 @@ pub fn doctor_typescript_config_hygiene(index: &RepoIndex, root: &Path) -> Query
                         file.path
                     ));
                 }
+
+                // A relative `extends` that matches the expected string can still
+                // point at nothing once a project moves between directory layers.
+                // Resolve it on disk so a layout move cannot pass this doctor.
+                for target in extends_targets(&json) {
+                    if !relative_extends_resolves(root, &file.path, &target) {
+                        warnings.push(format!(
+                            "{} extends `{}`, which does not resolve to a file on disk",
+                            file.path, target
+                        ));
+                    }
+                }
             }
             Err(err) => warnings.push(format!(
                 "{} is no longer valid tsconfig-style JSONC: {}",
@@ -256,24 +268,33 @@ const fn self_contained_inline_base(
 }
 
 static EXPECTED_EXTENDS: &[TsconfigBaseContract] = &[
-    shared_base("analyst-hub/tsconfig.json", "../tsconfig.base.next.json"),
-    self_contained_base("assurant-ops/tsconfig.json", "../tsconfig.base.next.json"),
     shared_base(
-        "chatfacil/tsconfig.json",
-        "../tsconfig.base.next-preserve.json",
+        "apps/analyst-hub/tsconfig.json",
+        "../../tsconfig.base.next.json",
+    ),
+    self_contained_base(
+        "apps/assurant-ops/tsconfig.json",
+        "../../tsconfig.base.next.json",
     ),
     shared_base(
-        "example-ops/tsconfig.json",
-        "../tsconfig.base.next-es2022.json",
+        "apps/chatfacil/tsconfig.json",
+        "../../tsconfig.base.next-preserve.json",
     ),
     shared_base(
-        "health-audit-console/tsconfig.json",
-        "../tsconfig.base.next.json",
+        "apps/example-ops/tsconfig.json",
+        "../../tsconfig.base.next-es2022.json",
     ),
-    self_contained_inline_base("jai-pay/tsconfig.json", "../tsconfig.base.next.json"),
     shared_base(
-        "leio-landing/tsconfig.json",
-        "../tsconfig.base.next-preserve.json",
+        "apps/health-audit-console/tsconfig.json",
+        "../../tsconfig.base.next.json",
+    ),
+    self_contained_inline_base(
+        "apps/jai-pay/tsconfig.json",
+        "../../tsconfig.base.next.json",
+    ),
+    shared_base(
+        "apps/leio-landing/tsconfig.json",
+        "../../tsconfig.base.next-preserve.json",
     ),
     shared_base(
         "example-align/web/tsconfig.json",
@@ -299,12 +320,18 @@ static EXPECTED_EXTENDS: &[TsconfigBaseContract] = &[
         "example-gateway/plugins/multi-llm/mcp/tsconfig.json",
         "../../../../tsconfig.base.bundler-package-decls.json",
     ),
-    shared_base("example-hud/tsconfig.json", "../tsconfig.base.next.json"),
+    shared_base(
+        "apps/example-hud/tsconfig.json",
+        "../../tsconfig.base.next.json",
+    ),
     shared_base(
         "example-mcp-bridge/tsconfig.json",
         "../tsconfig.base.bundler-package.json",
     ),
-    self_contained_base("example-scc/tsconfig.json", "./tsconfig.base.next.json"),
+    self_contained_base(
+        "apps/example-scc/tsconfig.json",
+        "./tsconfig.base.next.json",
+    ),
     shared_base(
         "example-platform/example-chrome-extension/tsconfig.json",
         "../../tsconfig.base.react-es2020.json",
@@ -338,16 +365,16 @@ static EXPECTED_EXTENDS: &[TsconfigBaseContract] = &[
         "../tsconfig.base.node-lib.json",
     ),
     shared_base(
-        "vigoros/app/tsconfig.json",
-        "../../tsconfig.base.strict.json",
+        "apps/vigoros/app/tsconfig.json",
+        "../../../tsconfig.base.strict.json",
     ),
     shared_base(
-        "vigoros/app/tsconfig.app.json",
-        "../../tsconfig.base.react-es2022.json",
+        "apps/vigoros/app/tsconfig.app.json",
+        "../../../tsconfig.base.react-es2022.json",
     ),
     shared_base(
-        "vigoros/app/tsconfig.node.json",
-        "../../tsconfig.base.bundler-tooling.json",
+        "apps/vigoros/app/tsconfig.node.json",
+        "../../../tsconfig.base.bundler-tooling.json",
     ),
 ];
 
@@ -406,6 +433,62 @@ fn base_anchor_evidence(
         "{} no longer extends the expected shared base `{}`",
         contract.config_path, contract.expected_extends
     ))
+}
+
+fn extends_targets(json: &serde_json::Value) -> Vec<String> {
+    match json.get("extends") {
+        Some(value) if value.is_string() => value
+            .as_str()
+            .map(|item| vec![item.to_string()])
+            .unwrap_or_default(),
+        Some(value) if value.is_array() => value
+            .as_array()
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|item| item.as_str().map(|item| item.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default(),
+        _ => Vec::new(),
+    }
+}
+
+fn relative_extends_resolves(root: &Path, config_path: &str, extends: &str) -> bool {
+    // Bare specifiers ("@tsconfig/next/tsconfig.json") are resolved by the module
+    // system against node_modules, which is not a layout invariant. Only paths the
+    // repository owns are checked here.
+    if !extends.starts_with("./") && !extends.starts_with("../") {
+        return true;
+    }
+    let config_dir = Path::new(config_path)
+        .parent()
+        .unwrap_or_else(|| Path::new(""));
+    let base = root.join(config_dir);
+    if normalize_lexical(&base.join(extends)).exists() {
+        return true;
+    }
+    // TypeScript appends .json when the path carries no extension.
+    normalize_lexical(&base.join(format!("{extends}.json"))).exists()
+}
+
+/// Collapse `.` and `..` without touching the filesystem, so a config directory
+/// that is not present (fixtures, a partially materialized tree) cannot make a
+/// resolvable base look missing.
+fn normalize_lexical(path: &Path) -> std::path::PathBuf {
+    let mut out = std::path::PathBuf::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                if !out.pop() {
+                    out.push("..");
+                }
+            }
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
 }
 
 fn local_base_exists(root: &Path, config_path: &str, local_base: &str) -> bool {
@@ -493,7 +576,10 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use super::{base_anchor_evidence, self_contained_base, self_contained_inline_base};
+    use super::{
+        base_anchor_evidence, relative_extends_resolves, self_contained_base,
+        self_contained_inline_base,
+    };
 
     fn unique_tempdir(label: &str) -> PathBuf {
         let nanos = SystemTime::now()
@@ -516,10 +602,64 @@ mod tests {
     }
 
     #[test]
+    fn a_relative_extends_that_escapes_its_directory_layer_does_not_resolve() {
+        // The regression this check exists for: moving an app from <root>/app to
+        // <root>/apps/app leaves "../tsconfig.base.next.json" spelled correctly
+        // while it now points one directory above the shared bases. String
+        // matching alone reported this as healthy; only resolution catches it.
+        let dir = unique_tempdir("escaped-layer");
+        write_file(
+            &dir.join("tsconfig.base.next.json"),
+            r#"{"compilerOptions":{"strict":true}}"#,
+        );
+        write_file(&dir.join("apps/ops/tsconfig.json"), r#"{"extends":".."}"#);
+
+        assert!(!relative_extends_resolves(
+            &dir,
+            "apps/ops/tsconfig.json",
+            "../tsconfig.base.next.json"
+        ));
+        assert!(relative_extends_resolves(
+            &dir,
+            "apps/ops/tsconfig.json",
+            "../../tsconfig.base.next.json"
+        ));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn bare_specifiers_are_left_to_the_module_system() {
+        let dir = unique_tempdir("bare-specifier");
+        // Never present on disk relative to the config, and never a layout invariant.
+        assert!(relative_extends_resolves(
+            &dir,
+            "apps/ops/tsconfig.json",
+            "@tsconfig/next/tsconfig.json"
+        ));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn an_extensionless_relative_extends_resolves_through_the_implied_json() {
+        let dir = unique_tempdir("implied-json");
+        write_file(
+            &dir.join("tsconfig.base.next.json"),
+            r#"{"compilerOptions":{"strict":true}}"#,
+        );
+
+        assert!(relative_extends_resolves(
+            &dir,
+            "apps/ops/tsconfig.json",
+            "../../tsconfig.base.next"
+        ));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn accepts_checked_in_local_base_for_self_contained_project() {
         let dir = unique_tempdir("local-base");
         write_file(
-            &dir.join("assurant-ops/tsconfig.base.next.json"),
+            &dir.join("apps/assurant-ops/tsconfig.base.next.json"),
             r#"{"compilerOptions":{"strict":true}}"#,
         );
         let src = r#"{
@@ -531,8 +671,10 @@ mod tests {
   }
 }
 "#;
-        let contract =
-            self_contained_base("assurant-ops/tsconfig.json", "../tsconfig.base.next.json");
+        let contract = self_contained_base(
+            "apps/assurant-ops/tsconfig.json",
+            "../../tsconfig.base.next.json",
+        );
 
         let result = base_anchor_evidence(&dir, &contract, src).expect("local base should pass");
 
@@ -548,8 +690,10 @@ mod tests {
   "extends": "./tsconfig.base.next.json"
 }
 "#;
-        let contract =
-            self_contained_base("assurant-ops/tsconfig.json", "../tsconfig.base.next.json");
+        let contract = self_contained_base(
+            "apps/assurant-ops/tsconfig.json",
+            "../../tsconfig.base.next.json",
+        );
 
         let warning =
             base_anchor_evidence(&dir, &contract, src).expect_err("missing local base should warn");
@@ -586,8 +730,10 @@ mod tests {
   }
 }
 "#;
-        let contract =
-            self_contained_inline_base("jai-pay/tsconfig.json", "../tsconfig.base.next.json");
+        let contract = self_contained_inline_base(
+            "apps/jai-pay/tsconfig.json",
+            "../../tsconfig.base.next.json",
+        );
 
         let result = base_anchor_evidence(&dir, &contract, src).expect("inline base should pass");
 

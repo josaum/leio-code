@@ -45,7 +45,13 @@ use crate::search;
 // Bumped 12 → 13: `SourceLanguage::Rdf` and `SymbolKind::Property` so
 // `.ttl` / `.owl` / `.jsonld` ontologies round-trip as first-class records.
 // Bumped 15 → 16: Java, Kotlin, HTML, CSS, and Swift source-language variants.
-const INDEX_VERSION: u32 = 18;
+// Bumped 18 → 19: the Python `os.getenv` access pattern now matches the
+// `os.getenv("VAR", default)` two-argument form (previously only the bare
+// single-argument call matched). This is an extraction change, not a schema
+// change, but unchanged files are served from the per-version cache without
+// re-running `extract_env_vars`, so the version must bump to force a
+// re-extract of cached Python files.
+const INDEX_VERSION: u32 = 19;
 
 /// Public accessor for the indexer's schema version. Used by report-rendering
 /// callers (e.g. `diagnostics::RunMeta`) so they don't need a `pub` constant.
@@ -61,7 +67,8 @@ static ENV_ACCESS_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
             .expect("valid regex"),
         Regex::new(r#"env::(?:var|var_os|set_var)\(["']([A-Z][A-Z0-9_]+)["']\)"#)
             .expect("valid regex"),
-        Regex::new(r#"os\.getenv\(["']([A-Z][A-Z0-9_]+)["']\)"#).expect("valid regex"),
+        Regex::new(r#"os\.getenv\(\s*["']([A-Z][A-Z0-9_]+)["'](?:\s*,\s*[^)]*)?\)"#)
+            .expect("valid regex"),
         Regex::new(r#"os\.environ(?:\.get)?\[\s*["']([A-Z][A-Z0-9_]+)["']\s*\]"#)
             .expect("valid regex"),
         Regex::new(r#"os\.environ\.get\(["']([A-Z][A-Z0-9_]+)["']\)"#).expect("valid regex"),
@@ -300,6 +307,11 @@ pub fn build_or_update_index(root: &Path, index_path: &Path, quiet: bool) -> Res
             discovered.paths.len()
         );
     }
+    if !quiet {
+        for warning in &discovered.unreachable_include_roots {
+            eprintln!("{warning}");
+        }
+    }
     for path in discovered.paths {
         let rel = relative_path(root, &path);
         let metadata =
@@ -520,6 +532,8 @@ fn save_index_with_truncation(index_path: &Path, index: &RepoIndex, truncated: b
 struct DiscoveredSources {
     paths: Vec<PathBuf>,
     truncated: bool,
+    /// Configured `include_roots` entries that the walk can never reach.
+    unreachable_include_roots: Vec<String>,
 }
 
 fn discover_source_files(root: &Path) -> Result<DiscoveredSources> {
@@ -530,6 +544,8 @@ fn discover_source_files(root: &Path) -> Result<DiscoveredSources> {
         .as_ref()
         .filter(|items| !items.is_empty())
         .map(|items| items.iter().cloned().collect::<HashSet<_>>());
+    let unreachable_include_roots =
+        unreachable_include_roots(root, config.include_roots.as_deref());
     let mut builder = WalkBuilder::new(root);
     builder.hidden(false);
     builder.git_ignore(true);
@@ -579,7 +595,38 @@ fn discover_source_files(root: &Path) -> Result<DiscoveredSources> {
             paths.push(path.to_path_buf());
         }
     }
-    Ok(DiscoveredSources { paths, truncated })
+    Ok(DiscoveredSources {
+        paths,
+        truncated,
+        unreachable_include_roots,
+    })
+}
+
+/// `include_roots` entries the walk cannot reach, so a stale one stops being a
+/// silent no-op. The walker does not follow symlinks (following them would
+/// duplicate every symbol reachable by two paths), so a symlinked entry
+/// contributes nothing while still reading as configured coverage.
+fn unreachable_include_roots(root: &Path, include_roots: Option<&[String]>) -> Vec<String> {
+    let Some(include_roots) = include_roots else {
+        return Vec::new();
+    };
+    let mut unreachable = Vec::new();
+    for entry in include_roots {
+        let path = root.join(entry);
+        match fs::symlink_metadata(&path) {
+            Ok(metadata) if metadata.file_type().is_symlink() => unreachable.push(format!(
+                "include_roots entry `{entry}` is a symlink; the walk does not follow symlinks, so nothing under it is indexed. Index that tree on its own root instead"
+            )),
+            Ok(metadata) if !metadata.is_dir() => unreachable.push(format!(
+                "include_roots entry `{entry}` is not a directory; nothing under it is indexed"
+            )),
+            Ok(_) => {}
+            Err(_) => unreachable.push(format!(
+                "include_roots entry `{entry}` does not exist; nothing under it is indexed"
+            )),
+        }
+    }
+    unreachable
 }
 
 fn max_index_files() -> usize {
@@ -2260,6 +2307,21 @@ value = os.environ["DB_PASSWORD"]
     }
 
     #[test]
+    fn python_getenv_captures_default_argument_form() {
+        let source = r#"
+flags = os.getenv("FLAG_ENABLED", "true").strip()
+secret = os.getenv('API_SECRET')
+value = os.getenv("EXAMPLE_ACTIVE_DOMAINS", "")
+"#;
+
+        let envs = extract_env_vars("demo.py", SourceLanguage::Python, source);
+        let names: Vec<&str> = envs.iter().map(|item| item.name.as_str()).collect();
+
+        assert_eq!(names, vec!["FLAG_ENABLED", "API_SECRET", "EXAMPLE_ACTIVE_DOMAINS"]);
+        assert!(envs.iter().all(|item| item.access == AccessKind::Read));
+    }
+
+    #[test]
     fn redis_extraction_ignores_permission_labels() {
         let source = r#"
 export const PERMISSIONS = {
@@ -2466,6 +2528,113 @@ ex:Claim a owl:Class .
             "nested linked worktree must not be indexed: {names:?}"
         );
 
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_symlinked_include_root_is_reported_instead_of_silently_indexing_nothing() {
+        // A workspace listed a frontend in include_roots, then moved the real
+        // directory and left a symlink at the old path. The walk does not follow
+        // symlinks, so the entry read as configured coverage while contributing
+        // zero files, and nothing said so. The warning is the whole point: the
+        // silence is what let the gap survive a migration.
+        let root = std::env::temp_dir().join(format!(
+            "leio-code-symlinked-include-root-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("real")).expect("mkdir real");
+        fs::write(root.join("real/app.ts"), "export const a = 1;\n").expect("write ts");
+        fs::create_dir_all(root.join(".leio-code")).expect("mkdir config");
+        fs::write(
+            root.join(".leio-code/config.toml"),
+            "version = 1\ninclude_roots = [\"linked\"]\n",
+        )
+        .expect("write config");
+        std::os::unix::fs::symlink(root.join("real"), root.join("linked")).expect("symlink");
+
+        let discovered = discover_source_files(&root).expect("discover");
+
+        assert!(
+            discovered
+                .unreachable_include_roots
+                .iter()
+                .any(|warning| warning.contains("`linked`") && warning.contains("symlink")),
+            "a symlinked include_root must be reported: {:?}",
+            discovered.unreachable_include_roots
+        );
+        assert!(
+            !discovered
+                .paths
+                .iter()
+                .any(|path| path.to_string_lossy().contains("linked/")),
+            "the walk must not descend into the symlink"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_real_include_root_directory_is_not_reported() {
+        // The warning must stay quiet for ordinary configuration, or it trains
+        // readers to ignore it.
+        let root = std::env::temp_dir().join(format!(
+            "leio-code-real-include-root-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("real")).expect("mkdir real");
+        fs::write(root.join("real/app.ts"), "export const a = 1;\n").expect("write ts");
+        fs::create_dir_all(root.join(".leio-code")).expect("mkdir config");
+        fs::write(
+            root.join(".leio-code/config.toml"),
+            "version = 1\ninclude_roots = [\"real\"]\n",
+        )
+        .expect("write config");
+
+        let discovered = discover_source_files(&root).expect("discover");
+
+        assert!(
+            discovered.unreachable_include_roots.is_empty(),
+            "a real directory must not warn: {:?}",
+            discovered.unreachable_include_roots
+        );
+        assert!(
+            discovered
+                .paths
+                .iter()
+                .any(|path| path.ends_with("real/app.ts")),
+            "the real include_root must still be indexed"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_missing_include_root_is_reported() {
+        let root = std::env::temp_dir().join(format!(
+            "leio-code-missing-include-root-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join(".leio-code")).expect("mkdir config");
+        fs::write(
+            root.join(".leio-code/config.toml"),
+            "version = 1\ninclude_roots = [\"gone\"]\n",
+        )
+        .expect("write config");
+
+        let discovered = discover_source_files(&root).expect("discover");
+
+        assert!(
+            discovered
+                .unreachable_include_roots
+                .iter()
+                .any(|warning| warning.contains("`gone`") && warning.contains("does not exist")),
+            "a missing include_root must be reported: {:?}",
+            discovered.unreachable_include_roots
+        );
         let _ = fs::remove_dir_all(&root);
     }
 
