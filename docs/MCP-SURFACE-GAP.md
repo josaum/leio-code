@@ -37,13 +37,30 @@ Wire-level contract (initialize, tools, `isError` vs protocol errors):
 | `leio_code_verify` | `leio-code verify` |
 | `leio_code_watch` | `leio-code watch` start/stop/status (not a stream) |
 
-Apps SDK remaps:
-`leio_code_guide` → `guide_repository_tools`,
-`leio_code_find` → `search_repository`,
-`leio_code_graph` → **`graph_repository`** (real graph — not find),
-`leio_code_doctor` → `audit_repository_contracts`,
-`leio_code_audit` → `audit_repository_rollup`,
-plus `inspect_*` / `prepare_repository_context` / `explain_repository`.
+The Apps SDK **remaps** this surface rather than copying it. The contract lives in
+[`apps-sdk/tool-name-map.js`](../apps-sdk/tool-name-map.js) and is asserted against both committed
+surfaces by [`apps-sdk/surface-parity.test.js`](../apps-sdk/surface-parity.test.js):
+
+| stdio MCP tool | hosted Apps SDK tool |
+| --- | --- |
+| `leio_code_guide` | `guide_repository_tools` |
+| `leio_code_capabilities` | `inspect_repository_capabilities` |
+| `leio_code_status` | `inspect_repository_status` |
+| `leio_code_context` | `prepare_repository_context` |
+| `leio_code_find` | `search_repository` |
+| `leio_code_explain` | `explain_repository` |
+| `leio_code_doctor` | `audit_repository_contracts` |
+| `leio_code_audit` | `audit_repository_rollup` |
+| `leio_code_graph` | **`graph_repository`** (real graph — not find) |
+| `leio_code_export` | `inspect_repository_status` (deliberate many-to-one: the hosted status tool answers export questions too) |
+
+Hosted-only tools (no stdio counterpart): `search_repository_memory`,
+`select_repository_target`, `clear_repository_target`.
+
+Local-only tools (no hosted counterpart — they need files, a cursor or artifacts on the
+caller's machine): `leio_code_conversation`, `leio_code_index`, `leio_code_init`,
+`leio_code_kb`, `leio_code_knowledge`, `leio_code_nav`, `leio_code_verify`, `leio_code_watch`.
+
 Domain tool `consult_carlos_motta_specialist` registers only when `LEIO_VIGOROS_MCP_URL` is set.
 
 ---

@@ -61,6 +61,7 @@ import {
 } from "../mcp/mcp-spec-2025-11-25.js";
 import { buildTenantScopeEnv } from "./tenant-scope.mjs";
 import { resolveBinaryPath as resolveTrustedBinary } from "../mcp/resolve-binary.js";
+import { appToolNameMap, mapToolNameToAppSurface } from "./tool-name-map.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -547,6 +548,9 @@ function resolveBinaryPath() {
   return resolveTrustedBinary({
     startDir: cargoWorkspaceRoot,
     binaryName,
+    // Same vendor directory the stdio package's postinstall populates, so both
+    // transports prefer a bundled binary over cargo/PATH/target.
+    bundledBinaryPath: path.join(leioCodeRoot, "mcp", "vendor", binaryName),
   });
 }
 
@@ -1337,23 +1341,6 @@ function buildToolMeta(invoking, invoked, securitySchemes) {
     "openai/toolInvocation/invoking": invoking,
     "openai/toolInvocation/invoked": invoked,
   };
-}
-
-const appToolNameMap = {
-  leio_code_guide: "guide_repository_tools",
-  leio_code_capabilities: "inspect_repository_capabilities",
-  leio_code_status: "inspect_repository_status",
-  leio_code_context: "prepare_repository_context",
-  leio_code_find: "search_repository",
-  leio_code_explain: "explain_repository",
-  leio_code_doctor: "audit_repository_contracts",
-  leio_code_audit: "audit_repository_rollup",
-  leio_code_graph: "graph_repository",
-  leio_code_export: "inspect_repository_status",
-};
-
-function mapToolNameToAppSurface(toolName) {
-  return appToolNameMap[toolName] ?? toolName;
 }
 
 function buildAppsSdkActionPalette(actionPalette) {

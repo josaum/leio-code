@@ -74,6 +74,14 @@ test("Apps SDK resolves leio-code through the shared cargo-bin helper", () => {
   assert.doesNotMatch(serverSource, /target["'],\s*["']release["']/);
 });
 
+test("hosted resolution prefers the bundled vendor binary exactly like stdio", () => {
+  assert.match(
+    serverSource,
+    /bundledBinaryPath:\s*path\.join\(\s*leioCodeRoot,\s*"mcp",\s*"vendor",\s*binaryName,?\s*\)/,
+    "the hosted server must offer the same mcp/vendor binary the stdio package installs",
+  );
+});
+
 test("hosted callers cannot select arbitrary absolute repo_root paths", () => {
   assert.match(serverSource, /LEIO_APPS_SDK_ALLOW_SERVER_REPO_ROOT/);
   assert.match(serverSource, /repo_root is disabled on the hosted LEIO service/);
