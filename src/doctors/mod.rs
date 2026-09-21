@@ -827,7 +827,10 @@ fn registry() -> Vec<RegisteredDoctor> {
         RegisteredDoctor {
             // Generic-promoted: self-skips cleanly when rust-toolchain.toml
             // is missing or pins a named channel (stable/nightly).
-            profiles: &[PROFILE_EXAMPLE, PROFILE_GENERIC],
+            // Also on the leio-code profile: this repository shipped a
+            // floating `channel = "stable"` past its own pin doctor because
+            // the doctor was never run on it.
+            profiles: &[PROFILE_EXAMPLE, PROFILE_GENERIC, PROFILE_LEIO_CODE],
             doctor: Box::new(rust_toolchain_pin_coherence::RustToolchainPinCoherenceDoctor),
         },
         RegisteredDoctor {

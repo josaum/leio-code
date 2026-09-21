@@ -375,6 +375,10 @@ mod tests {
             capabilities.doctor_kinds,
             vec![
                 "self-contract",
+                // Runs on leio-code itself since 2026-09-21: this repository
+                // shipped a floating `channel = "stable"` past its own pin
+                // doctor because the doctor was never registered for it.
+                "rust-toolchain-pin-coherence",
                 "slop",
                 "import-boundary",
                 "repo-hygiene",

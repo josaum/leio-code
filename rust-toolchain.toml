@@ -1,7 +1,12 @@
-# Todo o Rust do projeto roda na versão estável corrente: o canal "stable"
-# acompanha o último release estável do Rust em vez de congelar uma versão,
-# então builds locais e de CI nunca ficam para trás (o rustup resolve o canal
-# na primeira utilização e reutiliza a toolchain instalada nas seguintes).
+# Versão estável FIXA. Suba deliberadamente, e junto com os
+# `dtolnay/rust-toolchain@<versão>` em .github/workflows e o `FROM rust:<versão>`
+# em apps-sdk/Dockerfile -- o doctor rust-toolchain-pin-coherence confere.
+#
+# Antes era `channel = "stable"`, com a justificativa de que os builds "nunca
+# ficam para trás". É o contrário: o rustup resolve "stable" para a toolchain
+# que JÁ ESTÁ INSTALADA e não a atualiza sozinho. Em 2026-09-21 o mesmo commit
+# (b8d2295) compilou com 1.98.0 em uma máquina e 1.98.1 em outra -- o canal
+# flutuante não mantém ninguém em dia, só torna o build irreproduzível.
 [toolchain]
-channel = "stable"
+channel = "1.98.1"
 components = ["rustfmt", "clippy"]

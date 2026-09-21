@@ -22,9 +22,20 @@
 //!   pin — the distro variant is a deliberate per-image choice.
 //! - Vendored / third-party trees are skipped (`vendor/`, `node_modules/`,
 //!   `target/`, `.claude/worktrees`, …). We only govern first-party builds.
-//! - CI workflows that use `dtolnay/rust-toolchain@stable` are *not* flagged:
-//!   that action reads `rust-toolchain.toml` automatically, so it already
-//!   tracks the canonical pin.
+//! - CI workflows are not scanned. Note that `dtolnay/rust-toolchain@stable`
+//!   does NOT read `rust-toolchain.toml`: it installs whatever `stable` is that
+//!   day, and any `targets:`/`components:` it adds land on THAT toolchain.
+//!   `cargo` then honours the pin through rustup, so a cross-compile target
+//!   requested in CI is missing from the toolchain actually used as soon as
+//!   `stable` moves past the pin. Pin the action too (`@X.Y.Z`).
+//!
+//! A FLOATING channel is itself a finding. `channel = "stable"` is not a pin:
+//! rustup resolves it to whichever toolchain is already installed and never
+//! updates it, so one commit builds with different compilers on different
+//! machines (observed 2026-09-21: 1.98.0 on one host, 1.98.1 on another).
+//! This doctor used to treat that as a clean skip — "nothing numeric to
+//! enforce" — which meant a repository with no pin at all passed the pin
+//! doctor. A dated nightly (`nightly-2026-01-01`) is pinned and is left alone.
 
 use std::path::Path;
 use std::time::Instant;
@@ -157,8 +168,32 @@ pub fn doctor_rust_toolchain_pin_coherence(root: &Path) -> QueryEnvelope {
     };
 
     let Some(canonical) = canonical_minor(&toolchain_text) else {
-        // Channel is a named track (stable/nightly) — nothing numeric to
-        // enforce. Treat as a clean skip rather than a warning.
+        // No numeric pin. Either the channel FLOATS (`stable`, `beta`, bare
+        // `nightly`), which is a finding, or it is pinned some other way (a
+        // dated nightly), which there is nothing numeric to enforce against.
+        if let Some(track) = floating_channel(&toolchain_text) {
+            let message = format!(
+                "rust-toolchain.toml: `channel = \"{track}\"` floats — rustup resolves it to \
+                 whichever toolchain is already installed and never updates it, so the same \
+                 commit builds with different compilers on different machines. Pin an exact \
+                 version (`channel = \"X.Y.Z\"`)."
+            );
+            warnings.push(message.clone());
+            return QueryEnvelope {
+                schema_version: crate::model::SCHEMA_VERSION.to_string(),
+                query_id: query_id("doctor_rust_toolchain_pin_coherence"),
+                kind: "doctor".to_string(),
+                summary: format!(
+                    "rust-toolchain-pin-coherence: channel \"{track}\" is floating, not pinned"
+                ),
+                confidence: 0.85,
+                entities,
+                evidence,
+                warnings,
+                meta: Some(json!({"reason": "channel_floating", "channel": track})),
+                timing_ms: started.elapsed().as_millis(),
+            };
+        }
         return QueryEnvelope {
             schema_version: crate::model::SCHEMA_VERSION.to_string(),
             query_id: query_id("doctor_rust_toolchain_pin_coherence"),
@@ -341,6 +376,16 @@ pub fn doctor_rust_toolchain_pin_coherence(root: &Path) -> QueryEnvelope {
         })),
         timing_ms: started.elapsed().as_millis(),
     }
+}
+
+/// The channel name if it FLOATS: exactly `stable`, `beta` or `nightly`.
+///
+/// `nightly-2026-01-01` is a pin and returns `None`; so does a numeric version
+/// (handled by [`canonical_minor`]) and a file with no channel line at all.
+fn floating_channel(toolchain_text: &str) -> Option<String> {
+    let channel_re = Regex::new(r#"(?m)^\s*channel\s*=\s*"([^"]+)""#).expect("channel regex");
+    let channel = channel_re.captures(toolchain_text)?.get(1)?.as_str().trim();
+    matches!(channel, "stable" | "beta" | "nightly").then(|| channel.to_string())
 }
 
 /// 1-based line number containing the byte offset `at`.
@@ -542,23 +587,42 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
+    /// A floating channel is a FINDING, not a clean skip.
+    ///
+    /// This test used to be `skips_when_channel_not_pinned` and asserted
+    /// `warnings.is_empty()` for `channel = "stable"` — it pinned the defect.
+    /// With it green, this very repository shipped a floating pin past its
+    /// own pin doctor.
     #[test]
-    fn skips_when_channel_not_pinned() {
-        let dir = unique_tempdir("named");
+    fn flags_a_floating_channel() {
+        for track in ["stable", "beta", "nightly"] {
+            let dir = unique_tempdir(&format!("floating-{track}"));
+            write_file(
+                &dir.join("rust-toolchain.toml"),
+                &format!("[toolchain]\nchannel = \"{track}\"\n"),
+            );
+            let env = doctor_rust_toolchain_pin_coherence(&dir);
+            assert_eq!(env.warnings.len(), 1, "{track}: {:?}", env.warnings);
+            assert!(env.warnings[0].contains("floats"), "{:?}", env.warnings);
+            assert!(env.summary.contains("floating"), "{}", env.summary);
+            let _ = fs::remove_dir_all(&dir);
+        }
+    }
+
+    /// A dated nightly IS a pin; there is just nothing numeric to compare.
+    #[test]
+    fn a_dated_nightly_is_pinned_and_skips_cleanly() {
+        let dir = unique_tempdir("dated-nightly");
         write_file(
             &dir.join("rust-toolchain.toml"),
-            "[toolchain]\nchannel = \"stable\"\n",
+            "[toolchain]\nchannel = \"nightly-2026-01-01\"\n",
         );
         write_file(
             &dir.join("svc/Dockerfile"),
             "FROM rust:1.83-bookworm AS b\n",
         );
         let env = doctor_rust_toolchain_pin_coherence(&dir);
-        assert!(
-            env.warnings.is_empty(),
-            "named channel can't be enforced numerically, got: {:?}",
-            env.warnings
-        );
+        assert!(env.warnings.is_empty(), "{:?}", env.warnings);
         assert!(env.summary.contains("skipped"));
         let _ = fs::remove_dir_all(&dir);
     }

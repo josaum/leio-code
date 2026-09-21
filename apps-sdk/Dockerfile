@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM rust:1.97-bookworm AS leio-code-builder
+FROM rust:1.98-bookworm AS leio-code-builder
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates pkg-config \
