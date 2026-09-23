@@ -1,6 +1,6 @@
 {
   "name": "@leio/leio-code-mcp",
-  "version": "2.6.3",
+  "version": "2.6.4",
   "private": true,
   "type": "module",
   "description": "Evidence-first MCP wrapper for the LEIO Code CLI",

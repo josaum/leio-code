@@ -27,6 +27,7 @@ INCLUDED_PATHS = (
     ".mcp.json",
     "Cargo.toml",
     "Cargo.lock",
+    "rust-toolchain.toml",
     "build.rs",
     "README.md",
     "LICENSE",

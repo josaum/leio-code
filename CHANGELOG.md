@@ -4,6 +4,21 @@ All notable changes to LEIO Code. Format follows [Keep a Changelog](https://keep
 
 ## [Unreleased]
 
+## [2.6.4] — 2026-09-23
+
+### Fixed
+- Build Intel macOS release binaries on the supported `macos-15-intel` runner
+  and Apple Silicon binaries on `macos-15`; smoke both executables before upload.
+- Pin release builds to Rust 1.98.1 and the checked-in dependency lockfile.
+  Include the Rust toolchain pin in portable plugin packages and installs.
+- Preserve the portable `.leio-code/config.toml` in generated public exports
+  while excluding local indexes and events.
+- Align the plugin marketplace version with all first-party release manifests.
+
+### Included
+- Includes the 2.6.3 knowledge, retrieval, RDF 1.2, and MCP improvements below,
+  plus export permission preservation and local scratch protection.
+
 ## [2.6.3] — 2026-09-12
 
 ### Added

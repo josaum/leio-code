@@ -8,7 +8,7 @@
   "serverInfo": {
     "name": "leio-code",
     "title": "LEIO Code",
-    "version": "2.6.3",
+    "version": "2.6.4",
     "description": "Evidence-first repository intelligence over stdio: status, capabilities, context, find, explain, graph, doctors, formal SPARQL, and lattice navigation. One absolute repo_root per call.",
     "websiteUrl": "https://github.com/josaum/leio-code",
     "icons": [

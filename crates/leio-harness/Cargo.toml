@@ -1,6 +1,6 @@
 [package]
 name = "leio-harness"
-version = "2.6.3"
+version = "2.6.4"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "LEIO-Harness — agent execution runtime for LEIO Code"

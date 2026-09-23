@@ -33,6 +33,19 @@ def write_required_payload(root: Path) -> Path:
 
 
 class ReleaseArtifactTests(unittest.TestCase):
+    def test_toolchain_pin_survives_packaging(self) -> None:
+        repo = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = Path(tmp) / "source"
+            fixture.mkdir()
+            pin = (repo / "rust-toolchain.toml").read_bytes()
+            (fixture / "rust-toolchain.toml").write_bytes(pin)
+            packed = package_codex_plugin.copy_payload(fixture, Path(tmp) / "stage", "leio-code")
+            archive = Path(tmp) / "plugin.tar.gz"
+            package_codex_plugin.build_tar_gz(packed.parent, archive, "leio-code")
+            with tarfile.open(archive) as tar:
+                self.assertEqual(tar.extractfile("leio-code/rust-toolchain.toml").read(), pin)
+
     def test_license_files_survive_packaging(self) -> None:
         repo = Path(__file__).resolve().parents[1]
         notices = ("LICENSE", "LICENSE-MIT", "LICENSE-APACHE", "THIRD_PARTY.md")

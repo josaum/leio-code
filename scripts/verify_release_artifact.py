@@ -25,6 +25,7 @@ REQUIRED_ARCHIVE_PATHS = (
     ".codex-plugin/plugin.json",
     "Cargo.toml",
     "Cargo.lock",
+    "rust-toolchain.toml",
     "README.md",
     "LICENSE",
     "LICENSE-MIT",

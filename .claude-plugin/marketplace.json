@@ -9,7 +9,7 @@
     {
       "name": "leio-code",
       "description": "Indexed lookup, graph, doctors, local wiki, SPARQL-gated explain, formal graph, lattice nav, and JSON-LD provenance via CLI/MCP.",
-      "version": "2.6.1",
+      "version": "2.6.4",
       "author": {
         "name": "LEIO Code contributors",
         "url": "https://github.com/josaum/leio-code"
