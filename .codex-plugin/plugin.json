@@ -1,6 +1,6 @@
 {
   "name": "leio-code",
-  "version": "2.6.4",
+  "version": "2.6.5",
   "description": "Agent-first code intelligence. Local Arrow wiki first, SPARQL-gated knowledge explain, formal.nq, lattice/heading nav, JSON-LD provenance. Fully local.",
   "author": {
     "name": "LEIO Code contributors",

@@ -116,7 +116,9 @@ pub fn fingerprint_vector(text: &str) -> Vec<f32> {
     use sha2::{Digest, Sha256};
     let digest = Sha256::digest(text.as_bytes());
     let mut out: Vec<f32> = digest[..16]
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|pair| (i16::from_le_bytes([pair[0], pair[1]]) as f32) / i16::MAX as f32)
         .collect();
     normalize_f32(&mut out);

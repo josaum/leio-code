@@ -614,7 +614,7 @@ mod tests {
     #[test]
     fn audit_report_picks_up_doctor_registry_dynamically() {
         // The audit must not hard-code doctor names. For a leio-code workspace
-        // we should still see `self-contract` show up via the runtime registry.
+        // we should see `self-contract` via its declared repository catalog.
         let root = std::env::temp_dir().join(format!(
             "leio-code-audit-registry-{}-{}",
             std::process::id(),
@@ -628,6 +628,11 @@ mod tests {
         )
         .expect("write config");
 
+        fs::write(
+            root.join(crate::doctors::native::MANIFEST),
+            r#"{"schema_version":1,"name":"fixture-self-pack","doctors":[{"name":"self-contract","description":"fixture","suites":["all"]},{"name":"leio-release-coherence","description":"fixture","suites":["all"]}]}"#,
+        )
+        .unwrap();
         let index_path = root.join(".leio-code").join("index.json");
         let report = build_audit_report(&root, &index_path).expect("audit report");
 

@@ -35,17 +35,24 @@ export function formatBaseline(summary) {
 }
 
 /** Copy only executable graph recommendations; never forward arbitrary tool args. */
-export function contextNextCalls(envelope, { repoRoot, indexPath, graphKinds }) {
+export function contextNextCalls(envelope, { repoRoot, indexPath, graphKinds, session }) {
   const files = envelope?.entities?.[0]?.files_to_read;
   if (Array.isArray(files)) {
-    // File paths are grounded in this working set. Global fuzzy symbol matches
-    // may belong to unrelated files; inventory exact definitions first.
-    return [...new Set(files.map(row => row?.path).filter(p => typeof p === "string" && p.trim()))]
-      .slice(0, 4).filter(() => !graphKinds || graphKinds.includes("symbols-in"))
-      .map(needle => ({ tool: "leio_code_graph", arguments: {
-        repo_root: repoRoot, ...(indexPath ? { index_path: indexPath } : {}), kind: "symbols-in", needle,
-      }, reason: "Inspect exact definitions in this ranked file before selecting a symbol identity" }));
+    const calls = [];
+    const seen = new Set();
+    for (const file of files) {
+      if (!nonempty(file?.path) || seen.has(file.path)) continue;
+      seen.add(file.path);
+      const symbol = file.symbols?.find(row => callable(row) && Number.isInteger(row.line) && row.line > 0)
+        ?? file.symbols?.find(row => Number.isInteger(row.line) && row.line > 0);
+      const scope = { repo_root: repoRoot, ...(indexPath ? { index_path: indexPath } : {}) };
+      if (symbol) calls.push({ tool:"leio_code_nav", arguments:{...scope, ...(navigationSession(session) ? {session:navigationSession(session)} : {}), kind:"goto", needle:`definition:${file.path}#${symbol.line}`}, reason:`Open the indexed ${symbol.name} definition with live source and freshness` });
+      else if (!graphKinds || graphKinds.includes("symbols-in")) calls.push({tool:"leio_code_graph", arguments:{...scope,kind:"symbols-in",needle:file.path},reason:"Inspect exact definitions in this ranked file"});
+      if (calls.length === 3) break;
+    }
+    return calls;
   }
+
   const queries = envelope?.entities?.[0]?.graph_queries;
   if (!Array.isArray(queries)) return [];
   const calls = [];
@@ -210,7 +217,8 @@ export function navNextCalls(envelope, scope) {
     for (const row of rows.filter((row) => row.role === "result" && Number.isInteger(row.index) && row.index >= 0
       && !sameNavNode(row, current)).slice(0, 2)) {
       const label = row.concept_details?.label || row.symbol;
-      nav("select", `Move to result ${row.index}: ${label}${nonempty(row.path) ? ` (${row.path})` : ""} before continuing the walk`, { index: row.index });
+      if (nonempty(row.graph_symbol)) nav("goto", `Open ${label} with live source`, {needle:row.graph_symbol});
+      else nav("select", `Move to result ${row.index}: ${label}${nonempty(row.path) ? ` (${row.path})` : ""} before continuing the walk`, { index: row.index });
     }
   }
   if (activePage && page.has_more === true
@@ -237,9 +245,12 @@ export function navNextCalls(envelope, scope) {
   };
   for (const kind of moves) {
     if (kind !== action) {
-      nav(kind, reasons[kind]);
+      nav(kind, reasons[kind], ["callers", "callees"].includes(kind) ? {follow:true} : {});
       break;
     }
+  }
+  if (Number.isSafeInteger(current?.source?.next_offset) && current.source.next_offset > (current.source.offset ?? 0)) {
+    nav("here", "Read the next bounded source window without leaving navigation", {source_offset:current.source.next_offset});
   }
   if (current?.kind === "file" && nonempty(current.path)) {
     add("leio_code_graph", { kind: "symbols-in", needle: current.path }, "Inspect definitions in the current file");

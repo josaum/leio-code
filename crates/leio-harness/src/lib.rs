@@ -42,6 +42,7 @@ pub mod gepa;
 pub mod improvement;
 pub mod integrate;
 pub mod lease;
+pub mod managed_bus;
 pub mod manifest;
 pub mod merge;
 pub mod model;

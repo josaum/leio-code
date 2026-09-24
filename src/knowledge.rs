@@ -144,7 +144,7 @@ impl WikiIndex {
                 continue;
             };
             any = true;
-            for chunk in posts.chunks_exact(POST_WIDTH) {
+            for chunk in posts.as_chunks::<POST_WIDTH>().0 {
                 let row = u32::from_le_bytes(chunk[0..4].try_into().unwrap_or([0; 4])) as usize;
                 if row < seen.len() {
                     seen[row] = true;
@@ -202,7 +202,7 @@ impl WikiIndex {
 
     fn posting_hit(&self, term: &str, row: u32) -> Option<(u16, u16)> {
         let (_, posts) = self.term_postings(term)?;
-        for chunk in posts.chunks_exact(POST_WIDTH) {
+        for chunk in posts.as_chunks::<POST_WIDTH>().0 {
             let found = u32::from_le_bytes(chunk[0..4].try_into().ok()?);
             if found == row {
                 let tf = u16::from_le_bytes(chunk[4..6].try_into().ok()?);

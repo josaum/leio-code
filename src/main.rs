@@ -40,7 +40,7 @@ use leio_code::indexer::{
 };
 use leio_code::init::{init_envelope, render_init_text, run_init};
 use leio_code::model::QueryEnvelope;
-use leio_code::nav::{NavAction, run_nav_page};
+use leio_code::nav::NavAction;
 use leio_code::query::{
     explain_binary, explain_cartridge, explain_deploy_target, explain_env_var, explain_redis_key,
     explain_route, find_api_routes, find_binaries, find_binary_callers, find_cartridges,
@@ -61,15 +61,14 @@ fn static_catalog() -> serde_json::Value {
             .map(|value| value.get_name().to_string())
             .collect()
     }
-    let mut doctor_kinds: Vec<String> = [DoctorKind::All, DoctorKind::Baseline, DoctorKind::Ci]
-        .iter()
-        .filter_map(|kind| kind.to_possible_value())
-        .map(|value| value.get_name().to_string())
+    let mut doctor_kinds: Vec<String> = ["all", "baseline", "ci"]
+        .into_iter()
+        .map(str::to_owned)
         .collect();
     doctor_kinds.extend(
-        leio_code::doctors::doctor_names_for_profile(leio_code::config::PROFILE_EXAMPLE)
+        leio_code::doctors::doctor_names()
             .into_iter()
-            .map(str::to_string),
+            .map(str::to_owned),
     );
     serde_json::json!({
         "find_kinds": variant_names::<FindKind>(),
@@ -269,9 +268,14 @@ enum Command {
         #[arg(long)]
         out: Option<PathBuf>,
     },
+    /// Explicitly install and trust a reviewed native doctor binary for this repository.
+    TrustDoctorPack {
+        #[arg(long)]
+        binary: PathBuf,
+    },
     Doctor {
-        #[arg(value_enum)]
-        kind: DoctorKind,
+        /// Generic or repository-owned doctor name; all, baseline and ci are suites.
+        kind: String,
         /// Output format. `text` (default) is human-readable; `json` and `sarif`
         /// are machine formats stamped with index version + commit SHA so reports
         /// are reproducible. SARIF 2.1.0 is consumable by GitHub code scanning.
@@ -332,6 +336,14 @@ enum Command {
         /// Continue with the next_offset returned by the previous listing (same query and limit).
         #[arg(long, default_value = "0")]
         offset: usize,
+        /// Follow a graph edge only when it has exactly one target.
+        #[arg(long)]
+        follow: bool,
+        /// Source window offset relative to the selected definition.
+        #[arg(long, default_value_t = 0)]
+        source_offset: usize,
+        #[arg(long, default_value_t = 40)]
+        source_lines: usize,
     },
     /// Watch the repo and reindex incrementally on file changes.
     /// Sync the installation from the canonical checkout: fast-forward
@@ -531,240 +543,6 @@ impl FormalContextFormatArg {
             Self::Json => F::Json,
             Self::Arrow => F::Arrow,
         }
-    }
-}
-
-#[derive(Debug, Clone, Copy, ValueEnum)]
-enum DoctorKind {
-    All,
-    /// Same checks as `status --strict` (fast parallel preset)
-    Baseline,
-    /// Baseline + semantic-wiring, auth-brokering, inference-contracts
-    Ci,
-    Deploy,
-    DeployBundleCriticalKeys,
-    DuckdbContract,
-    SemanticWiring,
-    TessellationContract,
-    SessionHotState,
-    SisfronOodaRuntime,
-    SisfronSimulationDurability,
-    OnboardingProjection,
-    OnboardingDrift,
-    OrphanFiles,
-    PactoWebhookAllowlistPopulated,
-    PublishableCrate,
-    VendoredCrateProvenance,
-    RevopsTenantGate,
-    RouteProjection,
-    ScriptPathExistence,
-    SecretSetParity,
-    AuthBrokering,
-    CompositionResolver,
-    EventDurability,
-    EventEnvelope,
-    FlightAuth,
-    FlightRuntimeAuth,
-    GatewayOarBoundary,
-    GatewayOcrPipeline,
-    OcrModelsOnDisk,
-    OcrCanonicalLayout,
-    GlinerSharedSurface,
-    #[value(name = "health-audit-ans-xsd")]
-    HealthAuditAnsXsd,
-    HealthAuditAuth,
-    HealthAuditEmbedding,
-    HealthAuditSentinel,
-    #[value(name = "luminai-health-audit-isolation")]
-    LuminaiHealthAuditIsolation,
-    HealthAuditRouterSize,
-    HealthAuditContractAirgap,
-    HealthAuditWorkerRuntime,
-    GlosaContract,
-    ClinicalContract,
-    GenerateAsyncFlight,
-    FlightServerZeroCopy,
-    FlightServerContextIsolation,
-    HealthAuditEvidenceClass,
-    HealthAuditAuditTrailDurability,
-    HealthAuditEngineHealth,
-    FlightChannelReuse,
-    GrpcMessageSize,
-    AuthJwtCompat,
-    AuthSessionContinuity,
-    HealthAuditRedisPrimacy,
-    InferenceContracts,
-    LlmProviderEgress,
-    ManusResidue,
-    FrontendEngineClient,
-    FrontendReadiness,
-    ConversationIdentity,
-    VigorosSwarm,
-    CartridgeBoundary,
-    EgressCompliance,
-    RedisKeyHygiene,
-    ModalAppNamingCoherence,
-    AlignDockerfilePathDepCoherence,
-    ServerDockerfileContextCoherence,
-    RustToolchainPinCoherence,
-    RustDependencyBaseline,
-    ProdSurfaceHygiene,
-    OaeiDocConsistency,
-    OfficeParsersNodeParity,
-    OfficeParsersArrowIpc,
-    OfficeParsersClippyGate,
-    OfficeParsersDocCoverage,
-    FastWheelhouseContract,
-    SelfContract,
-    SkillContract,
-    TypescriptConfigHygiene,
-    // Drift-pattern doctors added 2026-05-04
-    AgentSeedUpdateCompleteness,
-    StartupHookCartridgeCoverage,
-    WorkerMemBudget,
-    ModelCacheContract,
-    BareCartridgeRedisKey,
-    EgressSuccessWithoutWamid,
-    ActiveCartridgesEnvDrift,
-    AssurantSeedWiring,
-    #[value(name = "assurant-ops-production")]
-    AssurantOpsProduction,
-    OcrFlightWiring,
-    ParseHybridFallback,
-    LayoutFastSpectralContract,
-    LayoutContractPlatform,
-    PdfPipelineDivergence,
-    #[value(name = "pdf-studio-env-coherence")]
-    PdfStudioEnvCoherence,
-    AudioHandlerTimeout,
-    ChatwootPratiqueSync,
-    KbCollectionExists,
-    FitnessMemberUnitResolver,
-    #[value(name = "lgpd-outbound-filter")]
-    LgpdOutboundFilter,
-    #[value(name = "evo-credential-isolation")]
-    EvoCredentialIsolation,
-    #[value(name = "c4gym-evo-integration")]
-    C4GymEvoIntegration,
-    #[value(name = "jaipay-pacto-gcp-webhook")]
-    JaipayPactoGcpWebhook,
-    #[value(name = "jaipay-supabase-session-pooler")]
-    JaipaySupabaseSessionPooler,
-    #[value(name = "supabase-runtime-shape")]
-    SupabaseRuntimeShape,
-    #[value(name = "compose-worker-mem-budget")]
-    ComposeWorkerMemBudget,
-    #[value(name = "supabase-project-liveness")]
-    SupabaseProjectLiveness,
-    #[value(name = "liz-jaipay-pacto-lookup-contract")]
-    LizJaiPayPactoLookupContract,
-    #[value(name = "plusoft-routing-contract")]
-    PlusoftRoutingContract,
-    #[value(name = "plusoft-handover-payload-contract")]
-    PlusoftHandoverPayloadContract,
-    #[value(name = "plusoft-transcript-fidelity")]
-    PlusoftTranscriptFidelity,
-    #[value(name = "pacto-drain-dependency")]
-    PactoDrainDependency,
-    #[value(name = "test-patch-target-integrity")]
-    TestPatchTargetIntegrity,
-    #[value(name = "test-route-mount-integrity")]
-    TestRouteMountIntegrity,
-    #[value(name = "pratique-cobranca-json-contract")]
-    PratiqueCobrancaJsonContract,
-    #[value(name = "ontology-price-consistency")]
-    OntologyPriceConsistency,
-    RecipientLimbo,
-    #[value(name = "sara-assurant-egress-contract")]
-    SaraAssurantEgressContract,
-    #[value(name = "whatsapp-bsuid-webhook")]
-    WhatsAppBsuidWebhook,
-    #[value(name = "whatsapp-bsuid-crm")]
-    WhatsAppBsuidCrm,
-    #[value(name = "whatsapp-display-name-only")]
-    WhatsAppDisplayNameOnly,
-    #[value(name = "revops-snapshot-schema-sync")]
-    RevopsSnapshotSchemaSync,
-    TenantIdentity,
-    TenantOverrideContract,
-    /// Python↔gateway operator cross-tenant (OPS_OPERATOR_TENANTS) parity
-    OperatorTenantParity,
-    /// Slop gate for deck/report repos with a spine.json
-    Slop,
-    /// Generic: env vars read by code but declared nowhere in the repo
-    EnvContract,
-    /// Generic: config-driven import boundary rules
-    ImportBoundary,
-    /// Generic: committed repo noise (conflict leftovers, ignore-worthy files, large dup sets)
-    #[value(name = "repo-hygiene")]
-    RepoHygiene,
-    /// Portable: bounded Codex multi-agent roles, hooks, and repository contract
-    #[value(name = "codex-orchestration")]
-    CodexOrchestration,
-    /// Portable: first-party LEIO release surfaces and changelog stay version-aligned
-    #[value(name = "leio-release-coherence")]
-    LeioReleaseCoherence,
-    /// Stable env/redis co-occurrence invariants induced from the code graph
-    InducedInvariants,
-    /// Authenticated, tenant-scoped Rust/Python/compose platform boundary
-    #[value(name = "platform-runtime-trust-boundary")]
-    PlatformRuntimeTrustBoundary,
-    /// artifacts/ reorg: centralized wheels, repointed consumers, manifest sync
-    ArtifactReuse,
-    /// Composite Python control-plane ↔ Rust data-plane boundary gate
-    #[value(name = "py-rust-boundary")]
-    PyRustBoundary,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use clap::ValueEnum;
-
-    #[test]
-    fn doctor_kind_exposes_supabase_runtime_shape() {
-        let names: Vec<String> = DoctorKind::value_variants()
-            .iter()
-            .filter_map(|kind| kind.to_possible_value())
-            .map(|value| value.get_name().to_string())
-            .collect();
-
-        assert!(
-            names.iter().any(|name| name == "supabase-runtime-shape"),
-            "expected DoctorKind to expose supabase-runtime-shape; got {names:?}"
-        );
-    }
-
-    #[test]
-    fn doctor_kind_exposes_platform_runtime_trust_boundary() {
-        let names: Vec<String> = DoctorKind::value_variants()
-            .iter()
-            .filter_map(|kind| kind.to_possible_value())
-            .map(|value| value.get_name().to_string())
-            .collect();
-
-        assert!(
-            names
-                .iter()
-                .any(|name| name == "platform-runtime-trust-boundary"),
-            "expected DoctorKind to expose platform-runtime-trust-boundary; got {names:?}"
-        );
-    }
-
-    #[test]
-    fn doctor_kind_exposes_whatsapp_display_name_only() {
-        let names: Vec<String> = DoctorKind::value_variants()
-            .iter()
-            .filter_map(|kind| kind.to_possible_value())
-            .map(|value| value.get_name().to_string())
-            .collect();
-
-        assert!(
-            names
-                .iter()
-                .any(|name| name == "whatsapp-display-name-only"),
-            "expected DoctorKind to expose whatsapp-display-name-only; got {names:?}"
-        );
     }
 }
 
@@ -1601,6 +1379,10 @@ fn main() -> Result<()> {
                 print_and_maybe_fail(&envelope, cli.json, false)?;
             }
         }
+        Command::TrustDoctorPack { binary } => {
+            leio_code::doctors::native::trust(&repo, &binary)?;
+            println!("Trusted repository doctor pack for {}", repo.display());
+        }
         Command::Doctor {
             kind,
             format,
@@ -1654,172 +1436,15 @@ fn main() -> Result<()> {
             let explain_rule = explain
                 .as_deref()
                 .and_then(leio_code::diagnostics::rule_doc);
-            let envelope = match (kind, explain_rule) {
-                (DoctorKind::All, Some(rule)) => run_doctor(rule.doctor_name, &index, &repo)
+            let envelope = match (kind.as_str(), explain_rule) {
+                ("all", Some(rule)) => run_doctor(rule.doctor_name, &index, &repo)
                     .with_context(|| format!("doctor `{}` not registered", rule.doctor_name))?,
-                (DoctorKind::All, None) => run_all_doctors(&index, &repo),
-                (DoctorKind::Baseline, _) => run_baseline_doctors(&index, &repo),
-                (DoctorKind::Ci, _) => run_ci_doctors(&index, &repo),
-                _ => {
-                    let doctor_name = match kind {
-                        DoctorKind::All => unreachable!("handled above"),
-                        DoctorKind::Baseline | DoctorKind::Ci => {
-                            unreachable!("handled above")
-                        }
-                        DoctorKind::Deploy => "deploy",
-                        DoctorKind::DeployBundleCriticalKeys => "deploy-bundle-critical-keys",
-                        DoctorKind::DuckdbContract => "duckdb-contract",
-                        DoctorKind::SemanticWiring => "semantic-wiring",
-                        DoctorKind::TessellationContract => "tessellation-contract",
-                        DoctorKind::SessionHotState => "session-hot-state",
-                        DoctorKind::SisfronOodaRuntime => "sisfron-ooda-runtime",
-                        DoctorKind::SisfronSimulationDurability => "sisfron-simulation-durability",
-                        DoctorKind::OnboardingProjection => "onboarding-projection",
-                        DoctorKind::OnboardingDrift => "onboarding-drift",
-                        DoctorKind::OrphanFiles => "orphan-files",
-                        DoctorKind::PactoWebhookAllowlistPopulated => {
-                            "pacto-webhook-allowlist-populated"
-                        }
-                        DoctorKind::PublishableCrate => "publishable-crate",
-                        DoctorKind::VendoredCrateProvenance => "vendored-crate-provenance",
-                        DoctorKind::RevopsTenantGate => "revops-tenant-gate",
-                        DoctorKind::RouteProjection => "route-projection",
-                        DoctorKind::ScriptPathExistence => "script-path-existence",
-                        DoctorKind::SecretSetParity => "secret-set-parity",
-                        DoctorKind::AuthBrokering => "auth-brokering",
-                        DoctorKind::CompositionResolver => "composition-resolver",
-                        DoctorKind::EventDurability => "event-durability",
-                        DoctorKind::EventEnvelope => "event-envelope",
-                        DoctorKind::FlightAuth => "flight-auth",
-                        DoctorKind::FlightRuntimeAuth => "flight-runtime-auth",
-                        DoctorKind::GatewayOarBoundary => "gateway-oar-boundary",
-                        DoctorKind::GatewayOcrPipeline => "gateway-ocr-pipeline",
-                        DoctorKind::OcrModelsOnDisk => "ocr-models-on-disk",
-                        DoctorKind::OcrCanonicalLayout => "ocr-canonical-layout",
-                        DoctorKind::GlinerSharedSurface => "gliner-shared-surface",
-                        DoctorKind::HealthAuditAnsXsd => "health-audit-ans-xsd",
-                        DoctorKind::HealthAuditAuth => "health-audit-auth",
-                        DoctorKind::HealthAuditEmbedding => "health-audit-embedding",
-                        DoctorKind::HealthAuditSentinel => "health-audit-sentinel",
-                        DoctorKind::LuminaiHealthAuditIsolation => "luminai-health-audit-isolation",
-                        DoctorKind::HealthAuditRouterSize => "health-audit-router-size",
-                        DoctorKind::HealthAuditContractAirgap => "health-audit-contract-airgap",
-                        DoctorKind::HealthAuditWorkerRuntime => "health-audit-worker-runtime",
-                        DoctorKind::GlosaContract => "glosa-contract",
-                        DoctorKind::ClinicalContract => "clinical-contract",
-                        DoctorKind::GenerateAsyncFlight => "generate-async-flight",
-                        DoctorKind::FlightServerZeroCopy => "flight-server-zero-copy",
-                        DoctorKind::FlightServerContextIsolation => {
-                            "flight-server-context-isolation"
-                        }
-                        DoctorKind::HealthAuditEvidenceClass => "health-audit-evidence-class",
-                        DoctorKind::HealthAuditAuditTrailDurability => {
-                            "health-audit-audit-trail-durability"
-                        }
-                        DoctorKind::HealthAuditEngineHealth => "health-audit-engine-health",
-                        DoctorKind::FlightChannelReuse => "flight-channel-reuse",
-                        DoctorKind::GrpcMessageSize => "grpc-message-size",
-                        DoctorKind::AuthJwtCompat => "auth-jwt-compat",
-                        DoctorKind::AuthSessionContinuity => "auth-session-continuity",
-                        DoctorKind::HealthAuditRedisPrimacy => "health-audit-redis-primacy",
-                        DoctorKind::InferenceContracts => "inference-contracts",
-                        DoctorKind::LlmProviderEgress => "llm-provider-egress",
-                        DoctorKind::ManusResidue => "manus-residue",
-                        DoctorKind::FrontendEngineClient => "frontend-engine-client",
-                        DoctorKind::FrontendReadiness => "frontend-readiness",
-                        DoctorKind::ConversationIdentity => "conversation-identity",
-                        DoctorKind::VigorosSwarm => "vigoros-swarm",
-                        DoctorKind::CartridgeBoundary => "cartridge-boundary",
-                        DoctorKind::EgressCompliance => "egress-compliance",
-                        DoctorKind::RedisKeyHygiene => "redis-key-hygiene",
-                        DoctorKind::ModalAppNamingCoherence => "modal-app-naming-coherence",
-                        DoctorKind::AlignDockerfilePathDepCoherence => {
-                            "align-dockerfile-path-dep-coherence"
-                        }
-                        DoctorKind::ServerDockerfileContextCoherence => {
-                            "server-dockerfile-context-coherence"
-                        }
-                        DoctorKind::RustToolchainPinCoherence => "rust-toolchain-pin-coherence",
-                        DoctorKind::RustDependencyBaseline => "rust-dependency-baseline",
-                        DoctorKind::ProdSurfaceHygiene => "prod-surface-hygiene",
-                        DoctorKind::OaeiDocConsistency => "oaei-doc-consistency",
-                        DoctorKind::OfficeParsersNodeParity => "office-parsers-node-parity",
-                        DoctorKind::OfficeParsersArrowIpc => "office-parsers-arrow-ipc",
-                        DoctorKind::OfficeParsersClippyGate => "office-parsers-clippy-gate",
-                        DoctorKind::OfficeParsersDocCoverage => "office-parsers-doc-coverage",
-                        DoctorKind::FastWheelhouseContract => "fast-wheelhouse-contract",
-                        DoctorKind::SelfContract => "self-contract",
-                        DoctorKind::SkillContract => "skill-contract",
-                        DoctorKind::TypescriptConfigHygiene => "typescript-config-hygiene",
-                        DoctorKind::AgentSeedUpdateCompleteness => "agent-seed-update-completeness",
-                        DoctorKind::StartupHookCartridgeCoverage => {
-                            "startup-hook-cartridge-coverage"
-                        }
-                        DoctorKind::WorkerMemBudget => "worker-mem-budget",
-                        DoctorKind::ModelCacheContract => "model-cache-contract",
-                        DoctorKind::BareCartridgeRedisKey => "bare-cartridge-redis-key",
-                        DoctorKind::EgressSuccessWithoutWamid => "egress-success-without-wamid",
-                        DoctorKind::ActiveCartridgesEnvDrift => "active-cartridges-env-drift",
-                        DoctorKind::AssurantSeedWiring => "assurant-seed-wiring",
-                        DoctorKind::AssurantOpsProduction => "assurant-ops-production",
-                        DoctorKind::OcrFlightWiring => "ocr-flight-wiring",
-                        DoctorKind::ParseHybridFallback => "parse-hybrid-fallback",
-                        DoctorKind::LayoutFastSpectralContract => "layout-fast-spectral-contract",
-                        DoctorKind::LayoutContractPlatform => "layout-contract-platform",
-                        DoctorKind::PdfPipelineDivergence => "pdf-pipeline-divergence",
-                        DoctorKind::PdfStudioEnvCoherence => "pdf-studio-env-coherence",
-                        DoctorKind::AudioHandlerTimeout => "audio-handler-timeout",
-                        DoctorKind::ChatwootPratiqueSync => "chatwoot-pratique-sync",
-                        DoctorKind::KbCollectionExists => "kb-collection-exists",
-                        DoctorKind::FitnessMemberUnitResolver => "fitness-member-unit-resolver",
-                        DoctorKind::LgpdOutboundFilter => "lgpd-outbound-filter",
-                        DoctorKind::EvoCredentialIsolation => "evo-credential-isolation",
-                        DoctorKind::C4GymEvoIntegration => "c4gym-evo-integration",
-                        DoctorKind::JaipayPactoGcpWebhook => "jaipay-pacto-gcp-webhook",
-                        DoctorKind::JaipaySupabaseSessionPooler => "jaipay-supabase-session-pooler",
-                        DoctorKind::SupabaseRuntimeShape => "supabase-runtime-shape",
-                        DoctorKind::ComposeWorkerMemBudget => "compose-worker-mem-budget",
-                        DoctorKind::SupabaseProjectLiveness => "supabase-project-liveness",
-                        DoctorKind::LizJaiPayPactoLookupContract => {
-                            "liz-jaipay-pacto-lookup-contract"
-                        }
-                        DoctorKind::PlusoftRoutingContract => "plusoft-routing-contract",
-                        DoctorKind::PlusoftHandoverPayloadContract => {
-                            "plusoft-handover-payload-contract"
-                        }
-                        DoctorKind::PlusoftTranscriptFidelity => "plusoft-transcript-fidelity",
-                        DoctorKind::PactoDrainDependency => "pacto-drain-dependency",
-                        DoctorKind::TestPatchTargetIntegrity => "test-patch-target-integrity",
-                        DoctorKind::TestRouteMountIntegrity => "test-route-mount-integrity",
-                        DoctorKind::PratiqueCobrancaJsonContract => {
-                            "pratique-cobranca-json-contract"
-                        }
-                        DoctorKind::OntologyPriceConsistency => "ontology-price-consistency",
-                        DoctorKind::RecipientLimbo => "recipient-limbo",
-                        DoctorKind::SaraAssurantEgressContract => "sara-assurant-egress-contract",
-                        DoctorKind::WhatsAppBsuidWebhook => "whatsapp-bsuid-webhook",
-                        DoctorKind::WhatsAppBsuidCrm => "whatsapp-bsuid-crm",
-                        DoctorKind::WhatsAppDisplayNameOnly => "whatsapp-display-name-only",
-                        DoctorKind::RevopsSnapshotSchemaSync => "revops-snapshot-schema-sync",
-                        DoctorKind::TenantIdentity => "tenant-identity",
-                        DoctorKind::TenantOverrideContract => "tenant-override-contract",
-                        DoctorKind::OperatorTenantParity => "operator-tenant-parity",
-                        DoctorKind::Slop => "slop",
-                        DoctorKind::EnvContract => "env-contract",
-                        DoctorKind::ImportBoundary => "import-boundary",
-                        DoctorKind::RepoHygiene => "repo-hygiene",
-                        DoctorKind::CodexOrchestration => "codex-orchestration",
-                        DoctorKind::LeioReleaseCoherence => "leio-release-coherence",
-                        DoctorKind::InducedInvariants => "induced-invariants",
-                        DoctorKind::PlatformRuntimeTrustBoundary => {
-                            "platform-runtime-trust-boundary"
-                        }
-                        DoctorKind::ArtifactReuse => "artifact-reuse",
-                        DoctorKind::PyRustBoundary => "py-rust-boundary",
-                    };
-                    run_doctor(doctor_name, &index, &repo)
-                        .with_context(|| format!("doctor `{doctor_name}` not registered"))?
-                }
+                ("all", None) => run_all_doctors(&index, &repo),
+                ("baseline", _) => run_baseline_doctors(&index, &repo),
+                ("ci", _) => run_ci_doctors(&index, &repo),
+                (name, _) => run_doctor(name, &index, &repo).with_context(|| {
+                    format!("doctor `{name}` not registered for this repository")
+                })?,
             };
             if let Some(rule) = explain_rule {
                 // --explain always emits the static block + filtered
@@ -1839,10 +1464,7 @@ fn main() -> Result<()> {
                 // matches the advisory policy already adopted in the
                 // leio-code-audit workflows. Individual `doctor <name>` runs
                 // stay strict — if you ask for one doctor you want its verdict.
-                let honor_allowlist = matches!(
-                    kind,
-                    DoctorKind::All | DoctorKind::Baseline | DoctorKind::Ci
-                );
+                let honor_allowlist = matches!(kind.as_str(), "all" | "baseline" | "ci");
                 let blocking_warnings: Vec<String> = if honor_allowlist {
                     let allowlist_path = repo.join(".leio-code").join("baseline-allowlist.txt");
                     let allowed =
@@ -1951,6 +1573,9 @@ fn main() -> Result<()> {
             index,
             limit,
             offset,
+            follow,
+            source_offset,
+            source_lines,
         } => {
             let action = NavAction::from(kind);
             let envelope = if action == NavAction::Goto
@@ -1969,7 +1594,7 @@ fn main() -> Result<()> {
                         index_path.display()
                     )
                 })?;
-                run_nav_page(
+                let mut result = leio_code::nav::run_nav_follow(
                     &index_doc,
                     &repo,
                     action,
@@ -1977,7 +1602,18 @@ fn main() -> Result<()> {
                     index,
                     limit,
                     offset,
-                )?
+                    follow,
+                )?;
+                if source_offset > 0 || source_lines != 40 {
+                    leio_code::nav::source_page(
+                        &index_doc,
+                        &repo,
+                        &mut result,
+                        source_offset,
+                        source_lines,
+                    );
+                }
+                result
             };
             print_and_maybe_fail(&envelope, cli.json, false)?;
         }
@@ -2411,9 +2047,9 @@ mod c4gym_doctor_cli_tests {
         assert!(matches!(
             cli.command,
             Command::Doctor {
-                kind: DoctorKind::C4GymEvoIntegration,
+                kind,
                 ..
-            }
+            } if kind == "c4gym-evo-integration"
         ));
     }
 }

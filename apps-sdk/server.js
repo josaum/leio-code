@@ -586,6 +586,7 @@ function runProcess(command, args, cwd, timeoutMs, options = {}) {
       env: {
         ...process.env,
         ...(options.env ?? {}),
+        LEIO_DISABLE_NATIVE_DOCTORS: "1",
       },
     });
 
@@ -2286,7 +2287,7 @@ function getServer() {
           .string()
           .describe("Optional branch, tag, or commit to checkout when repo_url is used.")
           .optional(),
-        kind: z.enum(doctorKinds).default("all"),
+        kind: z.string().regex(/^[a-z0-9][a-z0-9-]{0,99}$/).default("all"),
       },
       securitySchemes: auth.getSecuritySchemes("audit_repository_contracts"),
       annotations: readOnlyAnnotations,

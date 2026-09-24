@@ -31,7 +31,7 @@ leio-harness models refresh && leio-harness models show
 #    Start from the example: docs/harness/day-openrouter.example.json
 
 # 2. Run it (add --watch for the live lane TUI)
-leio-harness day --spec day.json --bus 127.0.0.1:18815
+leio-harness day --spec day.json
 
 # 3. Read the report (printed as JSON; artifacts + manifest in outputDir)
 ```
@@ -101,3 +101,13 @@ leio-harness day --spec day.json --bus 127.0.0.1:18815
 `jai-ship harness` rebuilds + installs the stack and re-pins Hermes MCP;
 `jai-bench --execute` runs the model sweep. Emit a `widget` block in chat for
 one-click runs.
+
+### Default bus and failure behavior
+
+`run` and `day` enable bus participation by default. The CLI uses `--bus`, then
+`LEIO_HARNESS_BUS` from the environment or harness env file, then a managed,
+durable private Unix socket. Use `--no-bus` only for an explicitly offline run.
+Children receive the endpoint, agent ID and run ID. A lost result delivery makes
+the run `infra_error`; inspect `bus-delivery.json` and the final report.
+`leio-harness bus health --bus ENDPOINT` verifies protocol and runtime identity.
+Shared-memory ABI v2 peers must not share segments with ABI v1 peers.

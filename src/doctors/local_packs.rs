@@ -2359,11 +2359,15 @@ fn validate_manifest(
             "suite list exceeds the configured item limit",
         ));
     }
-    if manifest.suites.iter().any(|suite| suite != "all") {
+    if manifest
+        .suites
+        .iter()
+        .any(|suite| !matches!(suite.as_str(), "all" | "baseline" | "ci"))
+    {
         return Err(problem(
             "invalid_suite",
             Some("suites"),
-            "local doctor suites may contain only `all`",
+            "local doctor suites may contain only `all`, `baseline` or `ci`",
         ));
     }
     if manifest

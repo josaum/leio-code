@@ -110,34 +110,6 @@ impl Drop for WorkflowLock {
     }
 }
 
-#[cfg(test)]
-mod lock_tests {
-    use super::*;
-
-    #[test]
-    fn transition_unlocks_even_with_a_duplicated_descriptor() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("lock");
-        let file = OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .read(true)
-            .write(true)
-            .open(&path)
-            .unwrap();
-        file.try_lock_exclusive().unwrap();
-        let inherited = file.try_clone().unwrap();
-        drop(WorkflowLock(file));
-        let next = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(path)
-            .unwrap();
-        next.try_lock_exclusive().unwrap();
-        FileExt::unlock(&next).unwrap();
-        drop(inherited);
-    }
-}
 /// All transitions serialize under an exclusive file lock. A crashed step stays
 /// uncertain and cannot be blindly replayed: its external effects need reconciliation.
 pub fn apply(
@@ -367,4 +339,33 @@ pub fn apply_with_deployment_policy(
     event(&mut state, action, serde_json::Value::Null);
     save(dir, &state)?;
     Ok(state)
+}
+
+#[cfg(test)]
+mod lock_tests {
+    use super::*;
+
+    #[test]
+    fn transition_unlocks_even_with_a_duplicated_descriptor() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("lock");
+        let file = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(&path)
+            .unwrap();
+        file.try_lock_exclusive().unwrap();
+        let inherited = file.try_clone().unwrap();
+        drop(WorkflowLock(file));
+        let next = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(path)
+            .unwrap();
+        next.try_lock_exclusive().unwrap();
+        FileExt::unlock(&next).unwrap();
+        drop(inherited);
+    }
 }

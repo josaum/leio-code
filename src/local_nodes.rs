@@ -274,8 +274,7 @@ struct Candidate<'a> {
 fn semantic_candidate_limit(requested_limit: usize) -> usize {
     requested_limit
         .saturating_mul(SEMANTIC_CANDIDATE_MULTIPLIER)
-        .max(MIN_SEMANTIC_CANDIDATES)
-        .min(MAX_SEMANTIC_CANDIDATES)
+        .clamp(MIN_SEMANTIC_CANDIDATES, MAX_SEMANTIC_CANDIDATES)
 }
 
 #[cfg(test)]

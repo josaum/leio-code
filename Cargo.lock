@@ -1324,7 +1324,7 @@ dependencies = [
 
 [[package]]
 name = "leio-code"
-version = "2.6.4"
+version = "2.6.5"
 dependencies = [
  "anyhow",
  "arrow-array",
@@ -1336,6 +1336,7 @@ dependencies = [
  "clap",
  "ignore",
  "leio-knowledge-core",
+ "libc",
  "memmap2",
  "mimalloc",
  "notify",
@@ -1371,7 +1372,7 @@ dependencies = [
 
 [[package]]
 name = "leio-harness"
-version = "2.6.4"
+version = "2.6.5"
 dependencies = [
  "anyhow",
  "arrow-array",
@@ -1402,7 +1403,7 @@ dependencies = [
 
 [[package]]
 name = "leio-knowledge-core"
-version = "2.6.4"
+version = "2.6.5"
 dependencies = [
  "anyhow",
  "oxigraph",

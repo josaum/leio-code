@@ -1304,58 +1304,13 @@ fn tests_to_run(files: &[ScoredFile], task_tokens: &[String]) -> Vec<Value> {
 }
 
 fn doctor_suggestions(available: &[String], task_tokens: &[String]) -> Vec<Value> {
-    let rules: &[(&[&str], &[&str])] = &[
-        (
-            &["auth", "jwt", "oauth", "token", "login"],
-            &["auth-brokering", "flight-auth", "frontend-readiness"],
-        ),
-        (
-            &["deploy", "docker", "fly", "prod", "release"],
-            &["deploy", "prod-surface-hygiene", "self-contract"],
-        ),
-        (
-            &["redis", "session", "lease", "state"],
-            &["redis-key-hygiene", "session-hot-state"],
-        ),
-        (
-            &["event", "stream", "semantic"],
-            &["event-durability", "event-envelope", "semantic-wiring"],
-        ),
-        (
-            &["frontend", "ui", "next", "react"],
-            &["frontend-engine-client", "frontend-readiness"],
-        ),
-        (
-            &[
-                "leio", "mcp", "plugin", "package", "contract", "verify", "apps", "sdk",
-            ],
-            &["self-contract"],
-        ),
-    ];
-
-    let available = available.iter().map(String::as_str).collect::<HashSet<_>>();
-    let tokens = task_tokens
-        .iter()
-        .map(String::as_str)
-        .collect::<HashSet<_>>();
-    let mut suggestions = Vec::new();
-    let mut seen = HashSet::new();
-
-    for (triggers, doctors) in rules {
-        if !triggers.iter().any(|trigger| tokens.contains(trigger)) {
-            continue;
-        }
-        for doctor in *doctors {
-            if available.contains(doctor) && seen.insert(*doctor) {
-                suggestions.push(json!({
-                    "tool": "leio_code_doctor",
-                    "kind": doctor,
-                    "reason": format!("task matched doctor trigger(s): {}", triggers.join(", ")),
-                }));
-            }
-        }
-    }
-
+    // Names come from the selected repository's catalog. The engine does not
+    // own mappings from product symptoms to product-specific doctor policy.
+    let tokens: HashSet<_> = task_tokens.iter().map(String::as_str).collect();
+    let mut suggestions: Vec<Value> = available.iter().filter(|name| name.split('-').any(|part| tokens.contains(part))).take(3).map(|name|json!({
+        "tool":"leio_code_doctor", "kind":name,
+        "reason":"task matches a doctor advertised by the selected repository"
+    })).collect();
     if !available.is_empty() && suggestions.is_empty() {
         suggestions.push(json!({
             "tool": "leio_code_doctor",

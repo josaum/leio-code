@@ -846,7 +846,11 @@ fn extract_swift_symbols(path: &str, source: &str) -> Vec<SymbolOccurrence> {
     out
 }
 
-fn extract_symbols(path: &str, language: SourceLanguage, source: &str) -> Vec<SymbolOccurrence> {
+pub(crate) fn extract_symbols(
+    path: &str,
+    language: SourceLanguage,
+    source: &str,
+) -> Vec<SymbolOccurrence> {
     if language == SourceLanguage::Rdf || crate::ontology::is_rdf_path(Path::new(path)) {
         return crate::ontology::extract_ontology(path, source).symbols;
     }
@@ -1142,31 +1146,24 @@ fn scope_type_name(language: SourceLanguage, node: Node<'_>, source: &str) -> Op
             .and_then(|child| child.utf8_text(bytes).ok())
             .map(|name| name.trim().to_string())
             .filter(|name| !name.is_empty()),
-        (SourceLanguage::CSharp | SourceLanguage::Razor, kind)
-            if matches!(
-                kind,
-                "class_declaration"
-                    | "struct_declaration"
-                    | "interface_declaration"
-                    | "record_declaration"
-            ) =>
-        {
-            node.child_by_field_name("name")
-                .and_then(|child| child.utf8_text(bytes).ok())
-                .map(|name| name.trim().to_string())
-                .filter(|name| !name.is_empty())
-        }
+        (
+            SourceLanguage::CSharp | SourceLanguage::Razor,
+            "class_declaration"
+            | "struct_declaration"
+            | "interface_declaration"
+            | "record_declaration",
+        ) => node
+            .child_by_field_name("name")
+            .and_then(|child| child.utf8_text(bytes).ok())
+            .map(|name| name.trim().to_string())
+            .filter(|name| !name.is_empty()),
         (SourceLanguage::Python, "class_definition") => node
             .child_by_field_name("name")
             .and_then(|child| child.utf8_text(bytes).ok())
             .map(|name| name.trim().to_string())
             .filter(|name| !name.is_empty()),
         (
-            SourceLanguage::JavaScript
-            | SourceLanguage::TypeScript
-            | SourceLanguage::Tsx
-            | SourceLanguage::CSharp
-            | SourceLanguage::Razor,
+            SourceLanguage::JavaScript | SourceLanguage::TypeScript | SourceLanguage::Tsx,
             "class_declaration",
         ) => node
             .child_by_field_name("name")
@@ -2317,7 +2314,10 @@ value = os.getenv("EXAMPLE_ACTIVE_DOMAINS", "")
         let envs = extract_env_vars("demo.py", SourceLanguage::Python, source);
         let names: Vec<&str> = envs.iter().map(|item| item.name.as_str()).collect();
 
-        assert_eq!(names, vec!["FLAG_ENABLED", "API_SECRET", "EXAMPLE_ACTIVE_DOMAINS"]);
+        assert_eq!(
+            names,
+            vec!["FLAG_ENABLED", "API_SECRET", "EXAMPLE_ACTIVE_DOMAINS"]
+        );
         assert!(envs.iter().all(|item| item.access == AccessKind::Read));
     }
 

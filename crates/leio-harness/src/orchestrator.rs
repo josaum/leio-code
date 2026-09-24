@@ -153,8 +153,7 @@ pub async fn run_day_with_events(
         None => None,
     };
     // Global code view is mandatory: publish the repo fingerprint to the bus
-    // before any lane starts (best-effort — lanes still run if it fails, and
-    // requireFreshCodeView is enforced separately).
+    // before any lane starts. A required fresh code view also requires delivery.
     if let Some(addr) = bus_addr {
         #[cfg(feature = "codeview")]
         {
@@ -168,6 +167,9 @@ pub async fn run_day_with_events(
             )
             .await
             {
+                if spec.require_fresh_code_view {
+                    return Err(error).context("required code-view publication failed");
+                }
                 eprintln!("warning: code-view publish failed: {error}");
             }
         }
@@ -207,24 +209,26 @@ async fn run_parallel(
     bus_addr: Option<&str>,
     events: Option<Sender<DayEvent>>,
 ) -> Result<DayReport> {
+    let mut clients = Vec::new();
+    // Preflight every transport before spawning any lane.
+    for _ in &spec.lanes {
+        clients.push(match bus_addr {
+            Some(addr) => Some(
+                BusClient::connect_with_retry(addr, 5, std::time::Duration::from_millis(100))
+                    .await?,
+            ),
+            None => None,
+        });
+    }
     let mut handles = Vec::new();
-    for lane in &spec.lanes {
+    for (lane, mut lane_bus) in spec.lanes.iter().zip(clients) {
         let spec = spec.clone();
         let lane = lane.clone();
         let repo = repo.to_path_buf();
         let root = worktree_root.to_path_buf();
         let store = LeaseStore::new(lease_store.path().to_path_buf());
-        let addr = bus_addr.map(str::to_owned);
         let lane_events = events.clone();
         handles.push(tokio::spawn(async move {
-            let mut lane_bus = match addr {
-                Some(addr) => {
-                    BusClient::connect_with_retry(&addr, 5, std::time::Duration::from_millis(100))
-                        .await
-                        .ok()
-                }
-                None => None,
-            };
             run_lane(
                 &spec,
                 &lane,
@@ -294,20 +298,36 @@ async fn run_lane(
         });
     }
     let outcome = async {
+        if let Some(client) = bus.as_mut() {
+            client
+                .publish(vec![crate::bus::new_embedding_row(
+                    &lane.agent_id,
+                    &run_id,
+                    &format!("intent/{}", sanitize(&lane.agent_id)),
+                    status_vector("running"),
+                )])
+                .await
+                .context("publish lane intent before execution")?;
+        }
         worktree::create(repo, worktree_root, &worktree_path, &branch, None)?;
         let model = resolve_model(
             lane.model.as_deref(),
             lane.work_shape.as_deref(),
             cached_table().as_ref(),
         )?;
-        let (argv, env) = resolve_lane_invocation(
+        let (argv, mut env) = resolve_lane_invocation(
             (!lane.argv.is_empty()).then_some(lane.argv.as_slice()),
             lane.agent.as_deref(),
             &lane.task,
             model.as_deref(),
             &spec.agent_templates,
         )?;
-        let run = process::run(RunSpec {
+        if let Some(client) = bus.as_ref() {
+            env.insert("LEIO_HARNESS_BUS".to_owned(), client.address().to_owned());
+            env.insert("LEIO_HARNESS_AGENT_ID".to_owned(), lane.agent_id.clone());
+            env.insert("LEIO_HARNESS_RUN_ID".to_owned(), run_id.clone());
+        }
+        let run_spec = RunSpec {
             run_id: run_id.clone(),
             argv,
             cwd: worktree_path.display().to_string(),
@@ -319,7 +339,10 @@ async fn run_lane(
             env,
             required_approval_token: None,
             approval_token: None,
-        })?;
+        };
+        let run = tokio::task::spawn_blocking(move || process::run(run_spec))
+            .await
+            .context("process supervisor panicked")??;
         // The lane-local PROV sidecar is removed when the worktree retires,
         // so receipt resolution must happen before commit/retirement. Preserve
         // the existing commit behavior even when the receipt verdict fails:
@@ -347,32 +370,49 @@ async fn run_lane(
     }
     .await;
     let _ = lease_store.release(&run_id, Utc::now());
-    let finished = match &outcome {
-        Ok(checked) => {
-            let (status, error) = effective_result(&checked.run, checked.receipts.as_ref());
-            (status.to_owned(), checked.run.duration_ms, error)
-        }
-        Err(error) => ("infra_error".to_owned(), 0, Some(error.to_string())),
-    };
-    if let Some(tx) = &events {
-        let _ = tx.send(DayEvent::LaneFinished {
-            run_id: run_id.clone(),
-            status: finished.0,
-            duration_ms: finished.1,
-            error: finished.2,
-        });
-    }
-    match outcome {
-        Ok(checked) => {
-            let (status, error) = effective_result(&checked.run, checked.receipts.as_ref());
+    let final_outcome = match outcome {
+        Ok(mut checked) => {
+            let (mut status, mut error) = effective_result(&checked.run, checked.receipts.as_ref());
+            let directory = Path::new(&checked.run.stdout_path)
+                .parent()
+                .expect("run log parent")
+                .to_path_buf();
             if let Some(client) = bus {
-                let _ = publish_result(client, lane, &run_id, status, &checked.run).await;
+                let delivery = publish_result(client, lane, &run_id, status, &checked.run).await;
+                let receipt = match delivery {
+                    Ok(seq) => {
+                        serde_json::json!({"status":"acknowledged", "lastSeq":seq,"address":client.address()})
+                    }
+                    Err(delivery) => {
+                        status = "infra_error";
+                        error = Some(format!(
+                            "bus result delivery failed: {delivery:#}; process status: {:?}; prior error: {error:?}",
+                            checked.run.status
+                        ));
+                        checked.run.status = RunStatus::InfraError;
+                        checked.run.error = error.clone();
+                        serde_json::json!({"status":"failed", "error":error,"address":client.address()})
+                    }
+                };
+                if let Err(e) =
+                    process::write_json_atomic(&directory.join("bus-delivery.json"), &receipt)
+                        .and_then(|()| {
+                            process::write_json_atomic(&directory.join("result.json"), &checked.run)
+                        })
+                {
+                    status = "infra_error";
+                    error = Some(format!(
+                        "failed to persist bus delivery receipt: {e:#}; previous error: {error:?}"
+                    ));
+                }
             }
             let artifacts = collect_run_artifacts(
                 &[
                     checked.run.stdout_path.clone(),
                     checked.run.stderr_path.clone(),
                     checked.run.events_arrow_path.clone(),
+                    directory.join("result.json").display().to_string(),
+                    directory.join("bus-delivery.json").display().to_string(),
                 ],
                 &format!("lane:{}", lane.agent_id),
             );
@@ -389,7 +429,16 @@ async fn run_lane(
             error: Some(error.to_string()),
             ..base
         },
+    };
+    if let Some(tx) = &events {
+        let _ = tx.send(DayEvent::LaneFinished {
+            run_id,
+            status: final_outcome.status.clone(),
+            duration_ms: final_outcome.duration_ms,
+            error: final_outcome.error.clone(),
+        });
     }
+    final_outcome
 }
 
 fn effective_result(
@@ -439,26 +488,18 @@ async fn publish_result(
     run_id: &str,
     status: &str,
     run: &crate::model::RunResult,
-) -> Result<()> {
+) -> Result<u64> {
     let vector = match semantic_state_vector(lane, status, run).await {
         Ok(vector) => vector,
         Err(_) => status_vector(status),
     };
-    let row = crate::bus::new_embedding_row(
-        &lane.agent_id,
-        run_id,
-        &format!("intent/{}", sanitize(&lane.agent_id)),
-        vector.clone(),
-    );
-    bus.publish(vec![row]).await?;
     let result_row = crate::bus::new_embedding_row(
         &lane.agent_id,
         run_id,
         &format!("result/{}", sanitize(&lane.agent_id)),
         vector,
     );
-    bus.publish(vec![result_row]).await?;
-    Ok(())
+    bus.publish(vec![result_row]).await
 }
 
 async fn semantic_state_vector(
@@ -566,7 +607,15 @@ fn validate_day(spec: &DaySpec) -> Result<()> {
     if !Path::new(&spec.repo).is_dir() {
         bail!("repo is not a directory: {}", spec.repo);
     }
+    let mut ids = std::collections::BTreeSet::new();
     for lane in &spec.lanes {
+        anyhow::ensure!(
+            lane.agent_id.len() <= 64
+                && sanitize(&lane.agent_id) == lane.agent_id
+                && !lane.agent_id.contains("..")
+                && ids.insert(lane.agent_id.clone()),
+            "lane IDs must be unique safe names up to 64 bytes"
+        );
         if lane.agent_id.trim().is_empty() {
             bail!("lane requires agent_id");
         }
@@ -615,12 +664,7 @@ fn sanitize(value: &str) -> String {
 }
 
 fn short_id() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    format!("{nanos:x}").chars().take(8).collect()
+    crate::process::unique_id()
 }
 
 fn default_timeout_ms() -> u64 {

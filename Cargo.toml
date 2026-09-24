@@ -1,10 +1,11 @@
 [workspace]
 members = [".", "crates/leio-harness", "crates/leio-knowledge-core"]
 resolver = "2"
+exclude = ["tools/leio-self-doctors"]
 
 [package]
 name = "leio-code"
-version = "2.6.4"
+version = "2.6.5"
 edition = "2024"
 description = "Agent-first code intelligence for one repository at a time"
 license = "MIT OR Apache-2.0"
@@ -14,8 +15,10 @@ repository = "https://github.com/josaum/leio-code"
 # Formal store + anchored-or-refuse SPARQL envelope, split out so runtimes
 # that ship an ontology without a repo (container images, brain substrates)
 # share one mechanism instead of re-implementing it.
-leio-knowledge-core = { path = "crates/leio-knowledge-core", version = "2.6.4" }
+leio-knowledge-core = { path = "crates/leio-knowledge-core", version = "2.6.5" }
 anyhow = "1"
+tempfile = "3"
+libc = "0.2"
 arrow-array = "=58.3.0"
 arrow-buffer = "=58.3.0"
 arrow-ipc = { version = "=58.3.0", features = ["lz4", "zstd"] }

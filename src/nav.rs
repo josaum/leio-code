@@ -139,6 +139,8 @@ pub struct NavSession {
     /// Last grounded ontology IRI from `nav explain`.
     #[serde(default)]
     pub current_iri: Option<String>,
+    #[serde(default)]
+    pub source_fingerprints: std::collections::BTreeMap<String, String>,
 }
 
 /// Absolute path of the persisted session file for this agent.
@@ -209,6 +211,197 @@ pub fn run_nav(
     run_nav_page(index, repo_root, action, needle, select, limit, 0)
 }
 
+/// One CLI/MCP call can anchor a graph edge and follow its sole target.
+/// Ambiguous edges remain a listing; an arbitrary candidate is never chosen.
+#[allow(clippy::too_many_arguments)]
+pub fn run_nav_follow(
+    index: &RepoIndex,
+    root: &Path,
+    action: NavAction,
+    needle: Option<&str>,
+    select: Option<usize>,
+    limit: usize,
+    offset: usize,
+    follow: bool,
+) -> Result<QueryEnvelope> {
+    let edge = matches!(
+        action,
+        NavAction::Callers | NavAction::Callees | NavAction::Neighbors
+    );
+    anyhow::ensure!(
+        !follow || (edge && offset == 0),
+        "--follow requires a first-page callers/callees/neighbors query"
+    );
+    if edge
+        && offset == 0
+        && let Some(needle) = needle
+    {
+        let previous = load_session(root)?;
+        let anchor = run_nav_page(index, root, NavAction::Goto, Some(needle), None, limit, 0)?;
+        let unique = anchor
+            .meta
+            .as_ref()
+            .and_then(|m| m["result_page"]["total"].as_u64())
+            == Some(1);
+        if !unique {
+            save_session(root, &previous)?;
+            bail!("edge source is ambiguous; use an exact returned symbol identity");
+        }
+    }
+    let result = run_nav_page(index, root, action, needle, select, limit, offset)?;
+    if follow
+        && result
+            .meta
+            .as_ref()
+            .and_then(|m| m["result_page"]["total"].as_u64())
+            == Some(1)
+    {
+        let mut moved = run_nav_page(index, root, NavAction::Select, None, Some(0), limit, 0)?;
+        if let Some(meta) = moved.meta.as_mut() {
+            meta["followed_edge"] = json!(action.as_str());
+        }
+        return Ok(moved);
+    }
+    Ok(result)
+}
+
+/// Read a bounded live source window, reparse the selected file to resolve its
+/// definition and disclose index freshness separately from source freshness.
+fn source_window(index: &RepoIndex, root: &Path, node: &NavNode) -> serde_json::Value {
+    match read_source_window(index, root, node, 0, 40) {
+        Ok(value) => value,
+        Err(error) => json!({"state":"unavailable", "reason":error.to_string(), "path":node.path}),
+    }
+}
+
+fn read_source_window(
+    index: &RepoIndex,
+    root: &Path,
+    node: &NavNode,
+    offset: usize,
+    count: usize,
+) -> Result<serde_json::Value> {
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+    anyhow::ensure!(
+        node.kind != "fca_concept" && !node.path.is_empty(),
+        "selection has no source file"
+    );
+    let root = root.canonicalize()?;
+    let path = root.join(&node.path).canonicalize()?;
+    anyhow::ensure!(path.starts_with(&root), "source path escapes repository");
+    let file = fs::File::open(&path)?;
+    let metadata = file.metadata()?;
+    anyhow::ensure!(
+        metadata.is_file() && metadata.len() <= 2 * 1024 * 1024,
+        "source file is not a bounded regular file"
+    );
+    let mut bytes = Vec::new();
+    file.take(2 * 1024 * 1024 + 1).read_to_end(&mut bytes)?;
+    anyhow::ensure!(
+        bytes.len() <= 2 * 1024 * 1024,
+        "source file grew beyond read bound"
+    );
+    let text = std::str::from_utf8(&bytes).context("source is not UTF-8")?;
+    let indexed = index
+        .files
+        .iter()
+        .find(|f| f.path == node.path)
+        .context("selected file is not indexed")?;
+    let modified = metadata
+        .modified()?
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_millis() as i128;
+    let metadata_match = indexed.bytes == bytes.len() && indexed.modified_unix_ms == modified;
+    let line = if node.kind == "file" {
+        1
+    } else if node.kind == "wiki_section" {
+        anyhow::ensure!(
+            metadata_match,
+            "heading source changed; refresh heading index"
+        );
+        node.line.unwrap_or(1) as usize
+    } else {
+        let definitions = if node.graph_symbol.is_some() {
+            crate::code_graph::source_definitions(&node.path, indexed.language, text)?
+        } else {
+            crate::indexer::extract_symbols(&node.path, indexed.language, text)
+        };
+        let matches: Vec<_> = definitions
+            .iter()
+            .filter(|s| {
+                (s.qual_name.as_deref() == Some(node.symbol.as_str()) || s.name == node.symbol)
+                    && s.kind.as_str() == node.kind
+            })
+            .collect();
+        if matches.len() == 1 {
+            matches[0].line
+        } else {
+            anyhow::ensure!(
+                metadata_match,
+                "definition is missing or ambiguous in changed source; select an exact current definition"
+            );
+            matches
+                .iter()
+                .find(|s| Some(s.line as u32) == node.line)
+                .context("selected definition no longer resolves")?
+                .line
+        }
+    };
+    let start = line.checked_add(offset).context("source offset overflow")?;
+    let mut excerpt = String::new();
+    let mut end = start;
+    let lines: Vec<_> = text.lines().collect();
+    for (offset, value) in lines
+        .iter()
+        .skip(start.saturating_sub(1))
+        .take(count.clamp(1, 120))
+        .enumerate()
+    {
+        if excerpt.len() + value.len() + 1 > 6000 {
+            break;
+        }
+        excerpt.push_str(value);
+        excerpt.push('\n');
+        end = start + offset;
+    }
+    Ok(
+        json!({"state":"current", "path":node.path, "line_start":start, "line_end":end, "definition_line":line, "offset":offset, "next_offset": (end < lines.len()).then_some(end.saturating_sub(line) + 1),
+        "signature": lines.get(line.saturating_sub(1)).unwrap_or(&"").chars().take(512).collect::<String>(), "text":excerpt,
+        "sha256":format!("{:x}", Sha256::digest(&bytes)), "freshness":"live_definition_checked",
+        "index_metadata_match":metadata_match, "relocated":node.line.is_some_and(|old| old as usize != line),
+        "window_truncated":end < lines.len(), "limitation":"Bounded source window; indexed edges are not runtime evidence."}),
+    )
+}
+
+/// Replace only the selected definition's source window without moving the cursor.
+pub fn source_page(
+    index: &RepoIndex,
+    root: &Path,
+    envelope: &mut QueryEnvelope,
+    offset: usize,
+    lines: usize,
+) {
+    let Some(current) = envelope
+        .entities
+        .iter_mut()
+        .find(|e| e["role"] == "current")
+    else {
+        return;
+    };
+    let node = NavNode {
+        path: current["path"].as_str().unwrap_or_default().to_owned(),
+        symbol: current["symbol"].as_str().unwrap_or_default().to_owned(),
+        kind: current["kind"].as_str().unwrap_or_default().to_owned(),
+        line: current["line"].as_u64().and_then(|n| u32::try_from(n).ok()),
+        graph_symbol: current["graph_symbol"].as_str().map(str::to_owned),
+        section: None,
+    };
+    current["source"] = read_source_window(index, root, &node, offset, lines).unwrap_or_else(
+        |error| json!({"state":"unavailable","reason":error.to_string(),"path":node.path}),
+    );
+}
+
 /// Continue a bounded listing using its returned next_offset, query and limit.
 /// Selection indices are always local to the displayed page.
 pub fn run_nav_page(
@@ -228,6 +421,19 @@ pub fn run_nav_page(
         .ok_or_else(|| anyhow::anyhow!("nav offset is too large"))?;
     let mut session = load_session(repo_root)?;
     let needle = needle.map(str::trim);
+    if action == NavAction::Select
+        && let Some(node) = session.current.as_ref()
+        && let Some(previous) = session.source_fingerprints.get(&node.path)
+    {
+        let live = source_window(index, repo_root, node);
+        if live["sha256"].as_str() != Some(previous.as_str()) {
+            clear_results(&mut session);
+            save_session(repo_root, &session)?;
+            bail!(
+                "source changed or is unavailable; candidate page invalidated; refresh the graph listing"
+            );
+        }
+    }
     validate_continuation(&session, index, repo_root, action, needle, limit, offset)?;
     let original_current = session.current.clone();
     let mut warnings = Vec::new();
@@ -298,6 +504,30 @@ pub fn run_nav_page(
             if looks_like_iri(needle) {
                 session.current_iri = Some(needle.to_string());
                 clear_results(&mut session);
+            } else if let Some(anchor) = needle.strip_prefix("definition:") {
+                let (path, line) = anchor
+                    .rsplit_once('#')
+                    .context("definition anchor requires path#line")?;
+                let line: u64 = line
+                    .parse()
+                    .context("definition anchor requires a positive line")?;
+                let inventory = query_symbols_in(index, repo_root, path)?;
+                let matches: Vec<_> = inventory
+                    .entities
+                    .iter()
+                    .filter(|e| e["line"].as_u64() == Some(line))
+                    .filter_map(node_from_graph_entity)
+                    .collect();
+                anyhow::ensure!(
+                    matches.len() == 1,
+                    "definition anchor is stale or ambiguous; inspect symbols-in {path}"
+                );
+                let chosen = matches[0].clone();
+                session.last_results = vec![chosen.clone()];
+                if offset == 0 {
+                    attach_concept(&mut session, repo_root, &chosen);
+                    push_current(&mut session, chosen);
+                }
             } else if let Some(file) = exact_indexed_file(index, repo_root, needle)? {
                 session.last_results = vec![file.clone()];
                 if offset == 0 {
@@ -565,11 +795,58 @@ pub fn run_nav_page(
                 "source": session.current, "indexed_at": index.indexed_at, "artifacts": navigation_artifacts(repo_root)},
         }));
     }
+    let source = session
+        .current
+        .as_ref()
+        .map(|node| source_window(index, repo_root, node));
+    if let (Some(node), Some(source)) = (session.current.as_mut(), source.as_ref()) {
+        if let Some(line) = source["line_start"].as_u64() {
+            node.line = u32::try_from(line).ok();
+        }
+        if let Some(hash) = source["sha256"].as_str() {
+            let changed = session
+                .source_fingerprints
+                .insert(node.path.clone(), hash.to_owned())
+                .is_some_and(|old| old != hash);
+            if changed
+                && matches!(
+                    action,
+                    NavAction::Here | NavAction::Select | NavAction::Back | NavAction::Forward
+                )
+            {
+                clear_results(&mut session);
+                warnings.push("selected source file changed; stale candidate page invalidated; source re-resolved locally".to_owned());
+            }
+        }
+    }
+    if source
+        .as_ref()
+        .is_some_and(|value| value["state"] == "unavailable")
+        && session
+            .current
+            .as_ref()
+            .is_some_and(|node| session.source_fingerprints.contains_key(&node.path))
+    {
+        clear_results(&mut session);
+        warnings.push("selected source unavailable; candidate page invalidated".to_owned());
+    }
+    while session.source_fingerprints.len() > 64 {
+        session.source_fingerprints.pop_first();
+    }
     update_navigation_mode(&mut session, action);
     session.last_action = action.as_str().to_string();
     save_session(repo_root, &session)?;
     let mut envelope = session_envelope(&session, warnings, started, repo_root);
     attach_readiness(&mut envelope, index, repo_root);
+    if let (Some(source), Some(current)) = (
+        source,
+        envelope
+            .entities
+            .iter_mut()
+            .find(|e| e["role"] == "current"),
+    ) {
+        current["source"] = source;
+    }
     Ok(envelope)
 }
 
@@ -1279,6 +1556,173 @@ mod tests {
         }
         crate::indexer::load_or_build_index(root, &crate::indexer::default_index_path(root))
             .expect("index fixture")
+    }
+
+    #[test]
+    fn source_window_reparses_only_selected_file_and_invalidates_after_edit() {
+        let dir = tempfile::tempdir().unwrap();
+        let index = indexed_fixture(
+            dir.path(),
+            &[(
+                "source.rs",
+                "pub fn entry() { target(); }\nfn target() {}\n",
+            )],
+        );
+        let first = run_nav(
+            &index,
+            dir.path(),
+            NavAction::Goto,
+            Some("definition:source.rs#1"),
+            None,
+            5,
+        )
+        .unwrap();
+        assert_eq!(first.entities[0]["source"]["state"], "current");
+        assert!(
+            first.entities[0]["source"]["text"]
+                .as_str()
+                .unwrap()
+                .contains("target();")
+        );
+        fs::write(
+            dir.path().join("source.rs"),
+            "// edited\n\npub fn entry() { target(); }\nfn target() {}\n",
+        )
+        .unwrap();
+        let moved = run_nav(&index, dir.path(), NavAction::Here, None, None, 5).unwrap();
+        assert_eq!(moved.entities[0]["line"], 3);
+        assert_eq!(moved.entities[0]["source"]["index_metadata_match"], false);
+        assert!(moved.meta.as_ref().unwrap()["result_page"].is_null());
+        assert_ne!(
+            moved.entities[0]["source"]["sha256"],
+            first.entities[0]["source"]["sha256"]
+        );
+        fs::write(dir.path().join("source.rs"), "fn other() {}\n").unwrap();
+        let missing = run_nav(&index, dir.path(), NavAction::Here, None, None, 5).unwrap();
+        assert_eq!(missing.entities[0]["source"]["state"], "unavailable");
+        assert!(missing.entities[0]["source"].get("text").is_none());
+    }
+
+    #[test]
+    fn qualified_definitions_keep_their_scope_when_source_moves() {
+        let dir = tempfile::tempdir().unwrap();
+        let body = "mod first {\n fn entry() {}\n}\nmod second {\n fn entry() {}\n}\n";
+        let index = indexed_fixture(dir.path(), &[("source.rs", body)]);
+        let first = run_nav(
+            &index,
+            dir.path(),
+            NavAction::Goto,
+            Some("definition:source.rs#5"),
+            None,
+            5,
+        )
+        .unwrap();
+        assert_eq!(first.entities[0]["symbol"], "second::entry");
+        assert_eq!(first.entities[0]["source"]["state"], "current");
+        fs::write(dir.path().join("source.rs"), format!("// moved\n{body}")).unwrap();
+        let moved = run_nav(&index, dir.path(), NavAction::Here, None, None, 5).unwrap();
+        assert_eq!(moved.entities[0]["source"]["definition_line"], 6);
+        fs::write(
+            dir.path().join("source.rs"),
+            "mod first {\n fn entry() {}\n}\n",
+        )
+        .unwrap();
+        let missing = run_nav(&index, dir.path(), NavAction::Here, None, None, 5).unwrap();
+        assert_eq!(missing.entities[0]["source"]["state"], "unavailable");
+    }
+
+    #[test]
+    fn source_paging_and_stale_selection_preserve_cursor() {
+        let dir = tempfile::tempdir().unwrap();
+        let body = format!(
+            "fn entry() {{ target(); }}\nfn target() {{}}\n{}",
+            "// body\n".repeat(70)
+        );
+        let index = indexed_fixture(dir.path(), &[("source.rs", &body)]);
+        let first = run_nav(
+            &index,
+            dir.path(),
+            NavAction::Goto,
+            Some("definition:source.rs#1"),
+            None,
+            5,
+        )
+        .unwrap();
+        assert_eq!(first.entities[0]["source"]["next_offset"], 40);
+        let mut page = run_nav(&index, dir.path(), NavAction::Here, None, None, 5).unwrap();
+        source_page(&index, dir.path(), &mut page, 40, 10);
+        assert_eq!(page.entities[0]["source"]["line_start"], 41);
+        assert_eq!(page.entities[0]["source"]["line_end"], 50);
+        assert_eq!(page.entities[0]["source"]["next_offset"], 50);
+        run_nav(&index, dir.path(), NavAction::Callees, None, None, 5).unwrap();
+        fs::write(dir.path().join("source.rs"), format!("// changed\n{body}")).unwrap();
+        let error = run_nav(&index, dir.path(), NavAction::Select, None, Some(0), 5).unwrap_err();
+        assert!(error.to_string().contains("candidate page invalidated"));
+        let session = load_session(dir.path()).unwrap();
+        assert_eq!(session.current.unwrap().symbol, "entry");
+        assert!(session.last_results.is_empty());
+    }
+
+    #[test]
+    fn one_call_edge_follow_only_moves_a_unique_target() {
+        let dir = tempfile::tempdir().unwrap();
+        let index = indexed_fixture(
+            dir.path(),
+            &[(
+                "source.rs",
+                "pub fn entry() { target(); }\nfn target() { left(); right(); }\nfn left() {}\nfn right() {}\n",
+            )],
+        );
+        let followed = run_nav_follow(
+            &index,
+            dir.path(),
+            NavAction::Callees,
+            Some("definition:source.rs#1"),
+            None,
+            5,
+            0,
+            true,
+        )
+        .unwrap();
+        assert_eq!(followed.entities[0]["symbol"], "target");
+        assert_eq!(followed.meta.as_ref().unwrap()["followed_edge"], "callees");
+        assert_eq!(followed.entities[0]["source"]["state"], "current");
+        let ambiguous = run_nav_follow(
+            &index,
+            dir.path(),
+            NavAction::Callees,
+            None,
+            None,
+            5,
+            0,
+            true,
+        )
+        .unwrap();
+        assert_eq!(ambiguous.entities[0]["symbol"], "target");
+        assert_eq!(ambiguous.meta.as_ref().unwrap()["result_page"]["total"], 2);
+    }
+
+    #[test]
+    fn source_reads_reject_symlink_escape_and_are_bounded() {
+        let dir = tempfile::tempdir().unwrap();
+        let other = tempfile::tempdir().unwrap();
+        let index = indexed_fixture(dir.path(), &[("source.rs", "fn entry() {}\n")]);
+        run_nav(&index, dir.path(), NavAction::Goto, Some("entry"), None, 5).unwrap();
+        fs::remove_file(dir.path().join("source.rs")).unwrap();
+        fs::write(
+            other.path().join("outside.rs"),
+            "fn entry() { /* private outside */ }\n",
+        )
+        .unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(
+            other.path().join("outside.rs"),
+            dir.path().join("source.rs"),
+        )
+        .unwrap();
+        let result = run_nav(&index, dir.path(), NavAction::Here, None, None, 5).unwrap();
+        assert_eq!(result.entities[0]["source"]["state"], "unavailable");
+        assert!(result.entities[0]["source"].get("text").is_none());
     }
 
     #[test]

@@ -129,7 +129,7 @@ cloud-managed everything; security scanning use cases (CodeQL's territory).
 | MCP (stdio + HTTP) with capability-aware tool routing; Claude/Codex/Gemini/ChatGPT integrations | `mcp/index.js`, `apps-sdk/server.js` |
 | Stable output schema v1.0 + JSON-LD + `--where` filter | `docs/output-schema.md`, `src/jsonld.rs` |
 | Watch-mode incremental reindex (debounced) | `src/watcher.rs` |
-| Self-contract doctor (tool audits itself: manifests, packaging, MCP parity) | `src/doctors/self_contract.rs` |
+| Self-contract doctor (tool audits itself: manifests, packaging, MCP parity) | `tools/leio-self-doctors/src/doctors/self_contract.rs` |
 
 ### Partial (exists, but gated or coupled)
 

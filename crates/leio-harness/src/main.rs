@@ -4,7 +4,7 @@
 use leio_harness::codeview;
 use leio_harness::{
     acp, agents, arrow_events, bus, bus_client, embed, gate, gepa, improvement, integrate, lease,
-    merge, model, orchestrator, process, shm, sigreg, tui, worktree,
+    merge, model, orchestrator, shm, sigreg, tui, worktree,
 };
 
 use anyhow::{Context, Result};
@@ -60,6 +60,12 @@ enum Command {
     Run {
         #[arg(long)]
         spec: PathBuf,
+        /// Bus endpoint; defaults to an automatically managed durable local bus.
+        #[arg(long, conflicts_with = "no_bus")]
+        bus: Option<String>,
+        /// Explicitly run offline without bus participation.
+        #[arg(long)]
+        no_bus: bool,
     },
     /// Supervised bidirectional ACP proxy: bridges JSON-RPC frames between
     /// this process's stdio and an agent server (e.g. `grok agent stdio`).
@@ -181,6 +187,8 @@ enum Command {
         spec: PathBuf,
         #[arg(long)]
         bus: Option<String>,
+        #[arg(long, conflicts_with = "bus")]
+        no_bus: bool,
         /// Live ANSI progress view while lanes run.
         #[arg(long, default_value_t = false)]
         watch: bool,
@@ -259,6 +267,11 @@ enum GepaCommand {
 
 #[derive(Subcommand)]
 enum BusCommand {
+    /// Inspect protocol, runtime version, process identity and persistence.
+    Health {
+        #[arg(long)]
+        bus: String,
+    },
     /// Serve the Arrow Flight semantic bus (agents exchange embeddings).
     Serve {
         #[arg(long, default_value = "127.0.0.1:8815")]
@@ -467,11 +480,20 @@ fn execute(cli: Cli) -> Result<()> {
                 );
             }
         }
-        Command::Run { spec } => {
+        Command::Run { spec, bus, no_bus } => {
             let spec: RunSpec = serde_json::from_slice(
                 &std::fs::read(&spec).with_context(|| format!("read {}", spec.display()))?,
             )?;
-            print_json(&process::run(spec)?)?;
+            let runtime = tokio::runtime::Runtime::new()?;
+            let result = runtime.block_on(async {
+                let addr = leio_harness::managed_bus::ensure(bus, no_bus).await?;
+                leio_harness::managed_bus::run(spec, addr.as_deref()).await
+            })?;
+            print_json(&result)?;
+            anyhow::ensure!(
+                result.status == model::RunStatus::Passed,
+                "run did not pass; see result.json"
+            );
         }
         Command::Agent { spec } => {
             let spec: AgentSessionSpec = serde_json::from_slice(
@@ -595,6 +617,13 @@ fn execute(cli: Cli) -> Result<()> {
             }
         }
         Command::Bus { command } => match command {
+            BusCommand::Health { bus: addr } => {
+                let runtime = tokio::runtime::Runtime::new()?;
+                let health = runtime.block_on(async {
+                    bus_client::BusClient::connect(&addr).await?.health().await
+                })?;
+                print_json(&health)?;
+            }
             BusCommand::Serve { bind, persist } => {
                 let runtime = tokio::runtime::Runtime::new()?;
                 runtime.block_on(bus::serve_auto(&bind, persist))?;
@@ -708,10 +737,12 @@ fn execute(cli: Cli) -> Result<()> {
         Command::Day {
             spec,
             bus: addr,
+            no_bus,
             watch,
         } => {
             let spec: orchestrator::DaySpec = serde_json::from_slice(&std::fs::read(&spec)?)?;
             let runtime = tokio::runtime::Runtime::new()?;
+            let addr = runtime.block_on(leio_harness::managed_bus::ensure(addr, no_bus))?;
             let report = if watch {
                 let (tx, rx) = std::sync::mpsc::channel::<orchestrator::DayEvent>();
                 let goal = spec.goal.clone();
@@ -740,7 +771,16 @@ fn execute(cli: Cli) -> Result<()> {
                         std::collections::BTreeMap::new();
                     let mut view = tui::TerminalView::new();
                     loop {
-                        while let Ok(event) = rx.try_recv() {
+                        let mut disconnected = false;
+                        loop {
+                            let event = match rx.try_recv() {
+                                Ok(event) => event,
+                                Err(std::sync::mpsc::TryRecvError::Empty) => break,
+                                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                                    disconnected = true;
+                                    break;
+                                }
+                            };
                             match event {
                                 orchestrator::DayEvent::LaneStarted {
                                     agent_id,
@@ -787,7 +827,7 @@ fn execute(cli: Cli) -> Result<()> {
                                 tui::LaneVisual::Queued | tui::LaneVisual::Running
                             )
                         });
-                        if all_done {
+                        if all_done || disconnected {
                             view.finish(&goal, &rows);
                             break;
                         }
@@ -806,6 +846,7 @@ fn execute(cli: Cli) -> Result<()> {
                 runtime.block_on(orchestrator::run_day(&spec, addr.as_deref()))?
             };
             print_json(&report)?;
+            anyhow::ensure!(report.failed == 0, "day has failed lanes; inspect report");
         }
         Command::Compare {
             baseline,

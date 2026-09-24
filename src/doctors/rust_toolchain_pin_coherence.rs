@@ -14,7 +14,7 @@
 //! 1. `FROM rust:<ver>-<variant>` base images in every Dockerfile.
 //! 2. `cargo-chef:latest-rust-<ver>-<variant>` builder images.
 //! 3. Inline `channel = "<ver>"` pins written into Dockerfiles.
-//! 4. The local gateway build-toolchain default.
+//! 4. Repository-configured build-toolchain script defaults.
 //!
 //! Scope (intentionally narrow, matching `align-dockerfile-path-dep-coherence`):
 //! - Only the `X.Y` minor is compared, not the patch or the OS variant.
@@ -55,7 +55,7 @@ impl Doctor for RustToolchainPinCoherenceDoctor {
     }
 
     fn description(&self) -> &'static str {
-        "Treats rust-toolchain.toml as the canonical current-stable Rust version and flags drift in Rust/cargo-chef Docker builders, inline pins, and the gateway local-build default."
+        "Treats rust-toolchain.toml as the canonical current-stable Rust version and flags drift in Rust/cargo-chef Docker builders, inline pins, and configured local-build defaults."
     }
 
     fn run(&self, _index: &RepoIndex, root: &Path) -> QueryEnvelope {
@@ -323,17 +323,36 @@ pub fn doctor_rust_toolchain_pin_coherence(root: &Path) -> QueryEnvelope {
         }
     }
 
-    let gateway_start = root.join("example-gateway/start-gateway.sh");
-    if let Ok(text) = std::fs::read_to_string(&gateway_start) {
-        let build_re = Regex::new(r#"BUILD_TOOLCHAIN="\$\{BUILD_TOOLCHAIN:-([0-9][0-9.]*)\}""#)
-            .expect("gateway build toolchain re");
+    let scripts = crate::config::load_repo_config(root)
+        .and_then(|c| c.doctors)
+        .map(|d| d.rust_build_scripts)
+        .unwrap_or_default();
+    let build_re = Regex::new(r#"BUILD_TOOLCHAIN="\$\{BUILD_TOOLCHAIN:-([0-9][0-9.]*)\}""#)
+        .expect("build toolchain re");
+    for rel in scripts {
+        let path = root.join(&rel);
+        let safe = path
+            .canonicalize()
+            .ok()
+            .zip(root.canonicalize().ok())
+            .is_some_and(|(path, root)| path.starts_with(root));
+        if !safe {
+            warnings.push(format!(
+                "{rel}: configured Rust build script is missing or outside repository"
+            ));
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            warnings.push(format!("{rel}: configured Rust build script is unreadable"));
+            continue;
+        };
+
         if let Some(caps) = build_re.captures(&text)
             && let Some(ver) = caps.get(1)
             && let Some(found) = minor_of(ver.as_str())
         {
             checked += 1;
             if found != canonical {
-                let rel = "example-gateway/start-gateway.sh";
                 let line = line_of_match(&text, caps.get(0).map(|m| m.start()).unwrap_or(0));
                 warnings.push(format!(
                     "{rel}: BUILD_TOOLCHAIN pins Rust {found}, but rust-toolchain.toml is {canonical}"
@@ -341,7 +360,7 @@ pub fn doctor_rust_toolchain_pin_coherence(root: &Path) -> QueryEnvelope {
                 entities.push(json!({
                     "doctor": "rust-toolchain-pin-coherence",
                     "surface": rel,
-                    "kind": "gateway_build_toolchain",
+                    "kind": "configured_build_toolchain",
                     "found_minor": found,
                     "canonical_minor": canonical,
                     "found_version": ver.as_str(),
@@ -538,8 +557,8 @@ mod tests {
     }
 
     #[test]
-    fn flags_cargo_chef_and_gateway_build_toolchain_drift() {
-        let dir = unique_tempdir("cargo-chef-gateway");
+    fn flags_cargo_chef_and_configured_build_toolchain_drift() {
+        let dir = unique_tempdir("cargo-chef-script");
         write_file(
             &dir.join("rust-toolchain.toml"),
             "[toolchain]\nchannel = \"1.97.0\"\n",
@@ -549,8 +568,12 @@ mod tests {
             "FROM lukemathwalker/cargo-chef:latest-rust-1.94-bookworm AS build\n",
         );
         write_file(
-            &dir.join("example-gateway/start-gateway.sh"),
+            &dir.join("scripts/build.sh"),
             "BUILD_TOOLCHAIN=\"${BUILD_TOOLCHAIN:-1.92.0}\"\n",
+        );
+        write_file(
+            &dir.join(".leio-code/config.toml"),
+            "[doctors]\nrust_build_scripts = [\"scripts/build.sh\"]\n",
         );
         let env = doctor_rust_toolchain_pin_coherence(&dir);
         assert!(

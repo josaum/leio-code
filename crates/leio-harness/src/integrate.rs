@@ -314,12 +314,7 @@ fn git(repo: &Path, args: &[&str]) -> Result<String> {
 }
 
 fn short_id() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    format!("{nanos:x}").chars().take(8).collect()
+    crate::process::unique_id()
 }
 
 #[cfg(test)]

@@ -23,6 +23,7 @@ pub struct EvolveOptions {
 
 pub struct BusClient {
     client: FlightServiceClient<Channel>,
+    address: String,
 }
 
 impl BusClient {
@@ -32,18 +33,54 @@ impl BusClient {
         } else if addr.starts_with('/') || addr.ends_with(".sock") {
             Self::connect_uds(PathBuf::from(addr)).await?
         } else {
-            let endpoint = Endpoint::new(addr.to_owned())?.timeout(Duration::from_secs(30));
+            let uri = if addr.contains("://") {
+                addr.to_owned()
+            } else {
+                format!("http://{addr}")
+            };
+            let endpoint = Endpoint::new(uri)?
+                .connect_timeout(Duration::from_secs(2))
+                .timeout(Duration::from_secs(30));
             endpoint.connect().await?
         };
         Ok(Self {
             client: FlightServiceClient::new(channel),
+            address: addr.to_owned(),
         })
+    }
+
+    /// Verify that the endpoint enforces the durable-delivery protocol.
+    pub async fn health(&mut self) -> Result<serde_json::Value> {
+        let mut stream = self
+            .client
+            .do_action(arrow_flight::Action {
+                r#type: "health".to_owned(),
+                body: Default::default(),
+            })
+            .await?
+            .into_inner();
+        let response = stream
+            .message()
+            .await?
+            .context("bus closed before health response")?;
+        let health: serde_json::Value = serde_json::from_slice(&response.body)?;
+        anyhow::ensure!(
+            health["protocol"] == 2,
+            "incompatible bus protocol; restart with the current harness"
+        );
+        Ok(health)
+    }
+
+    pub fn address(&self) -> &str {
+        &self.address
     }
 
     async fn connect_uds(path: PathBuf) -> Result<Channel> {
         use hyper_util::rt::TokioIo;
         use tower::service_fn;
-        let endpoint = Endpoint::try_from("http://[::]:50051")?.timeout(Duration::from_secs(30));
+        let endpoint = Endpoint::try_from("http://[::]:50051")?
+            .timeout(Duration::from_secs(30))
+            .connect_timeout(Duration::from_secs(2));
         let socket_path = path.clone();
         let channel = endpoint
             .connect_with_connector(service_fn(move |_: tonic::transport::Uri| {
@@ -80,6 +117,10 @@ impl BusClient {
             bail!("publish requires at least one row");
         }
         let batch = rows_to_batch(&rows)?;
+        anyhow::ensure!(
+            batch.get_array_memory_size() <= 2 * 1024 * 1024,
+            "publish batch exceeds 2 MiB; split explicitly before publishing"
+        );
         let frames: Vec<arrow_flight::FlightData> = FlightDataEncoderBuilder::new()
             .with_schema(embedding_schema())
             .build(stream::iter([Ok(batch)]))
@@ -88,16 +129,21 @@ impl BusClient {
             .map_err(|error| anyhow::anyhow!(error.to_string()))?;
         let session = self.client.do_exchange(tokio_stream::iter(frames)).await?;
         let mut inbound = session.into_inner();
-        let ack = inbound
-            .message()
-            .await?
-            .context("bus closed before ack")?
-            .app_metadata;
-        let ack: serde_json::Value = serde_json::from_slice(&ack)?;
-        if ack["type"] == "error" {
-            bail!("bus publish rejected: {}", ack["message"]);
+        let mut last = None;
+        while let Some(message) = inbound.message().await? {
+            let ack: serde_json::Value = serde_json::from_slice(&message.app_metadata)?;
+            if ack["type"] == "error" {
+                bail!("bus publish rejected: {}", ack["message"]);
+            }
+            anyhow::ensure!(ack["type"] == "ack", "unexpected publish response");
+            let seq = ack["last_seq"].as_u64().context("ack missing last_seq")?;
+            anyhow::ensure!(
+                last.is_none_or(|previous| seq > previous),
+                "non-monotonic publish acknowledgement"
+            );
+            last = Some(seq);
         }
-        ack["last_seq"].as_u64().context("ack missing last_seq")
+        last.context("bus closed before ack")
     }
 
     /// Cosine top-k match over stored embeddings.

@@ -1424,7 +1424,7 @@ fn ignores_nested_hidden_and_non_toml_entries() {
 fn rejects_reserved_and_compiled_names() {
     let repo = TestRepo::new();
     repo.write_pack("all", minimal_pack("all"));
-    repo.write_pack("self-contract", minimal_pack("self-contract"));
+    repo.write_pack("repo-hygiene", minimal_pack("repo-hygiene"));
     let catalog = discover_local_doctor_packs(
         &repo.request(LocalContentMode::WorkingTreeTracked),
         &compiled_names(),
@@ -1492,7 +1492,7 @@ fn rejects_schema_boundaries() {
         "bad-suite",
         minimal_pack("bad-suite").replace(
             "description = \"Validate bad-suite.\"",
-            "description = \"Validate bad-suite.\"\nsuites = [\"ci\"]",
+            "description = \"Validate bad-suite.\"\nsuites = [\"unknown\"]",
         ),
     );
     let catalog = discover_local_doctor_packs(

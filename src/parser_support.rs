@@ -69,13 +69,13 @@ fn razor_csharp_projection(source: &str) -> String {
             continue;
         }
 
-        if trimmed.starts_with("@using ") || trimmed.starts_with("@namespace ") {
-            if let Some(at) = line.find('@') {
-                output.push_str(&spaces_preserving_newline(&line[..at]));
-                output.push(' ');
-                output.push_str(&line[at + 1..]);
-                continue;
-            }
+        if (trimmed.starts_with("@using ") || trimmed.starts_with("@namespace "))
+            && let Some(at) = line.find('@')
+        {
+            output.push_str(&spaces_preserving_newline(&line[..at]));
+            output.push(' ');
+            output.push_str(&line[at + 1..]);
+            continue;
         }
 
         // Markup, directives, and component attributes are not C#.

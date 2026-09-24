@@ -13,7 +13,7 @@ use leio_code::diagnostics::{all_rule_docs, rule_doc};
 
 #[test]
 fn rule_doc_returns_some_for_known_rule() {
-    for id in ["redis_no_prefix", "semantic_wiring", "deploy_runtime"] {
+    for id in ["redis_no_prefix", "redis_no_ttl"] {
         let doc = rule_doc(id).unwrap_or_else(|| panic!("rule `{id}` should be registered"));
         assert_eq!(doc.rule_id, id);
         assert!(
@@ -35,8 +35,8 @@ fn rule_doc_returns_none_for_unknown() {
 fn all_rule_docs_is_non_empty_and_unique() {
     let docs = all_rule_docs();
     assert!(
-        docs.len() >= 6,
-        "expected >=6 rule docs, got {}",
+        docs.len() == 2,
+        "expected two reusable Redis rule docs, got {}",
         docs.len()
     );
     let mut seen: HashSet<&str> = HashSet::new();

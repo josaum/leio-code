@@ -16,7 +16,7 @@
 use std::path::Path;
 
 use crate::config::repo_profile;
-use crate::doctors::doctor_names_for_profile;
+use crate::doctors::doctor_names_for_root;
 use crate::model::{RepoIndex, WorkspaceCapabilitySummary, WorkspaceFacetSummary};
 
 const BASE_FIND_KINDS: &[&str] = &[
@@ -71,7 +71,7 @@ pub fn workspace_capabilities_from_facets(
         explain_kinds.push("cartridge".to_string());
     }
 
-    let doctor_kinds = doctor_names_for_profile(&workspace_profile)
+    let doctor_kinds = doctor_names_for_root(root)
         .into_iter()
         .map(|value| value.to_string())
         .collect::<Vec<_>>();
@@ -176,8 +176,7 @@ mod tests {
                 "env-contract",
                 "import-boundary",
                 "repo-hygiene",
-                "codex-orchestration",
-                "leio-release-coherence",
+                "vendored-crate-provenance",
             ]
         );
         assert!(
@@ -265,67 +264,17 @@ mod tests {
                 .find_kinds
                 .contains(&"deploy-target".to_string())
         );
-        assert!(
-            capabilities
-                .doctor_kinds
-                .contains(&"sisfron-ooda-runtime".to_string())
-        );
-        assert!(
-            capabilities
-                .doctor_kinds
-                .contains(&"sisfron-simulation-durability".to_string())
-        );
         assert!(capabilities.find_kinds.contains(&"cartridge".to_string()));
-        assert!(capabilities.doctor_kinds.contains(&"deploy".to_string()));
+        assert_eq!(capabilities.doctor_kinds, crate::doctors::doctor_names());
         assert!(
-            capabilities
+            !capabilities
                 .doctor_kinds
-                .contains(&"cartridge-boundary".to_string())
+                .contains(&"self-contract".to_string())
         );
         assert!(
-            capabilities
+            !capabilities
                 .doctor_kinds
-                .contains(&"egress-compliance".to_string())
-        );
-        assert!(
-            capabilities
-                .doctor_kinds
-                .contains(&"inference-contracts".to_string())
-        );
-        assert!(
-            capabilities
-                .doctor_kinds
-                .contains(&"redis-key-hygiene".to_string())
-        );
-        assert!(
-            capabilities
-                .doctor_kinds
-                .contains(&"typescript-config-hygiene".to_string())
-        );
-        assert!(
-            capabilities
-                .doctor_kinds
-                .contains(&"induced-invariants".to_string())
-        );
-        assert!(
-            capabilities
-                .doctor_kinds
-                .contains(&"py-rust-boundary".to_string())
-        );
-        assert!(
-            capabilities
-                .doctor_kinds
-                .contains(&"artifact-reuse".to_string())
-        );
-        assert!(
-            capabilities
-                .doctor_kinds
-                .contains(&"codex-orchestration".to_string())
-        );
-        assert!(
-            capabilities
-                .doctor_kinds
-                .contains(&"leio-release-coherence".to_string())
+                .contains(&"parsers-binding-contract".to_string())
         );
         assert!(capabilities.notes.is_empty());
 
@@ -341,6 +290,18 @@ mod tests {
         )
         .expect("write config");
 
+        // Profiles cannot inject another repository's policy. Only its own
+        // data-only catalog can declare additional doctor capabilities.
+        assert!(
+            !workspace_capabilities(&empty_index(&root), &root)
+                .doctor_kinds
+                .contains(&"platform-runtime-trust-boundary".to_string())
+        );
+        fs::write(root.join(crate::doctors::native::MANIFEST), serde_json::to_vec(&serde_json::json!({
+            "schema_version": 1, "name": "fixture-doctors", "doctors": [{
+                "name": "platform-runtime-trust-boundary", "description": "Owned fixture policy", "suites": ["all", "ci"]
+            }]
+        })).unwrap()).unwrap();
         let capabilities = workspace_capabilities(&empty_index(&root), &root);
 
         assert!(
@@ -366,26 +327,23 @@ mod tests {
         let capabilities = workspace_capabilities(&empty_index(&root), &root);
 
         assert_eq!(capabilities.workspace_profile, "leio-code");
-        // slop and import-boundary are registered under every profile (each
-        // gated on its inputs at run time), so they show up alongside the
-        // leio-code self-contract doctor. vendored-crate-provenance is here
-        // because leio-code is the tree that holds the first-party vendored
-        // copies it governs.
-        assert_eq!(
-            capabilities.doctor_kinds,
-            vec![
-                "self-contract",
-                // Runs on leio-code itself since 2026-09-21: this repository
-                // shipped a floating `channel = "stable"` past its own pin
-                // doctor because the doctor was never registered for it.
-                "rust-toolchain-pin-coherence",
-                "slop",
-                "import-boundary",
-                "repo-hygiene",
-                "codex-orchestration",
-                "leio-release-coherence",
-                "vendored-crate-provenance",
-            ]
+        assert_eq!(capabilities.doctor_kinds, crate::doctors::doctor_names());
+        assert!(
+            !capabilities
+                .doctor_kinds
+                .contains(&"self-contract".to_string())
+        );
+        fs::write(
+            root.join(crate::doctors::native::MANIFEST),
+            r#"{"schema_version":1,"name":"fixture-self-pack","doctors":[{"name":"self-contract","description":"fixture","suites":["all"]},{"name":"leio-release-coherence","description":"fixture","suites":["all"]}]}"#,
+        )
+        .unwrap();
+        let declared = workspace_capabilities(&empty_index(&root), &root);
+        assert!(declared.doctor_kinds.contains(&"self-contract".to_string()));
+        assert!(
+            declared
+                .doctor_kinds
+                .contains(&"leio-release-coherence".to_string())
         );
 
         let _ = fs::remove_dir_all(root);

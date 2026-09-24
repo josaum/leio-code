@@ -45,7 +45,7 @@ pub fn query_id(prefix: &str) -> String {
 ///     }
 /// }
 /// ```
-pub(crate) fn git_tracked_files(root: &Path) -> Option<Vec<String>> {
+pub fn git_tracked_files(root: &Path) -> Option<Vec<String>> {
     let output = Command::new("git")
         .arg("-C")
         .arg(root)

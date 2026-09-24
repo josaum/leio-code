@@ -5,20 +5,20 @@ use serde_json::Value as JsonValue;
 use super::utils::find_line;
 
 #[derive(Clone, Copy)]
-pub(super) enum VersionKind<'a> {
+pub enum VersionKind<'a> {
     JsonPackage,
     NpmPackageLockRoot,
     CargoPackage,
     CargoLockPackage(&'a str),
 }
 
-pub(super) struct VersionManifest<'a> {
+pub struct VersionManifest<'a> {
     pub path: &'a str,
     pub kind: VersionKind<'a>,
     pub label: &'a str,
 }
 
-pub(super) fn json_package_version(source: &str) -> Option<String> {
+pub fn json_package_version(source: &str) -> Option<String> {
     serde_json::from_str::<JsonValue>(source)
         .ok()?
         .get("version")?
@@ -26,7 +26,7 @@ pub(super) fn json_package_version(source: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-pub(super) fn cargo_package_version(source: &str) -> Option<String> {
+pub fn cargo_package_version(source: &str) -> Option<String> {
     toml::from_str::<toml::Value>(source)
         .ok()?
         .get("package")?
@@ -35,7 +35,7 @@ pub(super) fn cargo_package_version(source: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-pub(super) fn npm_lock_root_version(source: &str) -> Option<String> {
+pub fn npm_lock_root_version(source: &str) -> Option<String> {
     let value = serde_json::from_str::<JsonValue>(source).ok()?;
     value
         .pointer("/packages//version")
@@ -44,7 +44,7 @@ pub(super) fn npm_lock_root_version(source: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-pub(super) fn cargo_lock_package_version(source: &str, package_name: &str) -> Option<String> {
+pub fn cargo_lock_package_version(source: &str, package_name: &str) -> Option<String> {
     toml::from_str::<toml::Value>(source)
         .ok()?
         .get("package")?
@@ -56,7 +56,7 @@ pub(super) fn cargo_lock_package_version(source: &str, package_name: &str) -> Op
         .map(str::to_string)
 }
 
-pub(super) fn version_from_source(source: &str, kind: VersionKind<'_>) -> Option<String> {
+pub fn version_from_source(source: &str, kind: VersionKind<'_>) -> Option<String> {
     match kind {
         VersionKind::JsonPackage => json_package_version(source),
         VersionKind::NpmPackageLockRoot => npm_lock_root_version(source),
@@ -67,7 +67,7 @@ pub(super) fn version_from_source(source: &str, kind: VersionKind<'_>) -> Option
     }
 }
 
-pub(super) fn version_line(source: &str, kind: VersionKind<'_>) -> Option<usize> {
+pub fn version_line(source: &str, kind: VersionKind<'_>) -> Option<usize> {
     match kind {
         VersionKind::CargoLockPackage(package_name) => {
             cargo_lock_package_version_line(source, package_name)

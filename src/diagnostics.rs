@@ -270,7 +270,7 @@ fn suggest_redis_no_prefix(_ev: &crate::model::EvidenceItem) -> Option<String> {
          +REDIS_KEY_PREFIX=<tenant-or-cartridge-slug>\n\
           \n\
          # Route the key through the canonical tenant/cartridge builder\n\
-         # (e.g. example-gateway/src/redis/) using this prefix value.\n\
+         # (e.g. the repository Redis key module) using this prefix value.\n\
          # Never concatenate tenant_id into a key by hand.\n"
             .to_string(),
     )
@@ -283,13 +283,13 @@ static RULE_DOCS: &[RuleDoc] = &[
     RuleDoc {
         rule_id: "redis_no_prefix",
         description: "Flags Redis keys built without a tenant or cartridge prefix. \
-             Operational state in Example is sharded by tenant; an unprefixed \
+             Operational state may be sharded by tenant; an unprefixed \
              key collides across tenants and silently leaks one tenant's \
              routes, sessions, or leases into another's lookups. The doctor \
              scans literal key strings and key-builder helpers across the \
              gateway and cartridges.",
         fix_advice: "Route the key through the canonical tenant- or cartridge-aware \
-             builder (e.g. the helpers in `example-gateway/src/redis/`). If \
+             builder (e.g. the helpers in `the repository Redis key module`). If \
              the key is genuinely global, register it on the allowlist in the \
              doctor instead of inlining a literal — that way the next reader \
              can tell intent apart from drift. Never concatenate `tenant_id` \
@@ -302,7 +302,7 @@ static RULE_DOCS: &[RuleDoc] = &[
     RuleDoc {
         rule_id: "redis_no_ttl",
         description: "Flags `SET`/`HSET` call sites that write to Redis without setting \
-             an explicit TTL on operational state. Example treats Redis as the \
+             an explicit TTL on operational state. The repository treats Redis as the \
              hot store for routes, sessions, and leases — keys that live \
              forever accumulate as drift and starve memory budgets when a \
              cartridge churns its routing surface.",
@@ -314,90 +314,6 @@ static RULE_DOCS: &[RuleDoc] = &[
         citation: "src/doctors/redis_key_hygiene.rs",
         doctor_name: "redis-key-hygiene",
         suggest_confidence: SuggestConfidence::Medium,
-        suggest_fn: None,
-    },
-    RuleDoc {
-        rule_id: "model_cache_contract",
-        description: "Checks that model-cache wiring (ONNX / fastembed / OCR weights) \
-             routes through the shared cache surface rather than ad-hoc \
-             per-callsite paths. Divergent cache roots cause double-downloads, \
-             cold-start regressions, and silent version skew between the \
-             gateway hot path and offline tooling.",
-        fix_advice: "Resolve the cache root through the canonical helper (see the \
-             module-level docs in `src/doctors/model_cache_contract.rs` for \
-             the current contract). If you genuinely need a separate cache, \
-             register it in the contract so future readers can tell intent \
-             apart from drift.",
-        citation: "src/doctors/model_cache_contract.rs",
-        doctor_name: "model-cache-contract",
-        suggest_confidence: SuggestConfidence::Low,
-        suggest_fn: None,
-    },
-    RuleDoc {
-        rule_id: "semantic_wiring",
-        description: "Verifies that semantic-layer call sites (ontology alignment, \
-             Crepe reasoning, named-graph provenance) are wired to the \
-             canonical entry points and not bypassed by direct database or \
-             SPARQL calls. The semantic layer is load-bearing for provenance \
-             and OWL2-RL inference; bypassing it erodes audit trails.",
-        fix_advice: "Route through `example-align` / `example-platform` rather than \
-             reimplementing alignment or reasoning at the call site. If a new \
-             entry point is needed, add it to the canonical crate and update \
-             this doctor — don't fork the wiring locally.",
-        citation: "src/doctors/semantic_wiring.rs",
-        doctor_name: "semantic-wiring",
-        suggest_confidence: SuggestConfidence::Low,
-        suggest_fn: None,
-    },
-    RuleDoc {
-        rule_id: "route_projection",
-        description: "Detects drift between the route-table source of truth (Redis / \
-             cartridge manifests) and the projection consumed by the gateway. \
-             A stale projection causes messages to fan out to the wrong agent \
-             or to a retired phone number — one of the most operationally \
-             expensive drifts in the platform.",
-        fix_advice: "Re-run the projection step that publishes routes into the \
-             gateway-visible surface, or fix the upstream manifest if it \
-             disagrees with the runtime. The doctor's evidence list points at \
-             each diverging route — fix the source of truth, not the \
-             projection, unless you're explicitly retiring the route.",
-        citation: "src/doctors/route_projection.rs",
-        doctor_name: "route-projection",
-        suggest_confidence: SuggestConfidence::Low,
-        suggest_fn: None,
-    },
-    RuleDoc {
-        rule_id: "tenant_identity",
-        description: "Catches code paths that resolve a tenant by string concatenation \
-             or unscoped lookup instead of routing through the canonical \
-             tenant-identity helpers. Mis-resolved tenants cross-pollinate \
-             session state and corrupt provenance — a class of bug that is \
-             very expensive to detect post-hoc.",
-        fix_advice: "Use the canonical tenant resolver (see \
-             `src/doctors/tenant_identity.rs` for the current contract). If \
-             the call site genuinely needs a different identity model (e.g. \
-             a system tenant for cron jobs), declare it explicitly and \
-             register the exception with the doctor.",
-        citation: "src/doctors/tenant_identity.rs",
-        doctor_name: "tenant-identity",
-        suggest_confidence: SuggestConfidence::Low,
-        suggest_fn: None,
-    },
-    RuleDoc {
-        rule_id: "deploy_runtime",
-        description: "Flags deploy-target / runtime-config drift: env vars that are \
-             referenced but unset, manifests that disagree about ports, or \
-             profiles missing a required secret set. The doctor reads the \
-             repo's deploy descriptors and cross-checks them against the \
-             callers indexed elsewhere in `leio-code`.",
-        fix_advice: "Reconcile the deploy manifest with the call site — usually by \
-             declaring the env var (or removing the orphaned reference) in \
-             the relevant profile under `deploy/`. Don't add a default in \
-             code to silence a missing-env warning; that hides the drift on \
-             the deploy side.",
-        citation: "src/doctors/deploy.rs",
-        doctor_name: "deploy",
-        suggest_confidence: SuggestConfidence::Low,
         suggest_fn: None,
     },
 ];

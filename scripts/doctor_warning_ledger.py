@@ -24,14 +24,14 @@ REQUIRED_FAMILY_FIELDS = {
 
 def parse_args() -> argparse.Namespace:
     plugin_root = Path(__file__).resolve().parents[1]
-    workspace_root = plugin_root.parent
+    workspace_root = Path.cwd()
     parser = argparse.ArgumentParser(description="Validate LEIO doctor warning ledger coverage")
     parser.add_argument("--repo", type=Path, default=workspace_root, help="Repository to audit")
     parser.add_argument(
         "--ledger",
         type=Path,
-        default=plugin_root / "docs" / "doctor-warning-ledger.json",
-        help="Doctor warning ledger JSON",
+        default=None,
+        help="Repository-owned ledger (default: <repo>/.leio-code/doctor-warning-ledger.json)",
     )
     parser.add_argument(
         "--doctor-json",
@@ -185,7 +185,8 @@ def enforce_counts(ledger: dict[str, Any], counts: Counter[str]) -> dict[str, di
 
 def main() -> None:
     args = parse_args()
-    ledger = json.loads(args.ledger.expanduser().read_text(encoding="utf-8"))
+    ledger_path = args.ledger or args.repo / ".leio-code/doctor-warning-ledger.json"
+    ledger = json.loads(ledger_path.expanduser().read_text(encoding="utf-8"))
     if args.doctor_json:
         envelope = extract_json_object(args.doctor_json.expanduser().read_text(encoding="utf-8"))
     else:

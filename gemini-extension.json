@@ -1,6 +1,6 @@
 {
   "name": "leio-code",
-  "version": "2.6.4",
+  "version": "2.6.5",
   "description": "Agent-first code intelligence for the workspace. Index, find, graph, doctors, local wiki, SPARQL-gated explain, lattice nav, JSON-LD provenance.",
   "contextFileName": "GEMINI.md",
   "mcpServers": {

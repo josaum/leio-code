@@ -3,7 +3,7 @@
 //! f32 bytes moved through Arrow buffers — zero-copy on both write and read.
 use anyhow::{Context, Result as AnyResult, bail};
 use arrow_array::{
-    ArrayRef, BinaryArray, Int64Array, RecordBatch, StringArray, UInt32Array, UInt64Array,
+    Array, ArrayRef, BinaryArray, Int64Array, RecordBatch, StringArray, UInt32Array, UInt64Array,
 };
 use arrow_flight::decode::{DecodedPayload, FlightDataDecoder};
 use arrow_flight::encode::FlightDataEncoderBuilder;
@@ -79,6 +79,7 @@ pub struct SemanticBus {
     next_seq: Arc<Mutex<u64>>,
     persist_path: Arc<Mutex<Option<PathBuf>>>,
     embed: Arc<Mutex<Option<Arc<crate::embed::EmbedClient>>>>,
+    _snapshot_lock: Option<std::fs::File>,
 }
 
 impl SemanticBus {
@@ -86,19 +87,35 @@ impl SemanticBus {
         let Some(path) = persist_path else {
             return Ok(Self::default());
         };
+        let parent = path
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or(Path::new("."));
+        std::fs::create_dir_all(parent)?;
+        let lock = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(path.with_extension("lock"))?;
+        fs2::FileExt::try_lock_exclusive(&lock)
+            .context("bus snapshot already owned by another server")?;
         let rows = if path.exists() {
-            load_bus_snapshot(&path).unwrap_or_else(|error| {
-                eprintln!(
-                    "warning: failed to load bus snapshot {}: {error}",
-                    path.display()
-                );
-                Vec::new()
-            })
+            load_bus_snapshot(&path)
+                .with_context(|| format!("refusing corrupt bus snapshot {}", path.display()))?
         } else {
             Vec::new()
         };
+        for row in &rows {
+            validate_row(row)?;
+        }
+        anyhow::ensure!(
+            rows.windows(2).all(|w| w[0].seq < w[1].seq) && rows.first().is_none_or(|r| r.seq > 0),
+            "invalid snapshot sequence"
+        );
         let next = rows.iter().map(|row| row.seq).max().unwrap_or(0);
         Ok(Self {
+            _snapshot_lock: Some(lock),
             rows: Arc::new(Mutex::new(rows)),
             next_seq: Arc::new(Mutex::new(next)),
             persist_path: Arc::new(Mutex::new(Some(path))),
@@ -108,46 +125,82 @@ impl SemanticBus {
         })
     }
 
-    fn persist_snapshot(&self) {
-        let path = self.persist_path.lock().expect("persist lock").clone();
-        let Some(path) = path else { return };
-        let rows = Self::snapshot_rows(&self.rows);
-        if let Err(error) = save_bus_snapshot(&path, &rows) {
-            eprintln!("warning: bus snapshot persist failed: {error}");
-        }
-    }
-
-    fn append_rows(
+    // Serialize allocation, persistence and visibility as one transaction.
+    // Failure before rename leaves memory unchanged. If directory fsync fails
+    // after rename, retain the committed rows but do not acknowledge durability.
+    fn append_durable(
         rows_store: &Arc<Mutex<Vec<EmbeddingRow>>>,
         next_seq: &Arc<Mutex<u64>>,
+        persist_path: &Arc<Mutex<Option<PathBuf>>>,
         mut rows: Vec<EmbeddingRow>,
     ) -> AnyResult<u64> {
+        anyhow::ensure!(
+            !rows.is_empty() && rows.len() <= 4096,
+            "publish requires 1..4096 rows"
+        );
+        for row in &rows {
+            validate_row(row)?;
+        }
         let mut next = next_seq.lock().expect("bus seq lock");
         let mut stored = rows_store.lock().expect("bus rows lock");
+        let bytes: usize = stored
+            .iter()
+            .chain(rows.iter())
+            .map(|r| r.vector.len() * 4 + r.agent_id.len() + r.run_id.len() + r.topic.len() + 64)
+            .sum();
+        anyhow::ensure!(
+            bytes <= 128 * 1024 * 1024,
+            "bus capacity reached (128 MiB); archive the snapshot before adding more rows"
+        );
+        let mut last = *next;
         for row in &mut rows {
-            *next += 1;
-            row.seq = *next;
+            last = last.checked_add(1).context("bus sequence exhausted")?;
+            row.seq = last;
             if row.timestamp_ms == 0 {
                 row.timestamp_ms = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
+                    .duration_since(std::time::UNIX_EPOCH)?
                     .as_millis() as i64;
             }
         }
-        let last = *next;
+        if let Some(path) = persist_path.lock().expect("persist lock").as_ref() {
+            let mut snapshot = stored.clone();
+            snapshot.extend(rows.iter().cloned());
+            if let Err(error) = save_bus_snapshot(path, &snapshot) {
+                if error.downcast_ref::<RenamedSnapshotError>().is_some() {
+                    stored.extend(rows);
+                    *next = last;
+                }
+                return Err(error);
+            }
+        }
         stored.extend(rows);
+        *next = last;
         Ok(last)
     }
 
     fn append_and_persist(&self, rows: Vec<EmbeddingRow>) -> AnyResult<u64> {
-        let last = Self::append_rows(&self.rows, &self.next_seq, rows)?;
-        self.persist_snapshot();
-        Ok(last)
+        Self::append_durable(&self.rows, &self.next_seq, &self.persist_path, rows)
     }
 
     fn snapshot_rows(rows_store: &Arc<Mutex<Vec<EmbeddingRow>>>) -> Vec<EmbeddingRow> {
         rows_store.lock().expect("bus rows lock").clone()
     }
+}
+
+fn validate_row(row: &EmbeddingRow) -> AnyResult<()> {
+    for value in [&row.agent_id, &row.run_id, &row.topic] {
+        anyhow::ensure!(
+            !value.trim().is_empty() && value.len() <= 1024,
+            "bus identifiers must contain 1..1024 bytes"
+        );
+    }
+    anyhow::ensure!(
+        !row.vector.is_empty()
+            && row.vector.len() <= 65536
+            && row.vector.iter().all(|v| v.is_finite()),
+        "vector must contain 1..65536 finite values"
+    );
+    Ok(())
 }
 
 #[tonic::async_trait]
@@ -227,12 +280,20 @@ impl FlightService for SemanticBus {
         let stream = request.into_inner().map_err(FlightError::from);
         let mut decoder = FlightDataDecoder::new(stream);
         let mut rows = Vec::new();
+        let mut bytes = 0usize;
         while let Some(payload) = decoder
             .try_next()
             .await
             .map_err(|error| Status::internal(error.to_string()))?
         {
             if let DecodedPayload::RecordBatch(batch) = payload.payload {
+                bytes = bytes.saturating_add(batch.get_array_memory_size());
+                if bytes > 2 * 1024 * 1024 {
+                    return Err(Status::resource_exhausted("publish exceeds 2 MiB"));
+                }
+                if rows.len() + batch.num_rows() > 4096 {
+                    return Err(Status::resource_exhausted("publish exceeds 4096 rows"));
+                }
                 rows.extend(
                     batch_to_rows(&batch)
                         .map_err(|error| Status::invalid_argument(error.to_string()))?,
@@ -277,14 +338,21 @@ impl FlightService for SemanticBus {
                         break;
                     }
                 };
+                if message.data_body.len() + message.app_metadata.len() > 2 * 1024 * 1024 {
+                    let _ = tx
+                        .send(Err(Status::resource_exhausted("bus frame exceeds 2 MiB")))
+                        .await;
+                    break;
+                }
                 let metadata = message.app_metadata.clone();
                 let message_type = exchange_message_type(&metadata);
                 if message_type.as_deref() == Some("embed") {
                     let response = match handle_embed(&embed, &metadata).await {
                         Ok(body) => body,
-                        Err(error) => {
-                            format!("{{\"type\":\"error\",\"message\":{error:?}}}").into_bytes()
-                        }
+                        Err(error) => serde_json::to_vec(
+                            &serde_json::json!({"type":"error","message":error.to_string()}),
+                        )
+                        .expect("error JSON"),
                     };
                     if tx.send(Ok(metadata_message(&response))).await.is_err() {
                         break;
@@ -294,9 +362,10 @@ impl FlightService for SemanticBus {
                 if message_type.as_deref() == Some("evolve") {
                     let response = match handle_evolve(&rows, &next_seq, &persist_path, &metadata) {
                         Ok(body) => body,
-                        Err(error) => {
-                            format!("{{\"type\":\"error\",\"message\":{error:?}}}").into_bytes()
-                        }
+                        Err(error) => serde_json::to_vec(
+                            &serde_json::json!({"type":"error","message":error.to_string()}),
+                        )
+                        .expect("error JSON"),
                     };
                     if tx.send(Ok(metadata_message(&response))).await.is_err() {
                         break;
@@ -306,9 +375,10 @@ impl FlightService for SemanticBus {
                 if message_type.as_deref() == Some("merge_gate") {
                     let response = match handle_merge_gate(&rows, &metadata) {
                         Ok(body) => body,
-                        Err(error) => {
-                            format!("{{\"type\":\"error\",\"message\":{error:?}}}").into_bytes()
-                        }
+                        Err(error) => serde_json::to_vec(
+                            &serde_json::json!({"type":"error","message":error.to_string()}),
+                        )
+                        .expect("error JSON"),
                     };
                     if tx.send(Ok(metadata_message(&response))).await.is_err() {
                         break;
@@ -318,9 +388,10 @@ impl FlightService for SemanticBus {
                 if message_type.as_deref() == Some("match") {
                     let response = match handle_exchange_match(&rows, &metadata) {
                         Ok(body) => body,
-                        Err(error) => {
-                            format!("{{\"type\":\"error\",\"message\":{error:?}}}").into_bytes()
-                        }
+                        Err(error) => serde_json::to_vec(
+                            &serde_json::json!({"type":"error","message":error.to_string()}),
+                        )
+                        .expect("error JSON"),
                     };
                     if tx.send(Ok(metadata_message(&response))).await.is_err() {
                         break;
@@ -337,20 +408,13 @@ impl FlightService for SemanticBus {
                 )
                 .map_err(|error| anyhow::anyhow!(error.to_string()))
                 .and_then(|batch| batch_to_rows(&batch))
-                .and_then(|parsed| {
-                    let last = Self::append_rows(&rows, &next_seq, parsed)?;
-                    if let Some(path) = persist_path.lock().expect("persist lock").clone()
-                        && let Err(error) = save_bus_snapshot(&path, &Self::snapshot_rows(&rows))
-                    {
-                        eprintln!("warning: bus snapshot persist failed: {error}");
-                    }
-                    Ok(last)
-                });
+                .and_then(|parsed| Self::append_durable(&rows, &next_seq, &persist_path, parsed));
                 let body = match decoded {
                     Ok(last) => format!("{{\"type\":\"ack\",\"last_seq\":{last}}}").into_bytes(),
-                    Err(error) => {
-                        format!("{{\"type\":\"error\",\"message\":{error:?}}}").into_bytes()
-                    }
+                    Err(error) => serde_json::to_vec(
+                        &serde_json::json!({"type":"error","message":error.to_string()}),
+                    )
+                    .expect("error JSON"),
                 };
                 if tx.send(Ok(metadata_message(&body))).await.is_err() {
                     break;
@@ -366,6 +430,15 @@ impl FlightService for SemanticBus {
         request: Request<Action>,
     ) -> std::result::Result<Response<Self::DoActionStream>, Status> {
         let action = request.into_inner();
+        if action.r#type == "health" {
+            let body = serde_json::to_vec(&serde_json::json!({
+                "protocol": 2, "version": env!("CARGO_PKG_VERSION"),
+                "pid": std::process::id(), "persistent": self.persist_path.lock().expect("persist lock").is_some()
+            })).map_err(|e| Status::internal(e.to_string()))?;
+            return Ok(Response::new(Box::pin(tokio_stream::once(Ok(
+                arrow_flight::Result { body: body.into() },
+            )))));
+        }
         if action.r#type != "match" {
             return Err(Status::invalid_argument(format!(
                 "unknown action: {}",
@@ -443,8 +516,32 @@ pub async fn serve_uds(path: PathBuf, persist_path: Option<PathBuf>) -> AnyResul
     use tokio::net::UnixListener;
     use tokio_stream::wrappers::UnixListenerStream;
 
-    if path.exists() {
-        let _ = std::fs::remove_file(&path);
+    use std::os::unix::fs::{FileTypeExt, PermissionsExt};
+    let _socket_lock = {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let lock = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(path.with_extension("socket.lock"))?;
+        fs2::FileExt::try_lock_exclusive(&lock).context("bus socket already owned")?;
+        lock
+    };
+    if let Ok(meta) = std::fs::symlink_metadata(&path) {
+        anyhow::ensure!(
+            meta.file_type().is_socket(),
+            "refusing to replace a non-socket path"
+        );
+        match std::os::unix::net::UnixStream::connect(&path) {
+            Ok(_) => bail!("bus socket already serving"),
+            Err(error) if error.kind() == std::io::ErrorKind::ConnectionRefused => {
+                std::fs::remove_file(&path)?
+            }
+            Err(error) => return Err(error.into()),
+        }
     }
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -452,6 +549,7 @@ pub async fn serve_uds(path: PathBuf, persist_path: Option<PathBuf>) -> AnyResul
 
     let listener = UnixListener::bind(&path)
         .with_context(|| format!("failed to bind UDS flight bus to {}", path.display()))?;
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
     let stream = UnixListenerStream::new(listener);
 
     let bus = Arc::new(SemanticBus::load_or_default(persist_path)?);
@@ -547,13 +645,8 @@ fn handle_evolve(
         .map(|beta| crate::gepa::anchor_penalty(&offspring, &request.goal_vector, beta));
     let run_id = format!("{}-evolved-{}", request.lane, std::process::id());
     let mut row = new_embedding_row(&parent.agent_id, &run_id, &intent_topic, offspring.clone());
-    let last = SemanticBus::append_rows(rows_store, next_seq, vec![row.clone()])?;
+    let last = SemanticBus::append_durable(rows_store, next_seq, persist_path, vec![row.clone()])?;
     row.seq = last;
-    if let Some(path) = persist_path.lock().expect("persist lock").clone()
-        && let Err(error) = save_bus_snapshot(&path, &SemanticBus::snapshot_rows(rows_store))
-    {
-        eprintln!("warning: bus snapshot persist failed: {error}");
-    }
     Ok(serde_json::to_vec(&serde_json::json!({
         "type": "evolve",
         "lane": request.lane,
@@ -676,35 +769,67 @@ fn handle_exchange_match(
     )?)
 }
 
+#[derive(Debug)]
+struct RenamedSnapshotError(std::io::Error);
+impl std::fmt::Display for RenamedSnapshotError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "snapshot renamed but directory durability is uncertain: {}",
+            self.0
+        )
+    }
+}
+impl std::error::Error for RenamedSnapshotError {}
+
 pub(crate) fn save_bus_snapshot(path: &Path, rows: &[EmbeddingRow]) -> AnyResult<()> {
     use arrow_ipc::writer::FileWriter;
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
+    use std::os::unix::fs::OpenOptionsExt;
+    static TEMP_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let parent = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    std::fs::create_dir_all(parent)?;
     let batch = rows_to_batch(rows)?;
-    let temporary = path.with_extension(format!("{}.tmp", std::process::id()));
-    let file = std::fs::File::create(&temporary)?;
-    let mut writer = FileWriter::try_new(file, &embedding_schema())?;
-    writer.write(&batch)?;
-    writer.finish()?;
-    std::fs::rename(temporary, path)?;
-    if let Some(parent) = path.parent() {
-        std::fs::File::open(parent)?.sync_all()?;
+    let id = TEMP_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_nanos();
+    let temporary = path.with_extension(format!("{}.{nanos}.{id}.tmp", std::process::id()));
+    let result = (|| -> AnyResult<()> {
+        let file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&temporary)?;
+        let mut writer = FileWriter::try_new(file, &embedding_schema())?;
+        writer.write(&batch)?;
+        writer.finish()?;
+        writer.get_ref().sync_all()?;
+        std::fs::rename(&temporary, path)?;
+        std::fs::File::open(parent)
+            .and_then(|f| f.sync_all())
+            .map_err(RenamedSnapshotError)?;
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(temporary);
     }
-    Ok(())
+    result
 }
 
 pub(crate) fn load_bus_snapshot(path: &Path) -> AnyResult<Vec<EmbeddingRow>> {
     use arrow_ipc::reader::FileReader;
-    use memmap2::Mmap;
-    use std::io::Cursor;
     let file = std::fs::File::open(path)?;
-    if file.metadata()?.len() == 0 {
-        return Ok(Vec::new());
-    }
-    // SAFETY: the mapping is read-only and lives for the reader traversal.
-    let mmap = unsafe { Mmap::map(&file)? };
-    let reader = FileReader::try_new(Cursor::new(mmap.as_ref()), None)?;
+    let len = file.metadata()?.len();
+    anyhow::ensure!(
+        len > 0 && len <= 256 * 1024 * 1024,
+        "snapshot is empty or exceeds 256 MiB"
+    );
+    // File-backed reader avoids an unsafe mmap whose validity depended on no
+    // external process truncating the mapped file while Arrow traversed it.
+    let reader = FileReader::try_new(file, None)?;
     let mut rows = Vec::new();
     for batch in reader {
         rows.extend(batch_to_rows(&batch?)?);
@@ -753,6 +878,15 @@ pub(crate) fn rows_to_batch(rows: &[EmbeddingRow]) -> AnyResult<RecordBatch> {
 }
 
 pub(crate) fn batch_to_rows(batch: &RecordBatch) -> AnyResult<Vec<EmbeddingRow>> {
+    for column in batch.columns() {
+        anyhow::ensure!(column.null_count() == 0, "null bus fields are invalid");
+    }
+    let dimensions = batch
+        .column_by_name("dimension")
+        .context("missing dimension")?
+        .as_any()
+        .downcast_ref::<UInt32Array>()
+        .context("dimension must be UInt32")?;
     let agent_ids = string_column(batch, "agent_id")?;
     let run_ids = string_column(batch, "run_id")?;
     let topics = string_column(batch, "topic")?;
@@ -780,9 +914,15 @@ pub(crate) fn batch_to_rows(batch: &RecordBatch) -> AnyResult<Vec<EmbeddingRow>>
         if bytes.len() % 4 != 0 {
             bail!("vector bytes length must be a multiple of 4");
         }
+        anyhow::ensure!(
+            dimensions.value(index) as usize == bytes.len() / 4,
+            "vector dimension mismatch"
+        );
         let vector = bytes
-            .chunks_exact(4)
-            .map(|chunk| f32::from_le_bytes(chunk.try_into().expect("chunk size")))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|chunk| f32::from_le_bytes(*chunk))
             .collect();
         rows.push(EmbeddingRow {
             seq: seqs.value(index),
@@ -806,10 +946,11 @@ fn string_column<'a>(batch: &'a RecordBatch, name: &str) -> AnyResult<&'a String
 }
 
 fn cosine_similarity(left: &[f32], right: &[f32]) -> f32 {
-    let mut dot = 0.0_f32;
-    let mut left_norm = 0.0_f32;
-    let mut right_norm = 0.0_f32;
+    let mut dot = 0.0_f64;
+    let mut left_norm = 0.0_f64;
+    let mut right_norm = 0.0_f64;
     for (a, b) in left.iter().zip(right) {
+        let (a, b) = (*a as f64, *b as f64);
         dot += a * b;
         left_norm += a * a;
         right_norm += b * b;
@@ -817,7 +958,7 @@ fn cosine_similarity(left: &[f32], right: &[f32]) -> f32 {
     if left_norm == 0.0 || right_norm == 0.0 {
         return 0.0;
     }
-    dot / (left_norm.sqrt() * right_norm.sqrt())
+    (dot / (left_norm.sqrt() * right_norm.sqrt())).clamp(-1.0, 1.0) as f32
 }
 
 #[allow(dead_code)]
@@ -825,7 +966,22 @@ fn cosine_similarity(left: &[f32], right: &[f32]) -> f32 {
 pub async fn selftest(port: u16) -> AnyResult<serde_json::Value> {
     use arrow_flight::flight_service_client::FlightServiceClient;
     let bind: SocketAddr = format!("127.0.0.1:{port}").parse()?;
-    tokio::spawn(serve(bind));
+    let listener = tokio::net::TcpListener::bind(bind)
+        .await
+        .context("selftest port already in use")?;
+    let server = tokio::spawn(async move {
+        Server::builder()
+            .add_service(FlightServiceServer::new(SemanticBus::default()))
+            .serve_with_incoming(tokio_stream::wrappers::TcpListenerStream::new(listener))
+            .await
+    });
+    struct AbortServer(tokio::task::JoinHandle<std::result::Result<(), tonic::transport::Error>>);
+    impl Drop for AbortServer {
+        fn drop(&mut self) {
+            self.0.abort();
+        }
+    }
+    let _server = AbortServer(server);
     let mut client = None;
     for _ in 0..50 {
         let endpoint = tonic::transport::Endpoint::new(format!("http://{bind}"))?;
@@ -966,6 +1122,103 @@ mod tests {
             Arc::new(Mutex::new(next_seq)),
             Arc::new(Mutex::new(None)),
         )
+    }
+
+    #[test]
+    fn persist_failure_does_not_ack_or_consume_sequences() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("bus.arrow");
+        let bus = SemanticBus::load_or_default(Some(path.clone())).unwrap();
+        std::fs::create_dir(&path).unwrap(); // Force atomic rename to fail.
+        assert!(
+            bus.append_and_persist(vec![stored_row(0, "a", "t", vec![1.])])
+                .is_err()
+        );
+        assert!(bus.rows.lock().unwrap().is_empty());
+        assert_eq!(*bus.next_seq.lock().unwrap(), 0);
+        std::fs::remove_dir(&path).unwrap();
+        assert_eq!(
+            bus.append_and_persist(vec![stored_row(0, "a", "t", vec![1.])])
+                .unwrap(),
+            1
+        );
+        assert_eq!(load_bus_snapshot(&path).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn corrupt_and_empty_snapshots_fail_closed() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("bus.arrow");
+        for bytes in [&b""[..], &b"corrupt"[..]] {
+            std::fs::write(&path, bytes).unwrap();
+            assert!(SemanticBus::load_or_default(Some(path.clone())).is_err());
+            assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        }
+    }
+
+    #[test]
+    fn snapshot_has_one_owner_and_concurrent_writes_survive_restart() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("bus.arrow");
+        let bus = Arc::new(SemanticBus::load_or_default(Some(path.clone())).unwrap());
+        assert!(SemanticBus::load_or_default(Some(path.clone())).is_err());
+        let threads: Vec<_> = (0..8)
+            .map(|i| {
+                let bus = bus.clone();
+                std::thread::spawn(move || {
+                    for j in 0..8 {
+                        bus.append_and_persist(vec![new_embedding_row(
+                            &format!("a{i}"),
+                            &format!("r{j}"),
+                            "t",
+                            vec![1., 0.],
+                        )])
+                        .unwrap();
+                    }
+                })
+            })
+            .collect();
+        for thread in threads {
+            thread.join().unwrap();
+        }
+        drop(bus);
+        let loaded = SemanticBus::load_or_default(Some(path)).unwrap();
+        let rows = loaded.rows.lock().unwrap();
+        assert_eq!(rows.len(), 64);
+        assert_eq!(
+            rows.iter().map(|r| r.seq).collect::<Vec<_>>(),
+            (1..=64).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn invalid_vector_rejects_entire_transaction() {
+        let bus = SemanticBus::default();
+        for vector in [vec![], vec![f32::NAN], vec![f32::INFINITY]] {
+            assert!(
+                bus.append_and_persist(vec![
+                    stored_row(0, "a", "t", vec![1.]),
+                    stored_row(0, "b", "t", vector)
+                ])
+                .is_err()
+            );
+            assert!(bus.rows.lock().unwrap().is_empty());
+        }
+        assert!(cosine_similarity(&[f32::MAX], &[f32::MAX]).is_finite());
+    }
+
+    #[tokio::test]
+    async fn uds_never_replaces_regular_file_or_live_socket() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("bus.sock");
+        std::fs::write(&path, "keep me").unwrap();
+        assert!(serve_uds(path.clone(), None).await.is_err());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "keep me");
+        std::fs::remove_file(&path).unwrap();
+        let listener = std::os::unix::net::UnixListener::bind(&path).unwrap();
+        assert!(serve_uds(path.clone(), None).await.is_err());
+        assert!(std::os::unix::net::UnixStream::connect(&path).is_ok());
+        drop(listener);
     }
 
     #[test]

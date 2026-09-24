@@ -1,9 +1,9 @@
-//! Zero-copy shared memory SPSC ring buffer & Semantic Consensus (S-2PC) fabric
+//! Shared-memory ring buffer and Semantic Consensus (S-2PC) fabric
 //! for ultra-low-latency local multi-agent swarm coordination.
 //!
-//! Provides lock-free ring buffers backed by POSIX shared memory (`shm_open` on
-//! Darwin/Linux, with `memfd_create` support on Linux). Data slots are cache-line
-//! aligned and zero-copy, carrying raw little-endian f32 embedding vectors,
+//! Uses POSIX shared memory on Darwin/Linux, cache-line-aligned cursors and
+//! a bounded process-shared mutation gate. Payload snapshots are owned copies;
+//! no slice outlives ownership of its slot. Carries native f32 embedding vectors,
 //! atomic epistemic state (Free -> Tentative -> Reflecting -> Committed / Aborted),
 //! and dual-plane Unix Domain datagram signaling to prevent CPU busy-spinning.
 
@@ -16,7 +16,7 @@ use std::ptr::NonNull;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
 pub const SHM_MAGIC: u64 = 0x4C45494F5F53484D; // "LEIO_SHM"
-pub const SHM_VERSION: u32 = 1;
+pub const SHM_VERSION: u32 = 2;
 pub const MAX_VECTOR_DIMS: usize = 1536;
 
 /// Epistemic lifecycle states for multi-agent Semantic Two-Phase Commit (S-2PC).
@@ -158,7 +158,9 @@ impl ShmSlot {
 /// Shared memory ring buffer header located at the very start of the mmap.
 #[repr(C, align(64))]
 pub struct ShmRingHeader {
-    pub magic: u64,
+    pub magic: AtomicU64,
+    /// Nonzero owner PID while a slot operation holds the shared mutation gate.
+    pub mutation_owner: AtomicU32,
     pub version: u32,
     pub capacity: u32,
     pub slot_size: u32,
@@ -172,8 +174,8 @@ pub struct ShmRingHeader {
 
 /// Cross-platform POSIX / memfd shared memory mapping.
 pub struct ShmSegment {
-    pub name: String,
-    pub size: usize,
+    name: String,
+    size: usize,
     ptr: NonNull<u8>,
     is_owner: bool,
 }
@@ -184,38 +186,72 @@ unsafe impl Sync for ShmSegment {}
 impl ShmSegment {
     /// Create a new shared memory segment. If `owner` is true, unlinks upon Drop.
     pub fn create_or_open(name: &str, size: usize, owner: bool) -> Result<Self> {
-        // macOS limits POSIX shm names to PSEMNAMLEN (30 chars) including leading slash
-        let clean_name = if name.starts_with('/') {
-            name.to_string()
+        anyhow::ensure!(
+            size > 0 && size <= 128 * 1024 * 1024,
+            "shm mapping size must be 1..128 MiB"
+        );
+        let final_name = if name.starts_with('/') {
+            name.to_owned()
         } else {
-            format!("/{}", name)
+            format!("/{name}")
         };
-        let final_name = if clean_name.len() > 30 {
-            clean_name[..30].to_string()
-        } else {
-            clean_name
-        };
-
-        let c_name = CString::new(final_name.clone())
-            .with_context(|| format!("invalid shm name: {final_name}"))?;
-
-        let fd = unsafe { libc::shm_open(c_name.as_ptr(), libc::O_CREAT | libc::O_RDWR, 0o600) };
+        anyhow::ensure!(
+            final_name.len() <= 30
+                && final_name.len() > 1
+                && final_name[1..]
+                    .bytes()
+                    .all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-'),
+            "shm name must contain at most 29 ASCII letters, digits, underscores or hyphens"
+        );
+        let c_name = CString::new(final_name.clone())?;
+        let flags = libc::O_RDWR
+            | if owner {
+                libc::O_CREAT | libc::O_EXCL
+            } else {
+                0
+            };
+        // SAFETY: NUL-terminated name and valid flags. Owners exclusively create;
+        // attaching never creates or truncates an existing mapping.
+        let fd = unsafe { libc::shm_open(c_name.as_ptr(), flags, 0o600) };
         if fd < 0 {
-            bail!(
-                "shm_open failed for {}: {}",
-                final_name,
-                std::io::Error::last_os_error()
-            );
+            bail!("shm_open {final_name}: {}", std::io::Error::last_os_error());
         }
-
-        let truncate_res = unsafe { libc::ftruncate(fd, size as libc::off_t) };
-        if truncate_res != 0 {
-            unsafe { libc::close(fd) };
-            bail!(
-                "ftruncate failed for {}: {}",
-                final_name,
-                std::io::Error::last_os_error()
-            );
+        let checked = (|| -> Result<()> {
+            if owner {
+                if unsafe { libc::ftruncate(fd, size as libc::off_t) } != 0 {
+                    return Err(std::io::Error::last_os_error().into());
+                }
+            } else {
+                let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
+                if unsafe { libc::fstat(fd, stat.as_mut_ptr()) } != 0 {
+                    return Err(std::io::Error::last_os_error().into());
+                }
+                let stat = unsafe { stat.assume_init() };
+                anyhow::ensure!(
+                    stat.st_size >= 0 && {
+                        // Darwin reports page-rounded POSIX shm sizes; Linux
+                        // reports the ftruncate length. Validate either form,
+                        // then validate the exact logical capacity in the ABI.
+                        let page = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
+                        page > 0
+                            && (stat.st_size as usize == size
+                                || stat.st_size as usize
+                                    == size.div_ceil(page as usize) * page as usize)
+                    },
+                    "shm mapping size mismatch (requested {size}, found {}); refusing to resize existing segment",
+                    stat.st_size
+                );
+            }
+            Ok(())
+        })();
+        if let Err(error) = checked {
+            unsafe {
+                libc::close(fd);
+                if owner {
+                    libc::shm_unlink(c_name.as_ptr());
+                }
+            }
+            return Err(error);
         }
 
         let ptr = unsafe {
@@ -231,6 +267,11 @@ impl ShmSegment {
         unsafe { libc::close(fd) };
 
         if ptr == libc::MAP_FAILED {
+            if owner {
+                unsafe {
+                    libc::shm_unlink(c_name.as_ptr());
+                }
+            }
             bail!(
                 "mmap failed for {}: {}",
                 final_name,
@@ -245,6 +286,13 @@ impl ShmSegment {
             ptr: non_null,
             is_owner: owner,
         })
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+    pub fn size(&self) -> usize {
+        self.size
     }
 
     #[inline]
@@ -277,9 +325,10 @@ impl ShmSignal {
     /// Create a listener signal bound to a filesystem path.
     pub fn bind(ring_name: &str) -> Result<Self> {
         let path = Self::socket_path(ring_name);
-        if path.exists() {
-            let _ = std::fs::remove_file(&path);
-        }
+        anyhow::ensure!(
+            !path.exists(),
+            "signal socket already exists; refusing to unlink another listener"
+        );
         let socket = UnixDatagram::bind(&path)
             .with_context(|| format!("failed to bind shm signal socket: {}", path.display()))?;
         socket.set_nonblocking(true)?;
@@ -323,39 +372,61 @@ impl ShmSignal {
     }
 
     fn socket_path(ring_name: &str) -> PathBuf {
-        let clean = ring_name.trim_start_matches('/');
-        std::env::temp_dir().join(format!("leio_sig_{clean}.sock"))
+        use sha2::{Digest, Sha256};
+        let digest = hex::encode(Sha256::digest(ring_name.as_bytes()));
+        std::env::temp_dir().join(format!("ls-{}.sock", &digest[..16]))
     }
 
     /// Send notification that a slot was updated. Non-blocking.
     pub fn notify(&self, slot_index: usize) -> Result<()> {
         let payload = (slot_index as u32).to_le_bytes();
-        if let Some(ref peer) = self.peer_path {
-            let _ = self.socket.send_to(&payload, peer);
+        let sent = if let Some(ref peer) = self.peer_path {
+            self.socket.send_to(&payload, peer)
         } else {
-            let _ = self.socket.send(&payload);
+            self.socket.send(&payload)
+        };
+        match sent {
+            Ok(4) => Ok(()),
+            // Datagram wakeups are hints; a full queue already contains wakeups.
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => Ok(()),
+            Ok(_) => bail!("short signal datagram"),
+            Err(e) => Err(e.into()),
         }
-        Ok(())
     }
 
-    /// Wait for a notification with timeout. Sleeps the calling thread in kernel.
+    /// Wait without changing shared descriptor flags. Always recheck ring state
+    /// after waiting: wakeups are hints, not the data/ownership protocol.
     pub fn wait_timeout(&self, timeout: std::time::Duration) -> Result<Option<usize>> {
-        self.socket.set_nonblocking(false)?;
-        self.socket.set_read_timeout(Some(timeout))?;
+        use std::os::fd::AsRawFd;
+        let mut descriptor = libc::pollfd {
+            fd: self.socket.as_raw_fd(),
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        // SAFETY: one initialized pollfd is writable for the duration of poll.
+        let result = unsafe {
+            libc::poll(
+                &mut descriptor,
+                1,
+                timeout.as_millis().min(i32::MAX as u128) as i32,
+            )
+        };
+        if result < 0 {
+            let error = std::io::Error::last_os_error();
+            if error.kind() == std::io::ErrorKind::Interrupted {
+                return Ok(None);
+            }
+            return Err(error.into());
+        }
+        if result == 0 {
+            return Ok(None);
+        }
         let mut buf = [0u8; 4];
         match self.socket.recv(&mut buf) {
-            Ok(4) => {
-                let idx = u32::from_le_bytes(buf) as usize;
-                Ok(Some(idx))
-            }
+            Ok(4) => Ok(Some(u32::from_le_bytes(buf) as usize)),
             Ok(_) => Ok(None),
-            Err(ref e)
-                if e.kind() == std::io::ErrorKind::WouldBlock
-                    || e.kind() == std::io::ErrorKind::TimedOut =>
-            {
-                Ok(None)
-            }
-            Err(e) => Err(anyhow::anyhow!("signal wait failed: {e}")),
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
+            Err(e) => Err(e.into()),
         }
     }
 }
@@ -368,12 +439,22 @@ impl Drop for ShmSignal {
     }
 }
 
-/// SPSC Lock-free Ring Buffer & Consensus Substrate over Shared Memory.
+struct SlotGuard<'a>(&'a AtomicU32);
+impl Drop for SlotGuard<'_> {
+    fn drop(&mut self) {
+        self.0.store(0, Ordering::Release);
+    }
+}
+
+/// Shared-memory ring and consensus substrate. Slot access is serialized by
+/// a process-shared gate; process death while holding it fails closed. Recreate
+/// the segment after stopping all peers rather than stealing a possibly live lock.
 pub struct ShmRingBuffer {
     segment: ShmSegment,
     capacity: usize,
     mask: usize,
     signal: Option<ShmSignal>,
+    claims: std::cell::RefCell<std::collections::BTreeMap<usize, (u64, String)>>,
 }
 
 impl ShmRingBuffer {
@@ -384,35 +465,40 @@ impl ShmRingBuffer {
             "capacity must be a power of two"
         );
         let header_size = std::mem::size_of::<ShmRingHeader>();
-        let slots_size = capacity * std::mem::size_of::<ShmSlot>();
-        header_size + slots_size
+        let slots_size = capacity
+            .checked_mul(std::mem::size_of::<ShmSlot>())
+            .expect("ring size overflow");
+        header_size
+            .checked_add(slots_size)
+            .expect("ring size overflow")
     }
 
     /// Initialize a new ring buffer in shared memory.
     pub fn create(name: &str, capacity: usize) -> Result<Self> {
-        if !capacity.is_power_of_two() {
-            bail!("capacity must be a power of two");
-        }
+        anyhow::ensure!(
+            capacity.is_power_of_two() && capacity <= 16384,
+            "capacity must be a power of two no larger than 16384"
+        );
         let total_size = Self::required_bytes(capacity);
         let segment = ShmSegment::create_or_open(name, total_size, true)?;
 
         let header_ptr = segment.as_ptr() as *mut ShmRingHeader;
         unsafe {
-            header_ptr.write(ShmRingHeader {
-                magic: SHM_MAGIC,
-                version: SHM_VERSION,
-                capacity: capacity as u32,
-                slot_size: std::mem::size_of::<ShmSlot>() as u32,
-                coordinator_pid: AtomicU32::new(std::process::id()),
-                heartbeat_epoch_ms: AtomicU64::new(
-                    std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_millis() as u64,
-                ),
-                head: CachePaddedAtomicU64::new(0),
-                tail: CachePaddedAtomicU64::new(0),
-            });
+            // POSIX creation returns zero-filled storage. Publish readiness
+            // only after every non-atomic header field and slot is initialized.
+            std::ptr::addr_of_mut!((*header_ptr).version).write(SHM_VERSION);
+            std::ptr::addr_of_mut!((*header_ptr).capacity).write(capacity as u32);
+            std::ptr::addr_of_mut!((*header_ptr).slot_size)
+                .write(std::mem::size_of::<ShmSlot>() as u32);
+            (*header_ptr)
+                .coordinator_pid
+                .store(std::process::id(), Ordering::Relaxed);
+            (*header_ptr).heartbeat_epoch_ms.store(
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)?
+                    .as_millis() as u64,
+                Ordering::Relaxed,
+            );
 
             // Zero slots
             let slots_start =
@@ -420,6 +506,7 @@ impl ShmRingBuffer {
             for i in 0..capacity {
                 slots_start.add(i).write(ShmSlot::default());
             }
+            (*header_ptr).magic.store(SHM_MAGIC, Ordering::Release);
         }
 
         Ok(Self {
@@ -427,18 +514,28 @@ impl ShmRingBuffer {
             capacity,
             mask: capacity - 1,
             signal: None,
+            claims: Default::default(),
         })
     }
 
     /// Attach to an existing shared memory ring buffer.
     pub fn attach(name: &str, capacity: usize) -> Result<Self> {
+        anyhow::ensure!(
+            capacity.is_power_of_two() && capacity <= 16384,
+            "invalid ring capacity"
+        );
         let total_size = Self::required_bytes(capacity);
         let segment = ShmSegment::create_or_open(name, total_size, false)?;
 
         let header = unsafe { &*(segment.as_ptr() as *const ShmRingHeader) };
-        if header.magic != SHM_MAGIC {
-            bail!("invalid shm magic: {:x}", header.magic);
-        }
+        anyhow::ensure!(
+            header.magic.load(Ordering::Acquire) == SHM_MAGIC,
+            "shared memory is uninitialized or has invalid magic"
+        );
+        anyhow::ensure!(
+            header.slot_size as usize == std::mem::size_of::<ShmSlot>(),
+            "shared memory slot ABI mismatch"
+        );
         if header.version != SHM_VERSION {
             bail!("unsupported shm version: {}", header.version);
         }
@@ -455,6 +552,7 @@ impl ShmRingBuffer {
             capacity,
             mask: capacity - 1,
             signal: None,
+            claims: Default::default(),
         })
     }
 
@@ -466,6 +564,23 @@ impl ShmRingBuffer {
     #[inline]
     fn header(&self) -> &ShmRingHeader {
         unsafe { &*(self.segment.as_ptr() as *const ShmRingHeader) }
+    }
+
+    fn lock_slots(&self) -> Result<SlotGuard<'_>> {
+        let owner = &self.header().mutation_owner;
+        for _ in 0..256 {
+            if owner
+                .compare_exchange(0, std::process::id(), Ordering::Acquire, Ordering::Relaxed)
+                .is_ok()
+            {
+                return Ok(SlotGuard(owner));
+            }
+            std::thread::yield_now();
+        }
+        bail!(
+            "shared-memory mutation gate busy (owner PID {}); retry or recreate after owner failure",
+            owner.load(Ordering::Relaxed)
+        )
     }
 
     #[inline]
@@ -531,6 +646,15 @@ impl ShmRingBuffer {
         vector: &[f32],
         auto_commit: bool,
     ) -> Result<(u64, usize)> {
+        anyhow::ensure!(
+            !vector.is_empty() && vector.len() <= MAX_VECTOR_DIMS,
+            "invalid vector dimensions"
+        );
+        anyhow::ensure!(
+            agent_id.len() <= 32 && run_id.len() <= 32,
+            "shared-memory identifiers exceed 32 bytes"
+        );
+        let _guard = self.lock_slots()?;
         let header = self.header();
         let head = header.head.value.load(Ordering::Relaxed);
         let tail = header.tail.value.load(Ordering::Acquire);
@@ -541,7 +665,7 @@ impl ShmRingBuffer {
 
         let slot_idx = head as usize & self.mask;
         let slot = self.slot_ptr(head as usize);
-        let dims = vector.len().min(MAX_VECTOR_DIMS);
+        let dims = vector.len();
 
         unsafe {
             // Step 1: Mark slot as Tentative / Writing to guard readers
@@ -589,96 +713,82 @@ impl ShmRingBuffer {
     /// Attempt to atomically claim a tentative slot for verification (Tentative -> Reflecting).
     /// Returns true if this verifier successfully claimed the lock; false if already claimed.
     pub fn try_claim_verification(&mut self, slot_index: usize, verifier_id: &str) -> bool {
-        let slot_ptr = self.slot_ptr(slot_index);
-        let atomic_state = unsafe { &*(std::ptr::addr_of!((*slot_ptr).state) as *const AtomicU32) };
-
-        if atomic_state
-            .compare_exchange(
-                SLOT_TENTATIVE,
-                SLOT_REFLECTING,
-                Ordering::AcqRel,
-                Ordering::Relaxed,
-            )
-            .is_ok()
-        {
-            unsafe {
-                let mut vid = [0u8; 32];
-                let bytes = verifier_id.as_bytes();
-                vid[..bytes.len().min(32)].copy_from_slice(&bytes[..bytes.len().min(32)]);
-                (*slot_ptr).verifier_id = vid;
-            }
-            true
-        } else {
-            false
+        if slot_index >= self.capacity || verifier_id.len() > 32 || verifier_id.is_empty() {
+            return false;
         }
-    }
-
-    /// Commit an in-flight verification (Reflecting -> Committed).
-    /// The proposal passed all invariants and is now epistemic ground truth.
-    pub fn commit_verification(&mut self, slot_index: usize, verifier_id: &str) -> Result<()> {
-        let slot_ptr = self.slot_ptr(slot_index);
-        let atomic_state = unsafe { &*(std::ptr::addr_of!((*slot_ptr).state) as *const AtomicU32) };
-
+        let Ok(_guard) = self.lock_slots() else {
+            return false;
+        };
+        let slot = self.slot_ptr(slot_index);
+        // SAFETY: every slot access in this implementation holds the shared
+        // mutation gate, including peeks and copies. No borrowed payload escapes.
         unsafe {
-            let mut vid = [0u8; 32];
-            let bytes = verifier_id.as_bytes();
-            vid[..bytes.len().min(32)].copy_from_slice(&bytes[..bytes.len().min(32)]);
-            (*slot_ptr).verifier_id = vid;
+            if (*slot).state != SLOT_TENTATIVE {
+                return false;
+            }
+            (*slot).state = SLOT_REFLECTING;
+            (*slot).verifier_id = [0; 32];
+            (&mut (*slot).verifier_id)[..verifier_id.len()].copy_from_slice(verifier_id.as_bytes());
+            self.claims
+                .borrow_mut()
+                .insert(slot_index, ((*slot).seq, verifier_id.to_owned()));
         }
-
-        atomic_state
-            .compare_exchange(
-                SLOT_REFLECTING,
-                SLOT_COMMITTED,
-                Ordering::Release,
-                Ordering::Relaxed,
-            )
-            .map_err(|curr| {
-                anyhow::anyhow!(
-                    "cannot commit slot {slot_index}: expected Reflecting (2), found {curr}"
-                )
-            })?;
-
-        Ok(())
+        true
     }
 
-    /// Abort an in-flight proposal (Reflecting -> Aborted).
-    /// The proposal failed invariants, regressed metrics, or was detected as hallucinated.
+    /// Commit only a claim held by this handle for the current slot generation.
+    pub fn commit_verification(&mut self, slot_index: usize, verifier_id: &str) -> Result<()> {
+        self.finish_verification(slot_index, verifier_id, SLOT_COMMITTED, 0)
+    }
+
     pub fn abort_verification(
         &mut self,
         slot_index: usize,
         verifier_id: &str,
         reason_code: u32,
     ) -> Result<()> {
-        let slot_ptr = self.slot_ptr(slot_index);
-        let atomic_state = unsafe { &*(std::ptr::addr_of!((*slot_ptr).state) as *const AtomicU32) };
+        self.finish_verification(slot_index, verifier_id, SLOT_ABORTED, reason_code)
+    }
 
+    fn finish_verification(
+        &self,
+        index: usize,
+        verifier_id: &str,
+        state: u32,
+        reason: u32,
+    ) -> Result<()> {
+        anyhow::ensure!(index < self.capacity, "slot index out of bounds");
+        let _guard = self.lock_slots()?;
+        let claim = self
+            .claims
+            .borrow()
+            .get(&index)
+            .cloned()
+            .context("this handle does not own the verification claim")?;
+        let slot = self.slot_ptr(index);
         unsafe {
-            let mut vid = [0u8; 32];
-            let bytes = verifier_id.as_bytes();
-            vid[..bytes.len().min(32)].copy_from_slice(&bytes[..bytes.len().min(32)]);
-            (*slot_ptr).verifier_id = vid;
-            (*slot_ptr).reason_code = reason_code;
+            anyhow::ensure!(
+                (*slot).state == SLOT_REFLECTING
+                    && (*slot).seq == claim.0
+                    && claim.1 == verifier_id,
+                "stale or foreign verification claim"
+            );
+            (*slot).reason_code = reason;
+            (*slot).state = state;
         }
-
-        atomic_state
-            .compare_exchange(
-                SLOT_REFLECTING,
-                SLOT_ABORTED,
-                Ordering::Release,
-                Ordering::Relaxed,
-            )
-            .map_err(|curr| {
-                anyhow::anyhow!(
-                    "cannot abort slot {slot_index}: expected Reflecting (2), found {curr}"
-                )
-            })?;
-
+        self.claims.borrow_mut().remove(&index);
+        if let Some(signal) = &self.signal {
+            signal.notify(index)?;
+        }
         Ok(())
     }
 
-    /// Inspect a slot at `index` without mutating cursors or copying the vector.
+    /// Copy a coherent slot snapshot without mutating cursors.
     pub fn peek_slot(&self, index: usize) -> Option<ShmSlot> {
+        if index >= self.capacity {
+            return None;
+        }
+        let _guard = self.lock_slots().ok()?;
         let slot_ptr = self.slot_ptr(index);
         unsafe {
             let state = (*slot_ptr).state;
@@ -690,8 +800,10 @@ impl ShmRingBuffer {
         }
     }
 
-    /// Inspect the raw f32 vector of the current slot at tail without copying.
-    pub fn peek_vector(&self) -> Option<&[f32]> {
+    /// Take an owned snapshot of the committed tail vector. A borrowed slice
+    /// would be invalidated by another attached consumer recycling the slot.
+    pub fn peek_vector(&self) -> Option<Vec<f32>> {
+        let _guard = self.lock_slots().ok()?;
         let header = self.header();
         let tail = header.tail.value.load(Ordering::Relaxed);
         let head = header.head.value.load(Ordering::Acquire);
@@ -707,13 +819,14 @@ impl ShmRingBuffer {
                 return None;
             }
             let dims = slot_ref.dimension as usize;
-            Some(&slot_ref.vector[..dims])
+            (dims <= MAX_VECTOR_DIMS).then(|| slot_ref.vector[..dims].to_vec())
         }
     }
 
     /// Read next committed slot from the ring buffer (zero-copy consumer).
     /// If the slot at tail is not yet committed (e.g. Tentative/Reflecting), returns None.
     pub fn pop(&mut self) -> Option<ShmSlot> {
+        let _guard = self.lock_slots().ok()?;
         let header = self.header();
         let tail = header.tail.value.load(Ordering::Relaxed);
         let head = header.head.value.load(Ordering::Acquire);
@@ -732,6 +845,9 @@ impl ShmRingBuffer {
             *slot_ptr
         };
 
+        unsafe {
+            (*slot_ptr).state = SLOT_EMPTY;
+        }
         // Advance tail to free the slot
         header.tail.value.store(tail + 1, Ordering::Release);
         Some(slot)
@@ -739,6 +855,7 @@ impl ShmRingBuffer {
 
     /// Drain next slot at tail regardless of state (e.g. for audit log extraction or cleanup).
     pub fn pop_any(&mut self) -> Option<ShmSlot> {
+        let _guard = self.lock_slots().ok()?;
         let header = self.header();
         let tail = header.tail.value.load(Ordering::Relaxed);
         let head = header.head.value.load(Ordering::Acquire);
@@ -749,8 +866,12 @@ impl ShmRingBuffer {
 
         let slot_ptr = self.slot_ptr(tail as usize);
         let slot = unsafe {
-            std::sync::atomic::fence(Ordering::Acquire);
-            *slot_ptr
+            if (*slot_ptr).state == SLOT_REFLECTING {
+                return None;
+            }
+            let copy = *slot_ptr;
+            (*slot_ptr).state = SLOT_EMPTY;
+            copy
         };
 
         header.tail.value.store(tail + 1, Ordering::Release);
@@ -762,12 +883,10 @@ impl ShmRingBuffer {
         if let Some(slot) = self.pop() {
             return Ok(Some(slot));
         }
-        if let Some(ref signal) = self.signal
-            && signal.wait_timeout(timeout)?.is_some()
-        {
-            return Ok(self.pop());
+        if let Some(ref signal) = self.signal {
+            signal.wait_timeout(timeout)?;
         }
-        Ok(None)
+        Ok(self.pop())
     }
 }
 
@@ -809,6 +928,15 @@ impl SwarmCritic {
 
     /// Evaluate invariants for a tentative slot. Zero-copy inspection.
     pub fn audit_slot(&self, slot: &ShmSlot) -> VerificationDecision {
+        if !slot.confidence.is_finite()
+            || !self.min_confidence.is_finite()
+            || slot.dimension as usize > MAX_VECTOR_DIMS
+        {
+            return VerificationDecision::Rejected {
+                reason_code: abort_reasons::REASON_INVARIANT_VIOLATION,
+                explanation: "invalid confidence or dimension".to_owned(),
+            };
+        }
         // Invariant 1: confidence threshold
         if slot.confidence < self.min_confidence {
             return VerificationDecision::Rejected {
@@ -907,7 +1035,9 @@ pub fn selftest(capacity: usize) -> Result<serde_json::Value> {
         "roundtrip_ns": s_elapsed.as_nanos(),
         "roundtrip_us": s_elapsed.as_micros(),
         "verified_seq": seq,
-        "zero_copy_verified": true,
+        "shared_memory_verified": true,
+        "borrowed_payloads": false,
+        "abi_version": SHM_VERSION,
         "consensus": consensus_report,
     }))
 }
@@ -1027,6 +1157,13 @@ pub fn consensus_selftest() -> Result<serde_json::Value> {
 
 /// Run latency and throughput benchmark for shared memory SPSC push and pop.
 pub fn bench(iterations: usize, dimensions: usize) -> Result<serde_json::Value> {
+    anyhow::ensure!(
+        iterations > 0
+            && iterations <= 10_000_000
+            && dimensions > 0
+            && dimensions <= MAX_VECTOR_DIMS,
+        "invalid benchmark bounds"
+    );
     let capacity = 1024;
     let ring_name = format!("leio_bench_{}", std::process::id());
     let mut ring = ShmRingBuffer::create(&ring_name, capacity)?;
@@ -1078,6 +1215,10 @@ pub fn bench(iterations: usize, dimensions: usize) -> Result<serde_json::Value> 
 
 /// Run latency benchmark for the multi-agent Semantic Two-Phase Commit (S-2PC) consensus loop.
 pub fn consensus_bench(iterations: usize) -> Result<serde_json::Value> {
+    anyhow::ensure!(
+        iterations > 0 && iterations <= 10_000_000,
+        "invalid benchmark iterations"
+    );
     let capacity = 1024;
     let ring_name = format!("leio_cbnch_{}", std::process::id());
     let mut ring = ShmRingBuffer::create(&ring_name, capacity)?;

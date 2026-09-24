@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import fs from "node:fs";
+import { compactEditingResult } from "./compact.js";
 import { indexDiagnostics, retrievalAssessment } from "./orientation.js";
 import os from "node:os";
 import path from "node:path";
@@ -255,7 +256,7 @@ function makeKindSchemas(catalog) {
       "Explain family: deploy-target, env-var, redis-key, or cartridge.",
     ),
     doctor: kindField(
-      catalog?.doctor_kinds ?? null,
+      null,
       "Doctor preset: baseline (quick health), ci (broader checks), or all (every profile suite). For a targeted check, choose a doctor kind returned by capabilities.",
     ),
     graph: kindField(
@@ -843,17 +844,20 @@ function registerLeioTool(name, description, inputSchema, handler) {
   if (!catalog) {
     throw new Error(`stdio tool "${toolName}" is missing from STDIO_TOOL_CATALOG`);
   }
+  const editing = ["leio_code_context","leio_code_graph","leio_code_nav"].includes(toolName);
+  const effectiveSchema = editing ? {...inputSchema, full:z.boolean().optional().describe("Return complete diagnostics; default is a compact editing packet."), ...(toolName === "leio_code_nav" ? {source_offset:z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),source_lines:z.number().int().min(1).max(120).optional(),follow:z.boolean().optional().describe("For callers/callees/neighbors, move only if exactly one target exists. Ambiguity returns candidates.")} : {})} : inputSchema;
+  const effectiveHandler = editing ? async raw => compactEditingResult(await handler(raw), {full:raw.full === true, scope:raw}) : handler;
   const handle = server.registerTool(
     toolName,
     toolRegistrationConfig({
       title: catalog.title,
       description,
-      inputSchema,
+      inputSchema: effectiveSchema,
       outputSchema: STDIO_OUTPUT_SCHEMAS[toolName] ?? LeioToolOutputSchema,
       annotations: catalog.annotations,
       extraMeta: { tool: toolName },
     }),
-    wrapToolHandler(handler),
+    wrapToolHandler(effectiveHandler),
   );
   kindToolHandles.set(toolName, handle);
   return handle;
@@ -995,7 +999,7 @@ async function runLeioArgs(args, timeout_ms) {
 
   registerLeioTool(
     "leio_code_context",
-    "Start a repository task here: provide task and repo_root for ranked files, instructions, tests, provider identity, index coverage and limitations. Status and capabilities are optional diagnostics; a precise known file can go directly to graph. Read structuredContent.next_calls for up to four ready-to-call graph follow-ups pinned to the same repository and index. Use full=true only when exhaustive detail is needed.",
+    "Start a repository task here: provide task and repo_root for ranked files, instructions, tests, provider identity, index coverage and limitations. Status and capabilities are optional diagnostics; a precise known file can go directly to graph. Read structuredContent.next_calls for direct definition opens and graph follow-ups pinned to the same repository and index. Use full=true only when exhaustive detail is needed.",
     {
       task: contextTaskField,
       full: z
@@ -1398,12 +1402,12 @@ async function runLeioArgs(args, timeout_ms) {
 
   registerLeioTool(
     "leio_code_nav",
-    "Stateful code, heading and FCA cursor. Pass session to isolate concurrent agents. goto accepts a returned graph symbol URN, symbol, file, heading (section:path#line or Root > Child), or FCA concept. callers/callees/neighbors/related/parent/child/peer list results; select a returned zero-based index to move. next_calls suggest scoped follow-ups. FCA shared attributes are not call evidence. explain is SPARQL-gated and pins current_iri.",
+    "Stateful code, heading and FCA cursor. Pass session to isolate concurrent agents. goto accepts a returned graph symbol URN, symbol, file, heading (section:path#line or Root > Child), or FCA concept. callers/callees/neighbors/related/parent/child/peer list results; select a returned zero-based index to move. Source windows and freshness accompany the selected definition. follow=true moves a sole graph target in the same call; ambiguous targets remain candidates. next_calls carry exact opens. FCA shared attributes are not call evidence. explain is SPARQL-gated and pins current_iri.",
     {
       kind: z.enum(NAV_KINDS).describe("Navigation verb."),
       needle: z
         .string()
-        .describe("Required for kind=goto. Optional needle for kind=explain.")
+        .describe("Required for kind=goto (symbol URN, definition:path#line, or file). For graph walks, an optional exact source identity anchors and traverses in one call; also optional for explain.")
         .optional(),
       index: z
         .number()
@@ -1422,6 +1426,9 @@ async function runLeioArgs(args, timeout_ms) {
       const input = z
         .object({
           kind: z.enum(NAV_KINDS),
+          follow: z.boolean().optional(),
+          source_offset:z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
+          source_lines:z.number().int().min(1).max(120).optional(),
           needle: z.string().optional(),
           index: z.number().int().min(0).optional(),
           limit: z.number().int().min(1).max(100).optional(),
@@ -1433,6 +1440,9 @@ async function runLeioArgs(args, timeout_ms) {
         })
         .parse(raw);
       const args = ["nav", input.kind];
+      if (input.follow) args.push("--follow");
+      if (input.source_offset !== undefined) args.push("--source-offset",String(input.source_offset));
+      if (input.source_lines !== undefined) args.push("--source-lines",String(input.source_lines));
       if (input.needle) {
         args.push(input.needle);
       }
@@ -1704,6 +1714,7 @@ async function upgradeToolSchemas() {
       timeout_ms: timeoutMsField,
     },
     leio_code_graph: {
+      full: z.boolean().optional().describe("Return complete diagnostics; default is a compact editing packet."),
       kind: activeKindSchemas.graph,
       needle: optionalNeedleField,
       repo_root: repoRootField,

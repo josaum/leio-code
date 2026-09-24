@@ -33,16 +33,15 @@ REQUIRED_ARCHIVE_PATHS = (
     "THIRD_PARTY.md",
     "benchmarks/context-golden-tasks.json",
     "docs/agent-memory.md",
-    "docs/doctor-warning-ledger.json",
     "skills/leio-code/SKILL.md",
     "mcp/index.js",
     "apps-sdk/server.js",
     "src/context.rs",
-    "src/doctors/self_contract.rs",
+    "src/doctors/native.rs",
     "scripts/package_codex_plugin.py",
     "scripts/install_codex_plugin.py",
 )
-# #release-verify-contract keeps the packaged context benchmark, memory, and doctor ledger auditable.
+# #release-verify-contract keeps the packaged context benchmark and memory auditable.
 
 FORBIDDEN_PARTS = {"node_modules", "target", "__pycache__", ".venv", "releases"}
 

@@ -6,13 +6,27 @@ use nix::unistd::Pid;
 use std::collections::BTreeSet;
 use std::fs::File;
 use std::io::{Read, Write};
+use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::mpsc::{Receiver, Sender, channel};
+use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+pub(crate) fn unique_id() -> String {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    format!(
+        "{nanos:x}-{:x}-{:x}",
+        std::process::id(),
+        COUNTER.fetch_add(1, Ordering::Relaxed)
+    )
+}
 
 pub fn run(spec: RunSpec) -> Result<RunResult> {
     validate_spec(&spec)?;
@@ -22,7 +36,9 @@ pub fn run(spec: RunSpec) -> Result<RunResult> {
         bail!("approval token mismatch; process was not spawned");
     }
     let output_dir = PathBuf::from(&spec.output_dir).join(&spec.run_id);
-    std::fs::create_dir_all(&output_dir)?;
+    std::fs::create_dir_all(&spec.output_dir)?;
+    std::fs::create_dir(&output_dir)
+        .context("run directory already exists or cannot be created; use a unique run_id")?;
     let stdout_path = output_dir.join("stdout.log");
     let stderr_path = output_dir.join("stderr.log");
     let arrow_path = output_dir.join("events.arrow");
@@ -82,17 +98,20 @@ pub fn run(spec: RunSpec) -> Result<RunResult> {
     // Establish logs before any external effects can occur.
     let stdout_log = File::create(&stdout_path)?;
     let stderr_log = File::create(&stderr_path)?;
-    let mut child = command
-        .spawn()
-        .with_context(|| format!("spawn {}", spec.argv[0]))?;
+    let mut child = OwnedChild(
+        command
+            .spawn()
+            .with_context(|| format!("spawn {}", spec.argv[0]))?,
+    );
     let stdout = child.stdout.take().context("missing stdout")?;
     let stderr = child.stderr.take().context("missing stderr")?;
     let seq = Arc::new(AtomicU64::new(1));
     // Channel moves chunk ownership from readers to the Arrow writer; payloads
     // are never copied between threads.
-    let (tx, rx) = channel::<StreamEvent>();
+    let (tx, rx) = sync_channel::<StreamEvent>(32);
     let arrow_writer_path = arrow_path.clone();
     let writer = thread::spawn(move || arrow_writer(&arrow_writer_path, rx));
+    let finished = Arc::new(AtomicBool::new(false));
     let stdout_truncated = Arc::new(AtomicBool::new(false));
     let stderr_truncated = Arc::new(AtomicBool::new(false));
     let stdout_reader = read_stream(
@@ -102,7 +121,10 @@ pub fn run(spec: RunSpec) -> Result<RunResult> {
         stdout_log,
         tx.clone(),
         seq.clone(),
-        stdout_truncated.clone(),
+        StreamFlags {
+            truncated: stdout_truncated.clone(),
+            finished: finished.clone(),
+        },
     );
     let stderr_reader = read_stream(
         stderr,
@@ -111,7 +133,10 @@ pub fn run(spec: RunSpec) -> Result<RunResult> {
         stderr_log,
         tx,
         seq,
-        stderr_truncated.clone(),
+        StreamFlags {
+            truncated: stderr_truncated.clone(),
+            finished: finished.clone(),
+        },
     );
     let deadline = started + Duration::from_millis(spec.timeout_ms);
     let (status, exit_code, error) = loop {
@@ -137,6 +162,11 @@ pub fn run(spec: RunSpec) -> Result<RunResult> {
         }
         thread::sleep(Duration::from_millis(20));
     };
+    // Descendants can retain stdout/stderr after the leader exits. Terminate
+    // the owned process group before joining pipe readers, or a successful
+    // shell can hang this supervisor forever.
+    let _ = killpg(Pid::from_raw(child.id() as i32), Signal::SIGKILL);
+    finished.store(true, Ordering::Release);
     stdout_reader
         .join()
         .map_err(|_| anyhow::anyhow!("stdout reader panicked"))??;
@@ -168,22 +198,78 @@ pub fn run(spec: RunSpec) -> Result<RunResult> {
     Ok(result)
 }
 
-type StreamReaderHandle = thread::JoinHandle<Result<()>>;
+struct OwnedChild(std::process::Child);
+impl std::ops::Deref for OwnedChild {
+    type Target = std::process::Child;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl std::ops::DerefMut for OwnedChild {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+impl Drop for OwnedChild {
+    fn drop(&mut self) {
+        let _ = killpg(Pid::from_raw(self.0.id() as i32), Signal::SIGKILL);
+        let _ = self.0.wait();
+    }
+}
 
-fn read_stream<R: Read + Send + 'static>(
+type StreamReaderHandle = thread::JoinHandle<Result<()>>;
+struct StreamFlags {
+    truncated: Arc<AtomicBool>,
+    finished: Arc<AtomicBool>,
+}
+
+fn read_stream<R: Read + AsRawFd + Send + 'static>(
     mut reader: R,
     stream: &'static str,
     max_bytes: usize,
     mut log: File,
-    tx: Sender<StreamEvent>,
+    tx: SyncSender<StreamEvent>,
     seq: Arc<AtomicU64>,
-    truncated_flag: Arc<AtomicBool>,
+    flags: StreamFlags,
 ) -> StreamReaderHandle {
     thread::spawn(move || {
+        let StreamFlags {
+            truncated: truncated_flag,
+            finished,
+        } = flags;
+        let fd = reader.as_raw_fd();
+        // SAFETY: fd is borrowed from the owned pipe reader, valid for this
+        // thread's lifetime. fcntl only changes the descriptor's status flags.
+        unsafe {
+            let flags = nix::libc::fcntl(fd, nix::libc::F_GETFL);
+            if flags < 0
+                || nix::libc::fcntl(fd, nix::libc::F_SETFL, flags | nix::libc::O_NONBLOCK) < 0
+            {
+                return Err(std::io::Error::last_os_error().into());
+            }
+        }
         let mut captured = 0_usize;
+        let mut drain_chunks = 0;
         loop {
+            if finished.load(Ordering::Acquire) {
+                drain_chunks += 1;
+                if drain_chunks > 32 {
+                    break;
+                }
+            }
             let mut buffer = vec![0_u8; 64 * 1024];
-            let read = reader.read(&mut buffer)?;
+            let read = match reader.read(&mut buffer) {
+                Ok(count) => count,
+                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    if finished.load(Ordering::Acquire) {
+                        break;
+                    }
+                    thread::sleep(Duration::from_millis(5));
+                    continue;
+                }
+                Err(error) => return Err(error.into()),
+            };
             if read == 0 {
                 break;
             }
@@ -196,6 +282,10 @@ fn read_stream<R: Read + Send + 'static>(
             }
             if read > remaining {
                 truncated_flag.store(true, Ordering::Relaxed);
+            }
+            buffer.truncate(read.min(remaining));
+            if buffer.is_empty() {
+                continue;
             }
             // Ownership of the chunk moves into the channel; the Arrow writer
             // moves it into an IPC batch without copying.
@@ -229,6 +319,15 @@ fn validate_spec(spec: &RunSpec) -> Result<()> {
     if spec.run_id.trim().is_empty() || spec.argv.is_empty() || spec.argv[0].trim().is_empty() {
         bail!("run_id and argv are required");
     }
+    if Path::new(&spec.run_id).components().count() != 1
+        || !matches!(
+            Path::new(&spec.run_id).components().next(),
+            Some(std::path::Component::Normal(_))
+        )
+        || spec.run_id.contains('\\')
+    {
+        bail!("run_id must be a single safe path component");
+    }
     if spec.timeout_ms == 0 || spec.kill_grace_ms == 0 || spec.max_output_bytes == 0 {
         bail!("timeouts and output bound must be positive");
     }
@@ -254,7 +353,7 @@ fn terminate_group(pid: u32, grace_ms: u64) -> Result<()> {
     Ok(())
 }
 
-fn write_json_atomic(path: &Path, value: &impl serde::Serialize) -> Result<()> {
+pub(crate) fn write_json_atomic(path: &Path, value: &impl serde::Serialize) -> Result<()> {
     let temporary = path.with_extension(format!("{}.tmp", std::process::id()));
     let mut file = File::create(&temporary)?;
     serde_json::to_writer_pretty(&mut file, value)?;
@@ -336,5 +435,57 @@ mod property_tests {
             assert_eq!(back.argv, spec.argv);
             assert_eq!(back.timeout_ms, spec.timeout_ms);
         }
+    }
+}
+
+#[cfg(test)]
+mod hardening_tests {
+    use super::*;
+    fn spec(dir: &Path, script: &str) -> RunSpec {
+        RunSpec {
+            run_id: "test".into(),
+            argv: vec!["/bin/sh".into(), "-c".into(), script.into()],
+            cwd: dir.display().to_string(),
+            output_dir: dir.display().to_string(),
+            timeout_ms: 2000,
+            kill_grace_ms: 20,
+            max_output_bytes: 1024,
+            env: Default::default(),
+            env_allowlist: vec![],
+            required_approval_token: None,
+            approval_token: None,
+        }
+    }
+    #[test]
+    fn output_bound_applies_to_logs_and_arrow() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = run(spec(dir.path(), "head -c 1048576 /dev/zero")).unwrap();
+        assert_eq!(result.status, RunStatus::Passed);
+        assert!(result.stdout_truncated);
+        assert_eq!(std::fs::metadata(result.stdout_path).unwrap().len(), 1024);
+        assert!(std::fs::metadata(result.events_arrow_path).unwrap().len() < 16384);
+    }
+    #[test]
+    fn inherited_pipe_does_not_hang_after_leader_exit() {
+        let dir = tempfile::tempdir().unwrap();
+        let start = Instant::now();
+        let result = run(spec(dir.path(), "sleep 30 & echo done")).unwrap();
+        assert_eq!(result.status, RunStatus::Passed);
+        assert!(start.elapsed() < Duration::from_secs(2));
+    }
+    #[test]
+    fn traversal_and_existing_run_directory_are_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        for id in ["../escape", "/tmp/escape", ".", "..", "a/b", "a\\b"] {
+            let mut s = spec(dir.path(), "true");
+            s.run_id = id.into();
+            assert!(run(s).is_err(), "accepted {id}");
+        }
+        run(spec(dir.path(), "echo original")).unwrap();
+        assert!(run(spec(dir.path(), "echo overwritten")).is_err());
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("test/stdout.log")).unwrap(),
+            "original\n"
+        );
     }
 }

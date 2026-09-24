@@ -115,6 +115,11 @@ pub struct RdfConfig {
 /// Per-doctor configuration under `[doctors.*]` in `.leio-code/config.toml`.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct DoctorsConfig {
+    #[serde(default)]
+    pub disabled: Vec<String>,
+    /// Explicit repository-owned scripts with BUILD_TOOLCHAIN defaults.
+    #[serde(default)]
+    pub rust_build_scripts: Vec<String>,
     /// `[doctors.env_contract]` — see [`EnvContractConfig`].
     pub env_contract: Option<EnvContractConfig>,
     /// `[doctors.import_boundary]` — see [`ImportBoundaryConfig`].
@@ -172,6 +177,9 @@ pub struct ImportBoundaryRule {
 /// ```
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct OrphanFilesConfig {
+    /// Exact repository-owned dynamic entrypoint exceptions.
+    #[serde(default)]
+    pub dynamic_entrypoints: Vec<String>,
     /// Repo-relative path prefixes to scan. The warning label is the prefix
     /// with any trailing `/` trimmed.
     pub surfaces: Option<Vec<String>>,

@@ -2,6 +2,35 @@
 
 All notable changes to LEIO Code. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow the crate version in `Cargo.toml`.
 
+## [2.6.5] — 2026-09-23
+
+- Move product-specific doctors, baselines and regression tests into their owning
+  repositories. The engine retains generic checks and discovers local declarative
+  or explicitly trusted Rust packs. Catalog discovery executes no repository code;
+  native execution binds canonical root, catalog and binary hashes and enforces
+  bounded input/output, process deadlines and response identity. Hosted execution
+  stays disabled. Example, sovereign parsers-rs and Reference remain separate projects.
+
+- Complete the local navigation editing loop with bounded live source, definition
+  relocation after edits, exact candidate open actions, context-to-nav routes and
+  one-call unambiguous edge following. Compact MCP context/graph/nav by default;
+  `full: true` preserves diagnostics and source paging avoids a separate file read.
+- Enable bus participation by default for `run` and `day`, with a managed private
+  Unix socket fallback, explicit `--no-bus`, configured endpoint precedence,
+  child lane identity propagation and protocol health checks.
+- Make delivery failures visible in result receipts, day events and exit status.
+  Serialize snapshot commits and sequence allocation, fsync before acknowledging,
+  reject corruption, validate/bound Arrow input and protect live socket ownership.
+- Bound process output and event queues, drain inherited pipes without hanging,
+  clean up owned process groups and reject log overwrites. Replace truncated
+  timestamp IDs with full timestamp/process/counter identities.
+- Shared-memory ABI v2: exclusive creation, nondestructive attachment, release/
+  acquire readiness, serialized slot access, owned payload snapshots and
+  generation-bound verifier claims. Stop ABI v1 peers before upgrading.
+- Add subprocess regressions for concurrent bus startup, persistence/restart,
+  delivery loss, parallel worktree lanes and 2,000 cross-process ring messages.
+
+
 ## [Unreleased]
 
 ## [2.6.4] — 2026-09-23

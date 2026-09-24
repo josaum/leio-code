@@ -349,58 +349,54 @@ fn generic_profile_exposes_the_generic_doctor_pack() {
     assert_eq!(
         names,
         vec![
-            "codex-orchestration",
             "env-contract",
             "import-boundary",
-            "leio-release-coherence",
             "orphan-files",
             "redis-key-hygiene",
             "repo-hygiene",
             "rust-toolchain-pin-coherence",
             "skill-contract",
             "slop",
+            "vendored-crate-provenance",
         ]
     );
 }
 
-// Why: env-contract on the Example workspace would flag deploy-time-provided
-// vars and break the `doctor all` CI green contract; this pins the exclusion.
+// Profiles are descriptive; policy is owned by repository data, not labels.
 #[test]
-fn example_profile_excludes_env_contract_but_gets_import_boundary() {
-    let names = doctor_names_for_profile("example");
-    assert!(
-        !names.contains(&"env-contract"),
-        "env-contract must NOT be registered for example, got: {names:?}"
-    );
-    assert!(
-        names.contains(&"import-boundary"),
-        "import-boundary (no-op without rules) should be available on example, got: {names:?}"
-    );
-}
-
-// Why: artifact-reuse enforces the artifacts/ reorg, a fact about THIS
-// workspace's layout — it must light up on example but never leak into the
-// generic product surface (it would false-positive on arbitrary repos).
-#[test]
-fn py_rust_boundary_is_example_only() {
-    assert!(
-        doctor_names_for_profile("example").contains(&"py-rust-boundary"),
-        "py-rust-boundary must be registered for the example profile"
-    );
-    assert!(
-        !doctor_names_for_profile("generic").contains(&"py-rust-boundary"),
-        "py-rust-boundary must NOT leak into the generic profile"
-    );
+fn profiles_cannot_inject_or_suppress_application_policy() {
+    let generic = doctor_names_for_profile("generic");
+    for profile in ["example", "leio-code", "reference", "parsers-rs"] {
+        assert_eq!(doctor_names_for_profile(profile), generic);
+    }
+    assert!(!generic.contains(&"py-rust-boundary"));
+    assert!(!generic.contains(&"artifact-reuse"));
+    assert!(!generic.contains(&"self-contract"));
 }
 
 #[test]
-fn artifact_reuse_is_example_only() {
-    assert!(
-        doctor_names_for_profile("example").contains(&"artifact-reuse"),
-        "artifact-reuse must be registered for the example profile"
+fn repository_can_explicitly_disable_a_generic_suite_check() {
+    let tmp = TempDir::new().unwrap();
+    write(tmp.path(), ".env.example", "DECLARED=example\n");
+    write(
+        tmp.path(),
+        "app.js",
+        "const value = process.env.UNDECLARED;\n",
     );
+    let index = build(tmp.path());
+    assert!(!doctor_env_contract(&index, tmp.path()).warnings.is_empty());
+    write(
+        tmp.path(),
+        ".leio-code/config.toml",
+        "[doctors]\ndisabled = [\"env-contract\"]\n",
+    );
+    let suite = leio_code::doctors::run_all_doctors(&index, tmp.path());
+    assert!(!suite.entities.iter().any(|e| e["doctor"] == "env-contract"));
+    // A named invocation remains available for diagnosis.
     assert!(
-        !doctor_names_for_profile("generic").contains(&"artifact-reuse"),
-        "artifact-reuse must NOT leak into the generic profile"
+        !leio_code::doctors::run_doctor("env-contract", &index, tmp.path())
+            .unwrap()
+            .warnings
+            .is_empty()
     );
 }

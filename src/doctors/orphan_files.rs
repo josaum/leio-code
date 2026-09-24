@@ -28,16 +28,6 @@ impl Doctor for OrphanFilesDoctor {
     }
 }
 
-/// Default production surfaces scanned under the Example profile when no
-/// `[doctors.orphan_files] surfaces` config is present. Each entry is
-/// `(path_prefix, label)`. The list is intentionally tight: catching real
-/// drift in the hot paths is more valuable than wide coverage that produces
-/// noisy warnings.
-const SURFACE_PREFIXES: &[(&str, &str)] = &[
-    ("example-api/example/", "example-api"),
-    ("example-gateway/src/", "example-gateway"),
-];
-
 /// File suffixes that disqualify a path from the scan (tests, examples, benches,
 /// generated artifacts).
 const EXCLUDE_SUFFIXES: &[&str] = &[
@@ -157,40 +147,6 @@ const PROTOCOL_IMPL_PATTERNS: &[(&str, &str)] = &[
     ("/strategies/", "Strategy"),
 ];
 
-/// Files intentionally retained as dynamically loaded extension points,
-/// component-library inventory, or optional tool adapters. The import graph
-/// cannot see these runtime/configuration edges, so keep the allowlist exact:
-/// adding a new entry requires naming the concrete file that is not supposed to
-/// be import-wired.
-const DYNAMIC_ENTRYPOINT_FILES: &[&str] = &[
-    "example-api/example/agents/flight_model.py",
-    "example-api/example/agents/prompt_prefix.py",
-    "example-api/example/agents/session.py",
-    "example-api/example/agents/tools/builtin/bandit.py",
-    "example-api/example/agents/tools/builtin/classify.py",
-    "example-api/example/agents/tools/builtin/embed.py",
-    "example-api/example/agents/tools/builtin/extract.py",
-    "example-api/example/agents/tools/builtin/knowledge.py",
-    "example-api/example/agents/tools/integration.py",
-    "example-api/example/agents/tools/loader.py",
-    "example-api/example/clients/vllm_client.py",
-    "example-api/example/core/vector/types.py",
-    "example-api/example/flight/gepa_flight.py",
-    "example-api/example/integrations/whatsapp/agent_dispatch.py",
-    "example-api/example/integrations/whatsapp/events.py",
-    "example-api/example/routers/navigate.py",
-    "example-api/example/types/adapters.py",
-    "example-api/example/types/responses.py",
-    // Staged Fractal-Vault auth store for the Chat-SOTA Rust-auth phase: module-wired
-    // (`auth::secure_store`) and compiled, but intentionally unconsumed until the
-    // auth overhaul lands. Re-evaluate when src/auth grows its storage backend.
-    "example-gateway/src/auth/secure_store.rs",
-    "example-gateway/src/integrations/tools/kb_session.rs",
-    "example-gateway/src/integrations/tools/physics.rs",
-    "example-gateway/src/integrations/tools/whatsapp_business.rs",
-    "example-gateway/src/storage/duckdb_resilience.rs",
-];
-
 pub fn doctor_orphan_files(index: &RepoIndex, root: &Path) -> QueryEnvelope {
     let started = Instant::now();
     let mut warnings = Vec::new();
@@ -198,9 +154,7 @@ pub fn doctor_orphan_files(index: &RepoIndex, root: &Path) -> QueryEnvelope {
     let mut evidence = Vec::new();
 
     // Surface resolution: explicit `[doctors.orphan_files] surfaces` config
-    // wins; without it the Example profile keeps its const defaults
-    // (behavior unchanged) and every other profile is a no-op — generic
-    // repos opt in instead of inheriting Example's path list.
+    // is required; no product-specific defaults are compiled into the engine.
     let configured_surfaces: Option<Vec<String>> = crate::config::load_repo_config(root)
         .and_then(|config| config.doctors)
         .and_then(|doctors| doctors.orphan_files)
@@ -215,12 +169,6 @@ pub fn doctor_orphan_files(index: &RepoIndex, root: &Path) -> QueryEnvelope {
                 (prefix, label)
             })
             .collect(),
-        None if crate::config::repo_profile(root) == crate::config::PROFILE_EXAMPLE => {
-            SURFACE_PREFIXES
-                .iter()
-                .map(|(prefix, label)| ((*prefix).to_string(), (*label).to_string()))
-                .collect()
-        }
         None => {
             return QueryEnvelope {
                 schema_version: crate::model::SCHEMA_VERSION.to_string(),
@@ -256,6 +204,11 @@ pub fn doctor_orphan_files(index: &RepoIndex, root: &Path) -> QueryEnvelope {
         }
     };
 
+    let dynamic_entrypoints = crate::config::load_repo_config(root)
+        .and_then(|c| c.doctors)
+        .and_then(|d| d.orphan_files)
+        .map(|o| o.dynamic_entrypoints)
+        .unwrap_or_default();
     let mut surface_summary: Vec<(String, usize, usize)> = Vec::new();
 
     for (prefix, label) in &surfaces {
@@ -277,7 +230,7 @@ pub fn doctor_orphan_files(index: &RepoIndex, root: &Path) -> QueryEnvelope {
             if is_entrypoint_file(path) {
                 continue;
             }
-            if is_dynamic_entrypoint_file(path) {
+            if dynamic_entrypoints.iter().any(|p| p == path) {
                 continue;
             }
             if is_protocol_impl_entrypoint(index, path) {
@@ -398,10 +351,6 @@ fn is_entrypoint_file(path: &str) -> bool {
     false
 }
 
-fn is_dynamic_entrypoint_file(path: &str) -> bool {
-    DYNAMIC_ENTRYPOINT_FILES.contains(&path)
-}
-
 /// Convention-based detection for `runtime_checkable Protocol` implementations.
 /// We do not have full type analysis, so the heuristic is purely structural:
 /// if the file lives in a directory that registers Protocol implementations
@@ -482,12 +431,11 @@ mod tests {
         fs::write(path, contents).expect("write fixture");
     }
 
-    /// The const SURFACE_PREFIXES only apply under the Example profile now
-    /// that surfaces are config-driven; fixtures must opt in explicitly.
+    /// Fixtures opt into source surfaces through repository configuration.
     fn write_example_profile(dir: &Path) {
         write_file(
             &dir.join(".leio-code/config.toml"),
-            "workspace_profile = \"example\"\n",
+            "workspace_profile = \"example\"\n[doctors.orphan_files]\nsurfaces = [\"example-api/example/\", \"example-gateway/src/\"]\n",
         );
     }
 

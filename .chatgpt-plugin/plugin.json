@@ -1,6 +1,6 @@
 {
   "name": "leio-code",
-  "version": "2.6.4",
+  "version": "2.6.5",
   "description": "LEIO Code ChatGPT App — capability-aware repository intelligence over MCP Apps (https://leio-code.getjai.com/mcp). Local wiki, SPARQL explain, lattice nav.",
   "mcp": {
     "url": "https://leio-code.getjai.com/mcp",

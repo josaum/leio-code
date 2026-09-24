@@ -173,7 +173,11 @@ test("exact file navigation and sequential pages preserve source evidence and cu
     const current = file.structuredContent.envelope.entities.find((row) => row.role === "current");
     assert.equal(current.kind, "file");
     assert.equal(current.path, "src/lib.rs");
-    assert.equal(file.structuredContent.envelope.meta.lattice.state, "missing");
+    assert.equal(current.source.state, "current");
+    assert.ok(current.source.text.includes("pub fn entry"));
+    assert.equal(file.structuredContent.envelope.meta.lattice, undefined);
+    const fullFile = await call("leio_code_nav", { kind: "here", session, full: true });
+    assert.equal(fullFile.structuredContent.envelope.meta.lattice.state, "missing");
     assert.ok(file.structuredContent.next_calls.some((entry) => entry.arguments.kind === "symbols-in"));
     const graph = await call("leio_code_graph", { kind: "symbols-in", needle: "src/lib.rs" });
     const entry = graph.structuredContent.envelope.entities.find((row) => row.name === "entry");
@@ -216,8 +220,12 @@ test("documented doctor presets remain callable after lazy schema loading", asyn
   await withClient(t, async ({ client, call }) => {
     const listed = await client.listTools();
     const doctor = listed.tools.find((tool) => tool.name === "leio_code_doctor");
+    const graph = listed.tools.find((tool) => tool.name === "leio_code_graph");
+    assert.equal(graph.inputSchema.properties.full.type, "boolean");
+    const full = await call("leio_code_graph", { kind: "symbols-in", needle: "src/lib.rs", full: true });
+    assert.ok(full.structuredContent.envelope_summary, "full graph diagnostics must survive lazy schema upgrade");
     for (const kind of ["baseline", "ci"]) {
-      assert.ok(doctor.inputSchema.properties.kind.enum.includes(kind), `missing preset ${kind}`);
+      assert.equal(doctor.inputSchema.properties.kind.type, "string");
       const result = await call("leio_code_doctor", { kind });
       assert.equal(result.isError, false, textOf(result));
       assert.equal(result.structuredContent.tool_family, "doctor");
@@ -299,9 +307,9 @@ test("guide status capabilities index context find explain graph", async (t) => 
     assert.equal(realpathSync(orientation.index.repository), realpathSync(context.structuredContent.repo_root));
     assert.equal(orientation.index.source_freshness, "not_checked");
     assert.equal(orientation.retrieval.calibrated_confidence, false);
-    assert.equal(context.structuredContent.next_calls[0].arguments.kind, "symbols-in");
+    assert.equal(context.structuredContent.next_calls[0].arguments.kind, "goto");
     const followup = context.structuredContent.next_calls[0];
-    assert.equal(followup.tool, "leio_code_graph");
+    assert.equal(followup.tool, "leio_code_nav");
     assert.equal(followup.arguments.repo_root, context.structuredContent.repo_root);
     assert.equal((await call(followup.tool, followup.arguments)).isError, false);
 

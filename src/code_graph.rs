@@ -1120,6 +1120,27 @@ fn push_unique_importer(
     bucket.push(value);
 }
 
+/// Reparse one live file using the same qualified identities as graph navigation.
+/// This performs no repository walk, export or cross-file relationship resolution.
+pub(crate) fn source_definitions(
+    path: &str,
+    language: SourceLanguage,
+    source: &str,
+) -> Result<Vec<crate::model::SymbolOccurrence>> {
+    Ok(parse_file_graph(path, language, source, "live", "live")?
+        .definitions
+        .into_iter()
+        .map(|d| crate::model::SymbolOccurrence {
+            name: d.name,
+            qual_name: Some(d.qual_name),
+            kind: d.kind,
+            path: path.to_owned(),
+            line: d.start_line,
+            language,
+        })
+        .collect())
+}
+
 fn parse_file_graph(
     path: &str,
     language: SourceLanguage,
@@ -3323,16 +3344,39 @@ app.Run();
         )
         .expect("top-level C# graph should parse");
 
-        assert_eq!(parsed.imports[0].module_specifiers, vec!["F22.Client.Web.F22Dashboard.Components"]);
-        assert!(parsed.definitions.is_empty(), "top-level statements have no named declarations");
-        assert!(parsed.calls.iter().any(|call| call.callee_name == "CreateBuilder"));
-        assert!(parsed
-            .calls
-            .iter()
-            .any(|call| call.callee_name == "MapF22BlazorWeb"));
+        assert_eq!(
+            parsed.imports[0].module_specifiers,
+            vec!["F22.Client.Web.F22Dashboard.Components"]
+        );
+        assert!(
+            parsed.definitions.is_empty(),
+            "top-level statements have no named declarations"
+        );
+        assert!(
+            parsed
+                .calls
+                .iter()
+                .any(|call| call.callee_name == "CreateBuilder")
+        );
+        assert!(
+            parsed
+                .calls
+                .iter()
+                .any(|call| call.callee_name == "MapF22BlazorWeb")
+        );
         assert!(parsed.calls.iter().any(|call| call.callee_name == "Run"));
-        assert!(parsed.calls.iter().any(|call| call.callee_name == "AddScoped"));
-        assert!(!parsed.calls.iter().any(|call| ["App", "HomeContentService"].contains(&call.callee_name.as_str())));
+        assert!(
+            parsed
+                .calls
+                .iter()
+                .any(|call| call.callee_name == "AddScoped")
+        );
+        assert!(
+            !parsed
+                .calls
+                .iter()
+                .any(|call| ["App", "HomeContentService"].contains(&call.callee_name.as_str()))
+        );
     }
 
     #[test]
@@ -3343,13 +3387,39 @@ app.Run();
     private void Refresh() {}
 }
 "#;
-        let parsed = parse_file_graph("Pages/Index.razor", SourceLanguage::Razor, source, "repo", "rev1")
-            .expect("Razor graph should parse");
+        let parsed = parse_file_graph(
+            "Pages/Index.razor",
+            SourceLanguage::Razor,
+            source,
+            "repo",
+            "rev1",
+        )
+        .expect("Razor graph should parse");
 
-        assert!(parsed.definitions.iter().any(|definition| definition.name == "Save"));
-        assert!(parsed.definitions.iter().any(|definition| definition.name == "Refresh"));
-        assert!(parsed.calls.iter().any(|call| call.callee_name == "Refresh"));
-        assert!(!parsed.definitions.iter().any(|definition| definition.name == "Hello"));
+        assert!(
+            parsed
+                .definitions
+                .iter()
+                .any(|definition| definition.name == "Save")
+        );
+        assert!(
+            parsed
+                .definitions
+                .iter()
+                .any(|definition| definition.name == "Refresh")
+        );
+        assert!(
+            parsed
+                .calls
+                .iter()
+                .any(|call| call.callee_name == "Refresh")
+        );
+        assert!(
+            !parsed
+                .definitions
+                .iter()
+                .any(|definition| definition.name == "Hello")
+        );
     }
 
     #[test]

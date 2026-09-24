@@ -43,27 +43,6 @@
 //!   verbs are meaningful for the current workspace profile.
 //! - **Config**: [`config`] resolves `.leio-code/config.toml` and env overrides.
 
-/// Locating the multi-repo workspace this crate historically shipped inside.
-///
-/// A few guards assert against the *real* sibling repos (`example-api`,
-/// `example-gateway`, `deploy`, …) rather than fixtures — they catch drift in
-/// code this crate does not own. This crate also ships standalone, where those
-/// repos are simply absent: the guards then have nothing to assert and must
-/// skip, not fail. Without this, a standalone checkout cannot get a green test
-/// run, so real regressions hide among permanent environmental failures.
-#[cfg(test)]
-pub(crate) mod test_workspace {
-    use std::path::{Path, PathBuf};
-
-    /// The workspace root (this repo's parent) when `required` exists inside
-    /// it; `None` in a standalone checkout. `required` is relative to the root,
-    /// e.g. `"example-api"` or `".leio-code/baseline-allowlist.txt"`.
-    pub(crate) fn workspace_root_with(required: &str) -> Option<PathBuf> {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent()?;
-        root.join(required).exists().then(|| root.to_path_buf())
-    }
-}
-
 pub mod arrow_ipc;
 pub mod audit;
 pub mod baseline_allowlist;
@@ -106,3 +85,6 @@ pub mod sidecar;
 pub mod update;
 pub mod value_resolution;
 pub mod watcher;
+
+/// Source revision baked into this engine build.
+pub const BUILD_COMMIT: &str = env!("LEIO_BUILD_COMMIT");

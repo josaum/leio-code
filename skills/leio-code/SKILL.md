@@ -139,3 +139,14 @@ as unsigned evidence. It does not enter governed `verify_claims`. The hosted
 Apps SDK provides the guide topic but does not read local conversation files.
 See [conversation workflow](../../docs/conversation-workflow.md) for the contract,
 supported formats, example calls, and current limits.
+
+## Editing with source navigation
+
+For implementation inspection, prefer returned context/nav `next_calls` or a
+candidate's exact `open` action. Local stdio nav includes bounded live source and
+a signature with the selected definition. Use `source_offset` / `source_lines`
+for another window, and `follow: true` on a first-page callers/callees/neighbors
+walk to select its sole target. Ambiguous walks remain explicit listings. Keep
+the same root and session. After edits, inspect local source freshness; refresh
+the index for changed edges. Default context/graph/nav packets are compact;
+`full: true` restores diagnostics. See [the editing loop](../../docs/NAV-EDITING-LOOP.md).

@@ -41,7 +41,7 @@ fn is_checkout(path: &Path) -> bool {
 
 /// Resolve the leio-code checkout (`LEIO_CODE_ROOT`, else the compile-time
 /// source path). Shared with the self-contract freshness check.
-pub(crate) fn locate_checkout() -> Result<PathBuf> {
+pub fn locate_checkout() -> Result<PathBuf> {
     if let Ok(root) = std::env::var("LEIO_CODE_ROOT") {
         let root = PathBuf::from(root.trim());
         if is_checkout(&root) {

@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "name": "leio-self-doctors",
+  "doctors": [
+    {
+      "name": "self-contract",
+      "description": "Repository-owned self-contract check",
+      "suites": [
+        "all",
+        "baseline",
+        "ci"
+      ]
+    },
+    {
+      "name": "leio-release-coherence",
+      "description": "Repository-owned leio-release-coherence check",
+      "suites": [
+        "all",
+        "baseline",
+        "ci"
+      ]
+    }
+  ]
+}

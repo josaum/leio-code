@@ -95,7 +95,7 @@ fn run_writes_arrow_ipc_and_result() {
     )
     .unwrap();
     let output = Command::new(bin())
-        .args(["run", "--spec", spec.to_str().unwrap()])
+        .args(["run", "--no-bus", "--spec", spec.to_str().unwrap()])
         .output()
         .unwrap();
     assert!(
@@ -136,7 +136,7 @@ fn approval_mismatch_never_spawns() {
     )
     .unwrap();
     let output = Command::new(bin())
-        .args(["run", "--spec", spec.to_str().unwrap()])
+        .args(["run", "--no-bus", "--spec", spec.to_str().unwrap()])
         .output()
         .unwrap();
     assert!(!output.status.success());
@@ -788,7 +788,7 @@ fn process_timeout_nonexit_and_truncation() {
     // non-zero exit
     fs::write(&spec, serde_json::to_vec(&json!({"runId":"fail","argv":["/bin/sh","-c","exit 3"],"cwd":root.path(),"outputDir":root.path().join("runs"),"timeoutMs":10000})).unwrap()).unwrap();
     let out = Command::new(bin)
-        .args(["run", "--spec", spec.to_str().unwrap()])
+        .args(["run", "--no-bus", "--spec", spec.to_str().unwrap()])
         .output()
         .unwrap();
     let r: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
@@ -797,7 +797,7 @@ fn process_timeout_nonexit_and_truncation() {
     // timeout
     fs::write(&spec, serde_json::to_vec(&json!({"runId":"hang","argv":["/bin/sleep","30"],"cwd":root.path(),"outputDir":root.path().join("runs"),"timeoutMs":500,"killGraceMs":500})).unwrap()).unwrap();
     let out = Command::new(bin)
-        .args(["run", "--spec", spec.to_str().unwrap()])
+        .args(["run", "--no-bus", "--spec", spec.to_str().unwrap()])
         .output()
         .unwrap();
     let r: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
@@ -805,7 +805,7 @@ fn process_timeout_nonexit_and_truncation() {
     // truncation
     fs::write(&spec, serde_json::to_vec(&json!({"runId":"big","argv":["/bin/sh","-c","head -c 100000 /dev/zero | tr '\\0' 'a'"],"cwd":root.path(),"outputDir":root.path().join("runs"),"timeoutMs":10000,"maxOutputBytes":1024})).unwrap()).unwrap();
     let out = Command::new(bin)
-        .args(["run", "--spec", spec.to_str().unwrap()])
+        .args(["run", "--no-bus", "--spec", spec.to_str().unwrap()])
         .output()
         .unwrap();
     let r: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
