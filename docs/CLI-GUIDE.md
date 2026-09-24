@@ -220,10 +220,11 @@ Numbers: [docs/BENCHMARKS.md](../docs/BENCHMARKS.md). Context ranking:
 `generic` is enough for an arbitrary repo. Facets such as deploy targets,
 cartridges, and large doctor suites are opt-in via `.leio-code/config.toml`.
 
-This repository sets `workspace_profile = "leio-code"` and runs
-`self-contract`, `slop`, `import-boundary`, `repo-hygiene`,
-`codex-orchestration`, and `leio-release-coherence`. Ask `capabilities`
-for the live list — do not hard-code doctor counts.
+This repository sets `workspace_profile = "leio-code"`. Profile labels do not
+add or remove doctors: `doctor_names_for_profile` returns the generic registry
+in `src/doctors/mod.rs`, and `doctor_names_for_root` adds the doctors declared
+in `.leio-code/native-doctors.json` (`self-contract`, `leio-release-coherence`).
+Ask `leio-code capabilities --repo .` for the live list. Do not hard-code it.
 
 ## Develop
 

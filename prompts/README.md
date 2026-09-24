@@ -4,13 +4,13 @@ Use these prompts when you want `LEIO Code` to stay narrow, evidence-first, and 
 
 ## Available Prompts
 
-- [capabilities-first.md](/Users/josaum/projects/example-workspace/leio-code/prompts/capabilities-first.md)
+- [capabilities-first.md](capabilities-first.md)
   - discover what the current repository profile actually supports before asking for deploy targets, cartridges, or doctors
-- [deploy-debug.md](/Users/josaum/projects/example-workspace/leio-code/prompts/deploy-debug.md)
+- [deploy-debug.md](deploy-debug.md)
   - deploy lineage, readiness, smoke, rollback, secret-set, and target drift
-- [drift-hunt.md](/Users/josaum/projects/example-workspace/leio-code/prompts/drift-hunt.md)
+- [drift-hunt.md](drift-hunt.md)
   - doctor-first contract drift investigation
-- [graph-investigation.md](/Users/josaum/projects/example-workspace/leio-code/prompts/graph-investigation.md)
+- [graph-investigation.md](graph-investigation.md)
   - call flow, import topology, and structural ownership
 
 ## Rule

@@ -51,7 +51,8 @@ and confirm the session cursor is still there.
 
 **15 of 15 scripted runs passed**, including cursor restoration after provider
 restart. Measured on this repository's **420 indexed files**, Apple M1,
-release 2.6.2. Five runs per scenario; warm index/graph. Timings include the
+release 2.6.2. The current release is 2.6.5; these timings were not re-run.
+Five runs per scenario; warm index/graph. Timings include the
 11 calls, checks and reconnect; setup is excluded.
 
 These are guided navigation benchmarks with labeled targets, not autonomous
@@ -80,7 +81,7 @@ prints MCP configuration. Register it in your host and reconnect; keep the
 checkout. No hosted HTTP service or SSH key is required. This is a source
 installation; prebuilt binaries and npm publication are not claimed.
 
-[Complete setup and updates](docs/install-stdio.md) · [Source release](https://github.com/josaum/leio-code/releases/tag/v2.6.2)
+[Complete setup and updates](docs/install-stdio.md) · [Source release 2.6.5](https://github.com/josaum/leio-code/releases/tag/leio-code-plugin-v2.6.5)
 
 ## Your first useful query
 

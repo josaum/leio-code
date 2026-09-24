@@ -8,6 +8,8 @@ Measured **9 September 2026**, Apple M1, macOS 26.5.2, release binary
 `2.6.2 (377ee12faf61, clean)`, against source revision
 [`377ee12`](https://github.com/josaum/leio-code/tree/377ee12faf616acb9f84688de867097579c74df2).
 [Machine-readable results](../benchmarks/public-results.json).
+The current crate is 2.6.5. This page is the 2.6.2 receipt; it was not re-run
+for that release.
 
 ## Multi-step investigations through stdio MCP
 

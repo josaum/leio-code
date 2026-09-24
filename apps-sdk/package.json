@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node server.js",
     "check": "node --check server.js && node --check tenant-scope.mjs && node --check repo-url.js && node --check output-schemas.js && node --check tool-annotations.js && node --check tool-name-map.js && node --check validate-repo-url.mjs",
-    "test": "node --test auth.test.js tenant-scope.test.mjs repo-url.test.js runtime-contract.test.js server-health.test.js submission-contract.test.js validate-repo-url.test.js mcp-spec-contract.test.js surface-parity.test.js keycloak/*.test.mjs ../mcp/guide.test.js",
+    "test": "node --test auth.test.js tenant-scope.test.mjs repo-url.test.js runtime-contract.test.js server-health.test.js submission-contract.test.js graph-result.test.js validate-repo-url.test.js mcp-spec-contract.test.js surface-parity.test.js keycloak/*.test.mjs ../mcp/guide.test.js",
     "auth:summary": "node auth-summary.mjs",
     "auth:human-login": "node keycloak/human-login.mjs",
     "auth:pkce-url": "node keycloak/human-login.mjs --print-url",

@@ -14,7 +14,7 @@ This directory is the canonical seam between **OpenAI Codex** (and any other cod
 
 ```bash
 # 1. Build leio-code (one-time, releases live in ~/.cargo or via Docker)
-cd /Users/josaum/projects/example-workspace/leio-code
+cd /path/to/leio-code
 cargo build --release --bin leio-code
 
 # 2. Start the apps-sdk MCP-over-HTTP server (idempotent)

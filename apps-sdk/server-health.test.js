@@ -58,6 +58,7 @@ test("server health exposes a disabled specialist bridge when VIGOROS is not con
       ...process.env,
       LEIO_APPS_SDK_HOST: "127.0.0.1",
       LEIO_APPS_SDK_PORT: String(port),
+      LEIO_APPS_SDK_PUBLIC_URL: `http://127.0.0.1:${port}`,
       LEIO_APPS_SDK_AUTH_MODE: "none",
       LEIO_VIGOROS_MCP_URL: "",
       LEIO_VIGOROS_TOKEN_URL: "",
@@ -98,6 +99,23 @@ test("server health exposes a disabled specialist bridge when VIGOROS is not con
     readFileSync(resolve(__dirname, "..", "mcp", "package.json"), "utf8"),
   );
   assert.equal(health.version, pkgVersion);
+  const discoveryResponse = await fetch(`http://127.0.0.1:${port}/.well-known/host-meta.json`);
+  assert.equal(discoveryResponse.status, 200);
+  assert.match(discoveryResponse.headers.get("content-type"), /^application\/json/);
+  const discovery = await discoveryResponse.json();
+  assert.equal(discovery.links.length, 2);
+  for (const link of discovery.links) {
+    const response = await fetch(link.href);
+    assert.equal(response.status, 200);
+    assert.ok(response.headers.get("content-type").startsWith(link.type));
+    assert.match(response.headers.get("cache-control"), /max-age=/);
+    const document = await response.json();
+    if (link.rel === "describedby") {
+      assert.equal(document.$schema, "https://json-schema.org/draft/2020-12/schema");
+    } else {
+      assert.equal(document["@context"]["@vocab"], "https://ontology.getjai.com/leio-code/v1#");
+    }
+  }
   assert.equal(health.auth.mode, "none");
   assert.equal(health.specialist_bridge.enabled, false);
   assert.equal(health.specialist_bridge.configured, false);

@@ -59,7 +59,13 @@ are not a complete enumeration of the extent. Shared attributes remain separate
 from call/import evidence.
 
 `envelope.meta.lattice` reports `current`, `stale`, `missing`, `unverified`, or
-`invalid`, with a reason and `rebuild_required`. The IRI-only fast path reports
+`invalid`, with a reason and `rebuild_required`. Non-current artifacts include
+`recovery.program` and `recovery.args`, an argument vector pinned to the canonical
+repository path (no shell parsing required). A mismatched index recommends
+indexing the selected repository and dropping the wrong `index_path`; it does
+not recommend inducing from that wrong index. Current artifacts have null
+`recovery`. These actions write artifacts and are suggestions, never automatic.
+ The IRI-only fast path reports
 `unchecked`. Current means that the selected index's structural incidences and
 live wiki inputs match the artifact fingerprint; it does not replace reindexing
 changed source. Older artifacts remain readable but unverified until a real

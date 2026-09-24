@@ -141,7 +141,7 @@ cloud-managed everything; security scanning use cases (CodeQL's territory).
 | Orphan-files / route-projection / duckdb-contract doctors | `orphan-files` is config-driven on generic; Example path tables remain for Example-only suites | Medium |
 | Knowledge base / semantic search | Local Arrow `nodes.arrow` + formal-context, fully offline | Medium |
 | RDF namespace | `LEIO_CODE_RDF_NAMESPACE` + `[rdf] namespace` in `.leio-code/config.toml`; default remains `https://example.local/leio/code#` | Closed |
-| Package distribution | Build-from-source + `make leio-code-install-global` + Docker Hub image; crates.io blocked by path deps — see `docs/RELEASE-CHECKLIST.md` | High for public adoption |
+| Package distribution | `make install` and GitHub Release binaries on `leio-code-plugin-v*`; no Homebrew formula in this tree; crates.io is not published — see `docs/RELEASE-CHECKLIST.md` | High for public adoption |
 
 ### Missing (not started)
 

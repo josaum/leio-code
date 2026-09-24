@@ -1,45 +1,37 @@
 # LEIO Code release / install checklist
 
-Honest distribution path. **crates.io is not claimed** — the crate tree still
-depends on workspace path deps that block a clean public publish.
+Honest distribution path. **crates.io is not claimed.** The workspace publishes
+`leio-code` with a path dependency on `crates/leio-knowledge-core`.
 
 ## Local / CI install (preferred)
 
 ```bash
-export CARGO_TARGET_DIR=/path/to/example-workspace/target   # monorepo shared target
-export PATH="/Users/josaum/.nvm/versions/node/v22.19.0/bin:$PATH"  # if Apps SDK / MCP Node needed
+# Makefile sets CARGO_TARGET_DIR ?= target. Node must be on PATH for Apps SDK / MCP.
 
-# Build + install into ~/.cargo/bin without cargo-install cache rebuilds:
-make leio-code-install-global
+make install
 
 # Or explicit:
-CARGO_TARGET_DIR=./target cargo build --release -p leio-code
+cargo build --release -p leio-code -p leio-harness
 install -m 0755 target/release/leio-code ~/.cargo/bin/leio-code
+install -m 0755 target/release/leio-harness ~/.cargo/bin/leio-harness
 leio-code --version
 ```
 
 ## GitHub Release binaries
 
-`leio-code-binary-release.yml` builds `leio-code-linux-amd64`,
-`leio-code-darwin-arm64`, and `leio-code-darwin-amd64` on tag
-`leio-code-plugin-v*`.
+`.github/workflows/binary-release.yml` builds `leio-code-linux-amd64`,
+`leio-code-darwin-arm64`, and `leio-code-darwin-amd64`, plus the matching
+harness binaries, on tag `leio-code-plugin-v*`. Current release:
+[`leio-code-plugin-v2.6.5`](https://github.com/josaum/leio-code/releases/tag/leio-code-plugin-v2.6.5).
 
 ## Homebrew
 
-Source-build formula lives at `leio-code/dist/homebrew/leio-code.rb`:
+This checkout has no Homebrew formula. A tap is not part of the current release.
 
-```bash
-brew install --formula leio-code/dist/homebrew/leio-code.rb
-```
+## Docker
 
-To publish a tap, copy the formula and pin `url`/`tag` to the release.
-
-## Docker ops image
-
-```bash
-docker pull jquant/leio-code:latest   # multi-arch when published that way
-# VM wrapper mounts a synced repo snapshot; see docs/contributing/leio-code.md
-```
+Apps SDK image build and smoke live in `apps-sdk` (`npm run docker:build`,
+`npm run docker:smoke`). This checklist does not claim a published Docker Hub tag.
 
 ## Versioned release checklist (human)
 
@@ -48,16 +40,16 @@ docker pull jquant/leio-code:latest   # multi-arch when published that way
    Gemini/desktop extension manifests, and `CHANGELOG.md` `[Unreleased]` →
    tagged section. Run `leio-code doctor leio-release-coherence --repo ..`.
 2. `cargo test -p leio-code` (or focused suites) green.
-3. `cargo build --release -p leio-code` + `make leio-code-install-global`.
-4. Apps SDK: `cd leio-code/apps-sdk && npm test &&` start server + `npm run smoke`.
+3. `cargo build --release -p leio-code -p leio-harness` and `make install`.
+4. Apps SDK: from the repository root, `cd apps-sdk && npm test`, then start the server and `npm run smoke`.
 5. stdio MCP: `node --check mcp/index.js`; smoke `leio_code_guide` / `leio_code_audit` if tooling available.
-6. Run `leio-code doctor codex-orchestration --repo ..`; the tracked project
-   config, five routed roles, portable hooks, and ownership rules must be clean.
-7. Keep wheel/parser package versions independent from the LEIO product version.
-   Run `make package-version-check` and `leio-code doctor artifact-reuse --repo ..`;
-   never bulk-replace dependency or wheel versions during a LEIO release.
+6. Run `leio-code doctor self-contract --repo .` and
+   `leio-code doctor leio-release-coherence --repo .`. Both are the native pack
+   in `.leio-code/native-doctors.json`, not engine-registry doctors.
+7. Keep wheel and parser package versions independent from the LEIO product version.
+   Do not bulk-replace dependency or wheel versions during a LEIO release.
 8. Docs: no stale “bootstrap-only / no init / 1 doctor” claims; doctor counts via `capabilities` only.
-9. Tag `leio-code-vX.Y.Z` (or monorepo release process) and attach release notes pointing at this checklist + Docker image digest when published.
+9. Tag `leio-code-plugin-vX.Y.Z` and attach release notes pointing at this checklist.
 10. Do **not** mark ChatGPT store listing ready unless OAuth issuer, legal env vars (`LEIO_APPS_SDK_PUBLISHER_NAME`, company URL, support/privacy/security emails, support hours), and hosted public URL are configured with `legal.configured=true` on `/health` (same `legal` object as `GET /`). Canonical public box is GCP: [DEPLOY-GCP.md](DEPLOY-GCP.md). Fly Apps SDK is legacy; Keycloak issuer notes: [DEPLOY-FLY.md](DEPLOY-FLY.md).
 11. ChatGPT directory: complete [apps-sdk/SUBMISSION.md](../apps-sdk/SUBMISSION.md), run `npm test` in `apps-sdk` (includes submission-contract), portal **Scan Tools** against [chatgpt-app-submission.json](../apps-sdk/chatgpt-app-submission.json).
 12. Public source (`josaum/leio-code`) is **generated**, never edited by hand:

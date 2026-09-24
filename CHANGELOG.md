@@ -33,6 +33,15 @@ All notable changes to LEIO Code. Format follows [Keep a Changelog](https://keep
 
 ## [Unreleased]
 
+### Changed
+- JSON-LD results embed a JSON-LD 1.1 context. `rdf:type` is `prov:Activity`, provenance links are IRIs, and `meta` and `checkout` are RDF JSON literals. `@version: 1.2` is not emitted: oxjsonld 0.2.6 rejects it. Historical journal lines are left as written.
+- Hosted `graph_repository` accepts `full`. The default packet keeps 20 entities; `full: true` returns the complete result.
+- A missing, stale, or mismatched FCA lattice includes a pinned `recovery` command. A current lattice sets `recovery` to null.
+
+### Added
+- Hosted `/.well-known/host-meta.json` links to the JSON Schema 2020-12 query-result document and the context document. URLs come from `LEIO_APPS_SDK_PUBLIC_URL`.
+- `docs/linked-data-standards.md` records the RDF 1.2, SPARQL 1.2, JSON-LD, JSON Schema, and well-known targets, including the JSON-LD 1.2 parser gap.
+
 ## [2.6.4] — 2026-09-23
 
 ### Fixed

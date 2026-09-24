@@ -28,6 +28,6 @@ Tests before ship: `cargo test -p leio-harness` from `~/projects/leio-code`.
 
 ## Don't
 
-- Don't point MCP at `example-workspace/leio-code/mcp`.
+- Don't point MCP at a leftover checkout. This tree's stdio server is `mcp/`.
 - Don't `cargo install` a stale debug binary over `~/.cargo/bin/leio-code`.
 - Don't merge from a dirty main; worktrees `agents/<id>/<run>`.

@@ -4,16 +4,16 @@
 //! # `@context`
 //!
 //! [`CONTEXT`] is the vocabulary IRI prefix used by the rest of the Example
-//! stack for leio-code emissions. It does not need to resolve to a real URL —
-//! it is a stable identifier so consumers (jq pipelines, oxigraph SPARQL
-//! ingest) can join on the same vocabulary terms across runs.
+//! stack for leio-code emissions. The embedded context maps terms to that
+//! namespace without a remote document fetch. A vocabulary IRI is not itself
+//! a remote context document.
 //!
 //! # Envelope shape
 //!
 //! [`render_envelope_as_jsonld`] takes the existing [`QueryEnvelope`] and
 //! returns a `serde_json::Value` whose root object carries:
 //!
-//! - `@context`: equal to [`CONTEXT`].
+//! - `@context`: an embedded JSON-LD 1.1 term map using [`CONTEXT`].
 //! - `@id`: `urn:leio-code:query:{query_id}` — stable per envelope.
 //! - `@type`: `FindResult` for `kind = "find"`, `ExplainResult` for
 //!   `kind = "explain"`, otherwise `{Capitalized}Result`.
@@ -71,28 +71,28 @@ use crate::model::{EvidenceItem, QueryEnvelope};
 
 /// Vocabulary IRI prefix for leio-code JSON-LD output.
 ///
-/// Does not need to resolve — it is a stable identifier consumers can pin
-/// against when ingesting into oxigraph or filtering with jq. Aligned with
-/// the canonical Example ontology IRI base `https://ontology.getjai.com/`
-/// (see `cartridges/sisfron/ontologies/*.ttl` for sibling vocabularies
-/// using the same root). Pre-v1.0 stabilization: the earlier
-/// `https://leio.code/ns/v1#` value shipped briefly in the same release
-/// cycle and is replaced before any external consumer pinned against it.
+/// This is a namespace identifier, not a remote context document. The
+/// embedded context maps terms to it without attempting to fetch this URL.
 pub const CONTEXT: &str = "https://ontology.getjai.com/leio-code/v1#";
+
+/// Offline context: opaque metadata stays lossless as rdf:JSON while normal
+/// entity/evidence fields remain queryable predicates. Full-IRI coercions
+/// preserve the existing JSON strings used by journal consumers.
+pub fn embedded_context() -> Value {
+    serde_json::from_str::<Value>(include_str!("../mcp/contracts/context.jsonld"))
+        .expect("bundled JSON-LD context is valid")["@context"]
+        .clone()
+}
 
 /// W3C PROV namespace. Events cite these IRIs so the document stays valid
 /// JSON-LD without rewriting [`CONTEXT`].
 pub const PROV_NS: &str = "http://www.w3.org/ns/prov#";
 
 /// Conformance note — JSON-LD API Best Practices (WG Note, advisory). The
-/// emitter already satisfies the producer rules that apply: single
-/// top-level object, explicit `@id`/`@type` on every node, stable file://
-/// entity IRIs, node objects (things) instead of bare-string references for
-/// PROV `used`, and native JSON values. Directional strings are the one
-/// forward-looking case: value objects carrying `@direction` pass through
-/// verbatim (valid 1.1, valid 1.2 per the WG charter's compatibility
-/// principle) and ingest as RDF 1.2 `rdf:dirLangString` via oxigraph's
-/// rdf-12 JSON-LD parser.
+/// emitter uses an offline context, node references and native JSON values.
+/// Directional values pass through unchanged. Oxigraph's rdf-12 feature
+/// ingests them as rdf:dirLangString; this does not establish complete JSON-LD
+/// 1.2 processor conformance (the current parser rejects @version 1.2).
 const PROV_USED: &str = "http://www.w3.org/ns/prov#used";
 const PROV_GENERATED: &str = "http://www.w3.org/ns/prov#wasGeneratedBy";
 const PROV_ASSOCIATED: &str = "http://www.w3.org/ns/prov#wasAssociatedWith";
@@ -284,13 +284,16 @@ pub fn render_envelope_as_jsonld_in(envelope: &QueryEnvelope, repo_root: Option<
         "schema_version".to_string(),
         json!(crate::model::SCHEMA_VERSION),
     );
-    root.insert("@context".to_string(), json!(CONTEXT));
+    root.insert("@context".to_string(), embedded_context());
     root.insert("@id".to_string(), json!(activity_id));
     root.insert(
         "@type".to_string(),
         json!(envelope_type_for(&envelope.kind)),
     );
-    root.insert(PROV_ACTIVITY.to_string(), json!(true));
+    root.insert(
+        "http://www.w3.org/1999/02/22-rdf-syntax-ns#type".to_string(),
+        json!({"@id": PROV_ACTIVITY}),
+    );
     root.insert("query_id".to_string(), json!(envelope.query_id));
     root.insert("kind".to_string(), json!(envelope.kind));
     root.insert("summary".to_string(), json!(envelope.summary));
@@ -416,9 +419,7 @@ fn resolve_full_path(repo_root: Option<&Path>, rel: &str) -> Option<String> {
     if path.is_absolute() {
         return Some(path.display().to_string());
     }
-    let Some(root) = repo_root else {
-        return Some(rel.to_string());
-    };
+    let root = repo_root?;
     let joined = root.join(rel);
     Some(
         joined
@@ -503,7 +504,22 @@ fn worktree_node(checkout: &crate::checkout::Checkout) -> Value {
 }
 
 fn file_iri(full_path: &str) -> String {
-    let path = full_path.replace('\\', "/").replace(' ', "%20");
+    // Encode bytes, including fragment/query delimiters and literal percent.
+    // Do not reinterpret a Unix filename's backslash as a path separator.
+    let normalized = if cfg!(windows) {
+        full_path.replace('\\', "/")
+    } else {
+        full_path.to_string()
+    };
+    let mut path = String::new();
+    for byte in normalized.bytes() {
+        if byte.is_ascii_alphanumeric() || b"/-._~:".contains(&byte) {
+            path.push(char::from(byte));
+        } else {
+            use std::fmt::Write;
+            write!(&mut path, "%{byte:02X}").expect("write to string");
+        }
+    }
     if path.starts_with('/') {
         format!("file://{path}")
     } else {
@@ -857,7 +873,7 @@ mod tests {
     fn render_adds_context_id_type() {
         let env = fake_envelope("find", "find_env");
         let doc = render_envelope_as_jsonld(&env);
-        assert_eq!(doc["@context"], json!(CONTEXT));
+        assert_eq!(doc["@context"], embedded_context());
         assert_eq!(doc["@type"], json!("FindResult"));
         assert!(
             doc["@id"]
@@ -944,9 +960,77 @@ mod tests {
         let lines: Vec<&str> = raw.lines().filter(|line| !line.is_empty()).collect();
         assert_eq!(lines.len(), 2);
         let doc: Value = serde_json::from_str(lines[0]).unwrap();
-        assert_eq!(doc["@context"], CONTEXT);
+        assert_eq!(doc["@context"], embedded_context());
         assert_eq!(doc["@type"], "FindResult");
         assert!(doc["entities"][0]["fullPath"].as_str().is_some());
+    }
+
+    #[test]
+    fn emitted_document_converts_offline_with_provenance_and_metadata() {
+        use oxigraph::io::{JsonLdProfileSet, RdfFormat, RdfParser};
+        use oxigraph::model::Term;
+        let dir = tempfile::tempdir().unwrap();
+        let name = "a #?% café.rs";
+        std::fs::write(dir.path().join(name), "// evidence").unwrap();
+        let mut env = fake_envelope("find", "find_symbol");
+        env.entities = vec![json!({"name":"example", "path":name})];
+        env.evidence[0].path = name.into();
+        env.meta = Some(json!({"ordered":[2,1,2,null], "empty":[], "@private":"kept"}));
+        let doc = render_envelope_as_jsonld_in(&env, Some(dir.path()));
+        let bytes = serde_json::to_vec(&doc).unwrap();
+        // No base IRI or remote context loader, and no patching the emitter output.
+        let quads = RdfParser::from_format(RdfFormat::JsonLd {
+            profile: JsonLdProfileSet::empty(),
+        })
+        .for_reader(bytes.as_slice())
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .expect("actual emitted document must parse offline");
+        let activity = doc["@id"].as_str().unwrap();
+        let file = doc["entities"][0]["@id"].as_str().unwrap();
+        assert!(file.ends_with("/a%20%23%3F%25%20caf%C3%A9.rs"), "{file}");
+        let has_edge = |predicate: &str, object: &str| {
+            quads.iter().any(|q| {
+                q.predicate.as_str() == predicate
+                    && matches!(&q.object,
+                Term::NamedNode(node) if node.as_str() == object)
+            })
+        };
+        assert!(has_edge(
+            "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+            PROV_ACTIVITY
+        ));
+        assert!(has_edge(PROV_GENERATED, activity));
+        assert!(has_edge(PROV_USED, file));
+        assert!(has_edge(
+            &format!("{CONTEXT}evidence"),
+            &format!("{file}#L1")
+        ));
+        let meta = quads
+            .iter()
+            .find(|q| q.predicate.as_str() == format!("{CONTEXT}meta"))
+            .unwrap();
+        let Term::Literal(literal) = &meta.object else {
+            panic!("metadata is an RDF JSON literal")
+        };
+        assert_eq!(
+            literal.datatype().as_str(),
+            "http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON"
+        );
+        assert_eq!(
+            serde_json::from_str::<Value>(literal.value()).unwrap(),
+            env.meta.unwrap()
+        );
+        let ended = quads
+            .iter()
+            .find(|q| q.predicate.as_str() == PROV_ENDED)
+            .unwrap();
+        assert!(matches!(&ended.object, Term::Literal(value)
+            if value.datatype().as_str() == "http://www.w3.org/2001/XMLSchema#dateTime"));
+        let unbound = render_envelope_as_jsonld_in(&fake_envelope("find", "find_env"), None);
+        assert!(
+            unbound["entities"][0].get("@id").is_none(),
+            "relative paths must not invent absolute file identities"
+        );
     }
 
     #[test]
@@ -1011,10 +1095,7 @@ mod tests {
             "path": ".env",
             "title": {"@value": "\u{5e9}\u{5dc}\u{5d5}\u{5dd}", "@language": "he", "@direction": "rtl"},
         });
-        let mut doc = render_envelope_as_jsonld(&env);
-        // The shipped @context is a stable identifier IRI; ingestion tests use
-        // an inline vocabulary so nothing is fetched over the network.
-        doc["@context"] = json!({"@vocab": CONTEXT});
+        let doc = render_envelope_as_jsonld_in(&env, None);
         let doc_str = doc.to_string();
 
         let store = Store::new().expect("store");
@@ -1042,7 +1123,13 @@ mod tests {
         assert_eq!(directional.len(), 1, "{directional:?}");
         assert!(directional[0].contains("@he--rtl"), "{directional:?}");
 
-        // And SPARQL 1.2 can match it directly.
+        // W3C SPARQL 1.2 §17.4.2: direction is part of the literal term.
+        let direction = store.sparql_query(
+            r#"ASK { ?s ?p ?t FILTER(sameTerm(?t, STRLANGDIR("שלום", "he", "rtl")) && LANGDIR(?t) = "rtl") }"#,
+        ).expect("SPARQL 1.2 directional functions");
+        assert!(matches!(direction, QueryResults::Boolean(true)));
+
+        // Language-only lookup also remains supported.
         let results = store
             .sparql_query("SELECT ?t WHERE { ?s ?p ?t FILTER(lang(?t) = \"he\") }")
             .expect("sparql");

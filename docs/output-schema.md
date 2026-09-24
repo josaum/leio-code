@@ -414,7 +414,7 @@ The JSON-LD output is the envelope of §1 + §2 wrapped with:
 ```jsonc
 {
   "schema_version": "1.0",                                      // first key; see §7
-  "@context": "https://ontology.getjai.com/leio-code/v1#",                       // stable IRI; does NOT need to resolve
+  "@context": { "@version": 1.1, "@vocab": "https://ontology.getjai.com/leio-code/v1#" /* plus coercions below */ },
   "@id":      "urn:leio-code:query:<repoId>:find_env-1700000000000",
   "@type":    "FindResult",                                     // §5.1
   // ...all the QueryEnvelope fields from §1...
@@ -433,6 +433,25 @@ The JSON-LD output is the envelope of §1 + §2 wrapped with:
   "http://www.w3.org/ns/prov#used": [ { "@id": "file://...", "fullPath": "..." } ]
 }
 ```
+
+The complete embedded context is bundled in `mcp/contracts/context.jsonld`.
+It requires no network access. `meta` and `checkout` use `@type: @json` so
+arrays, nulls and arbitrary keys survive RDF conversion as `rdf:JSON` literals.
+`repo` and `prov:wasGeneratedBy` are IRI-valued; `prov:endedAtTime` is typed
+`xsd:dateTime`. The result also has `rdf:type prov:Activity` (the ordinary
+`@type` string remains available to existing JSON consumers).
+
+Relative paths without a bound repository no longer invent absolute file IRIs.
+File identities percent-encode reserved characters and UTF-8 bytes. `#L<n>`
+identifies a cited line, distinct from a `#` in the actual filename.
+
+This corrects the earlier remote-context string and boolean `prov:Activity`
+property. Consumers that compared `@context` to a string must migrate to the
+embedded context. Historical journal entries are not rewritten. The producer
+profile is described by `mcp/contracts/query-result-jsonld-v1.schema.json`;
+validation of that shape is separate from JSON-LD/RDF semantic validation.
+See [standards and compatibility](linked-data-standards.md) for the exact
+specification targets and the outstanding JSON-LD 1.2 parser limitation.
 
 ### 5.1. Top-level `@type` mapping
 
@@ -480,7 +499,7 @@ so journals from clones and worktrees can be merged.
 The annotations let consumers:
 
 - **`jq`-filter cleanly** without re-parsing entity shape per subcommand:
-  `.entities[] | select(.@type == "EnvVar")`
+  `.entities[] | select(.["@type"] == "EnvVar")`
 - **Ingest into oxigraph** via the JSON-LD → RDF pipeline for SPARQL
   queries spanning multiple `leio-code` invocations.
 - **Pipe back through `explain --stdin`** — the entity's `@type` and the

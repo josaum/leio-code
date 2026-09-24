@@ -30,6 +30,7 @@ import {
   summarizeEnvelopeMeta,
 } from "../mcp/envelope.js";
 import { buildEvidenceContract } from "../mcp/evidence-contract.js";
+import { presentHostedGraphResult } from "./graph-result.js";
 import {
   GUIDE_TOPICS,
   buildGuideStructuredContent,
@@ -2343,6 +2344,12 @@ function getServer() {
           .min(1)
           .describe("Symbol name, file path, or import literal. Omit for kind=dead-code.")
           .optional(),
+        full: z
+          .boolean()
+          .optional()
+          .describe(
+            "Return complete diagnostics; default is a compact editing packet.",
+          ),
       },
       securitySchemes: auth.getSecuritySchemes("graph_repository"),
       annotations: readOnlyAnnotations,
@@ -2353,7 +2360,7 @@ function getServer() {
         auth.getSecuritySchemes("graph_repository"),
       ),
     },
-    async ({ repo_root, repo_url, git_ref, kind, needle }, extra) => {
+    async ({ repo_root, repo_url, git_ref, kind, needle, full }, extra) => {
       const authError = auth.ensureToolAccess("graph_repository", extra);
       if (authError) {
         return authError;
@@ -2365,12 +2372,16 @@ function getServer() {
       if (needle) {
         graphArgs.push(needle);
       }
-      return invokeLeioTool(graphArgs, {
+      const result = await invokeLeioTool(graphArgs, {
         repoRoot: repo_root,
         repoUrl: repo_url,
         gitRef: git_ref,
         sessionId: extra?.sessionId ?? null,
         authInfo: extra?.authInfo ?? null,
+      });
+      return presentHostedGraphResult(result, {
+        full,
+        scope: { kind, needle, repo_root, repo_url, git_ref },
       });
     },
   );
@@ -2648,6 +2659,27 @@ app.get("/", (_req, res) => {
     },
   });
 });
+
+// RFC 6415 Appendix A / RFC 8615: registered host metadata, static public
+// contract documents only. Never derive discovery URLs from an untrusted Host.
+const contractBase = new URL(normalizeUrl(process.env.LEIO_APPS_SDK_PUBLIC_URL)
+  ?? `http://${host === "::" ? "[::1]" : host}:${port}`);
+const contractLinks = [
+  { rel: "describedby", type: "application/schema+json", href: new URL("/schemas/query-result-jsonld-v1.schema.json", contractBase).href },
+  { rel: "http://www.w3.org/ns/json-ld#context", type: "application/ld+json", href: new URL("/contexts/leio-code-v1.jsonld", contractBase).href },
+];
+app.get("/.well-known/host-meta.json", (_req, res) => {
+  res.set("Cache-Control", "public, max-age=3600").type("application/json").json({ links: contractLinks });
+});
+for (const [route, filename, contentType] of [
+  ["/schemas/query-result-jsonld-v1.schema.json", "query-result-jsonld-v1.schema.json", "application/schema+json"],
+  ["/contexts/leio-code-v1.jsonld", "context.jsonld", "application/ld+json"],
+]) {
+  const document = fs.readFileSync(new URL(`../mcp/contracts/${filename}`, import.meta.url), "utf8");
+  app.get(route, (_req, res) => {
+    res.set("Cache-Control", "public, max-age=3600").type(contentType).send(document);
+  });
+}
 
 app.get("/health", (_req, res) => {
   res.json({

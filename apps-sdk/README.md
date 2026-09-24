@@ -6,7 +6,7 @@ your OAuth + legal env + hosted URL — see Production listing env vars below.)
 
 ## Contract
 
-- Runtime entrypoint: [server.js](/Users/josaum/projects/example-workspace/leio-code/apps-sdk/server.js)
+- Runtime entrypoint: [server.js](server.js)
 - HTTP health probe: `GET /health`
 - MCP endpoint: `POST /mcp` with streamable HTTP transport
 - Public privacy page: `GET /privacy`
@@ -32,7 +32,7 @@ your OAuth + legal env + hosted URL — see Production listing env vars below.)
   Consumers such as Reference Provider must verify this envelope before accepting it;
   it never promotes code intelligence into business authority.
 - Widget resource: `ui://widget/leio-code.html`
-- Widget path: [public/leio-code.html](/Users/josaum/projects/example-workspace/leio-code/apps-sdk/public/leio-code.html)
+- Widget path: [public/leio-code.html](public/leio-code.html)
 - ChatGPT submission pack: [SUBMISSION.md](./SUBMISSION.md) · [chatgpt-app-submission.json](./chatgpt-app-submission.json)
 
 ## Production listing env vars
@@ -64,7 +64,7 @@ Self-host with `AUTH_MODE=none` is fine for internal use.
 2. Or run `node server.js` / `npm start` from `apps-sdk`. The server listens on `LEIO_APPS_SDK_HOST` and `LEIO_APPS_SDK_PORT` and exposes `/`, `/health`, `/widget`, and the MCP transport at `/mcp` (`POST` plus session follow-up via `GET` and `DELETE`).
 3. The same runtime also serves public-facing legal/support pages at `/privacy`, `/support`, and `/terms`.
 4. Connect ChatGPT Apps SDK to the MCP endpoint and render the widget resource.
-5. Start from [`.env.example`](/Users/josaum/projects/example-workspace/leio-code/apps-sdk/.env.example) when you want a real public URL, auth mode, or publisher/support metadata.
+5. Start from [`.env.example`](.env.example) when you want a real public URL, auth mode, or publisher/support metadata.
 6. Use `npm run smoke` against a running app to validate the MCP endpoint, capability probe, and protected-tool behavior.
 7. Use `prepare_repository_context` before implementation/review tasks when the app needs ranked files, symbols, follow-up graph queries, test commands, risk notes, and doctor suggestions.
 
@@ -136,7 +136,7 @@ The Apps SDK runtime serves public legal/support pages from env-driven templates
 - public route: `/support`
 - public route: `/terms`
 
-Those public pages are rendered from templates in [public/privacy.html](/Users/josaum/projects/example-workspace/leio-code/apps-sdk/public/privacy.html), [public/support.html](/Users/josaum/projects/example-workspace/leio-code/apps-sdk/public/support.html), and [public/terms.html](/Users/josaum/projects/example-workspace/leio-code/apps-sdk/public/terms.html).
+Those public pages are rendered from templates in [public/privacy.html](public/privacy.html), [public/support.html](public/support.html), and [public/terms.html](public/terms.html).
 
 Set these env vars before submission so the pages stop showing placeholder warnings:
 
@@ -149,7 +149,7 @@ Set these env vars before submission so the pages stop showing placeholder warni
 - `LEIO_APPS_SDK_SUPPORT_HOURS`
 - `LEIO_APPS_SDK_LEGAL_LAST_UPDATED`
 
-If those variables are present in your shell at deploy time, [scripts/deploy-fly.sh](/Users/josaum/projects/example-workspace/leio-code/apps-sdk/scripts/deploy-fly.sh) now stages them to Fly automatically.
+If those variables are present in your shell at deploy time, [scripts/deploy-fly.sh](scripts/deploy-fly.sh) now stages them to Fly automatically.
 
 If you do not set them, the pages still render, but they advertise that they are draft notices and are not ready for public submission.
 
@@ -193,7 +193,7 @@ This is useful for a deployment that should stay pinned to one repository.
 The fixed `LEIO_CODE_GIT_URL` path uses the same HTTPS and host-allowlist validation as session-scoped `repo_url`.
 
 For the generic product flow, you do not need `LEIO_CODE_GIT_URL`; the widget and tools can now accept an allowlisted `repo_url` per session.
-The Docker build context is trimmed by [`.dockerignore`](/Users/josaum/projects/example-workspace/leio-code/.dockerignore).
+The Docker build context is trimmed by [`.dockerignore`](../.dockerignore).
 
 ## GCP Deploy (canonical public Apps SDK)
 
@@ -211,14 +211,14 @@ only; do not redeploy.
 Deploy with the baked-in `leio-code` snapshot:
 
 ```bash
-cd /Users/josaum/projects/example-workspace/leio-code/apps-sdk
+cd apps-sdk
 LEIO_APPS_SDK_AUTH_MODE=none npm run deploy:fly
 ```
 
 Deploy against an arbitrary fixed Git repo:
 
 ```bash
-cd /Users/josaum/projects/example-workspace/leio-code/apps-sdk
+cd apps-sdk
 LEIO_APPS_SDK_AUTH_MODE=none \
 LEIO_CODE_GIT_URL=https://github.com/your-org/your-repo.git \
 LEIO_CODE_GIT_REF=main \
@@ -227,7 +227,7 @@ npm run deploy:fly
 
 The deploy script stages `LEIO_APPS_SDK_PUBLIC_URL` automatically from the Fly hostname and then smokes `/health` after deploy.
 
-If you want the public deployment to support additional repository hosts or private GitHub repos, also stage the source-connector env vars from [`.env.example`](/Users/josaum/projects/example-workspace/leio-code/apps-sdk/.env.example), especially:
+If you want the public deployment to support additional repository hosts or private GitHub repos, also stage the source-connector env vars from [`.env.example`](.env.example), especially:
 
 - `LEIO_CODE_CHECKOUTS_ROOT`
 - `LEIO_CODE_ALLOWED_REPO_HOSTS`
@@ -237,14 +237,14 @@ If you want the public deployment to support additional repository hosts or priv
 
 For a public OAuth-aware deployment, the scaffold now has two Fly targets:
 
-- Apps SDK runtime: [fly.toml](/Users/josaum/projects/example-workspace/leio-code/apps-sdk/fly.toml)
-- Keycloak issuer: [keycloak/fly.toml](/Users/josaum/projects/example-workspace/leio-code/apps-sdk/keycloak/fly.toml)
+- Apps SDK runtime: [fly.toml](fly.toml)
+- Keycloak issuer: [keycloak/fly.toml](keycloak/fly.toml)
 
 The Keycloak Fly deploy currently defaults to a persistent volume-backed `dev-file` database because it is the most reliable zero-license path. Managed Postgres remains available, but it is opt-in through `LEIO_KEYCLOAK_ENABLE_POSTGRES=1`.
 
 ## Authentication Modes
 
-The runtime supports three auth modes via [`.env.example`](/Users/josaum/projects/example-workspace/leio-code/apps-sdk/.env.example):
+The runtime supports three auth modes via [`.env.example`](.env.example):
 
 - `LEIO_APPS_SDK_AUTH_MODE=none`
   - anonymous read-only mode
@@ -278,21 +278,21 @@ If you want the server to reject anonymous MCP connections entirely, set `LEIO_A
 
 For a zero-license local issuer, the scaffold now includes a Keycloak bootstrap:
 
-- compose file: [keycloak/docker-compose.yml](/Users/josaum/projects/example-workspace/leio-code/apps-sdk/keycloak/docker-compose.yml)
-- realm import: [keycloak/realm/leio-code-realm.json](/Users/josaum/projects/example-workspace/leio-code/apps-sdk/keycloak/realm/leio-code-realm.json)
-- LEIO env template: [`.env.keycloak.example`](/Users/josaum/projects/example-workspace/leio-code/apps-sdk/.env.keycloak.example)
+- compose file: [keycloak/docker-compose.yml](keycloak/docker-compose.yml)
+- realm import: [keycloak/realm/leio-code-realm.json](keycloak/realm/leio-code-realm.json)
+- LEIO env template: [`.env.keycloak.example`](.env.keycloak.example)
 
 Start Keycloak:
 
 ```bash
-cd /Users/josaum/projects/example-workspace/leio-code/apps-sdk/keycloak
+cd apps-sdk/keycloak
 docker compose up -d
 ```
 
 Then load the LEIO Apps SDK envs:
 
 ```bash
-cd /Users/josaum/projects/example-workspace/leio-code/apps-sdk
+cd apps-sdk
 cp .env.keycloak.example .env.local
 set -a
 source .env.local
@@ -308,7 +308,7 @@ It also creates a separate public PKCE client `leio-code-local-dev` for local hu
 To publish a public issuer on Fly:
 
 ```bash
-cd /Users/josaum/projects/example-workspace/leio-code/apps-sdk
+cd apps-sdk
 set -a
 source keycloak/.env.fly.local 2>/dev/null || true
 set +a
@@ -334,7 +334,7 @@ npm run keycloak:deploy:fly
 Once the public issuer is live, switch the Apps SDK runtime itself to `oauth-jwt`:
 
 ```bash
-cd /Users/josaum/projects/example-workspace/leio-code/apps-sdk
+cd apps-sdk
 set -a
 source keycloak/.env.fly.local
 set +a
@@ -344,14 +344,14 @@ LEIO_APPS_SDK_AUTH_MODE=oauth-jwt npm run deploy:fly
 The public smoke then has two expected outcomes:
 
 - without bearer: `protected_tool: oauth_challenge`
-- with a service token from [get-service-token.sh](/Users/josaum/projects/example-workspace/leio-code/apps-sdk/keycloak/get-service-token.sh): `protected_tool: reachable_with_bearer`
+- with a service token from [get-service-token.sh](keycloak/get-service-token.sh): `protected_tool: reachable_with_bearer`
 
 For ChatGPT registration, review the redirect URIs in the imported client and replace or tighten them as needed in production. The wildcard `https://chatgpt.com/connector/oauth/*` is a bootstrap convenience for local setup, not a final compliance posture.
 
 To sync the confidential ChatGPT-facing client in Keycloak instead of editing redirect URIs by hand:
 
 ```bash
-cd /Users/josaum/projects/example-workspace/leio-code/apps-sdk
+cd apps-sdk
 set -a
 source .env.keycloak.example
 set +a
@@ -388,13 +388,13 @@ npm run keycloak:configure-app-client -- \
 The service-account smoke path is useful for CI, but it is not the human login path. The local human flow uses:
 
 - the public PKCE client `leio-code-local-dev`
-- the loopback redirect URI from [`.env.keycloak.example`](/Users/josaum/projects/example-workspace/leio-code/apps-sdk/.env.keycloak.example)
+- the loopback redirect URI from [`.env.keycloak.example`](.env.keycloak.example)
 - a real user in the Keycloak realm
 
 Bootstrap the local dev user once:
 
 ```bash
-cd /Users/josaum/projects/example-workspace/leio-code/apps-sdk
+cd apps-sdk
 set -a
 source .env.keycloak.example
 set +a
@@ -406,7 +406,7 @@ That script is idempotent. It creates or updates `LEIO_KEYCLOAK_DEV_USERNAME`, r
 Then run the human login flow:
 
 ```bash
-cd /Users/josaum/projects/example-workspace/leio-code/apps-sdk
+cd apps-sdk
 set -a
 source .env.keycloak.example
 set +a
@@ -431,8 +431,8 @@ npm run auth:pkce-exchange -- --code THE_AUTH_CODE --code-verifier THE_ORIGINAL_
 
 The important distinction is:
 
-- `client_credentials` via [get-service-token.sh](/Users/josaum/projects/example-workspace/leio-code/apps-sdk/keycloak/get-service-token.sh) is the service-account smoke path
-- `authorization_code` + PKCE via [human-login.mjs](/Users/josaum/projects/example-workspace/leio-code/apps-sdk/keycloak/human-login.mjs) is the human login path
+- `client_credentials` via [get-service-token.sh](keycloak/get-service-token.sh) is the service-account smoke path
+- `authorization_code` + PKCE via [human-login.mjs](keycloak/human-login.mjs) is the human login path
 
 The local public client intentionally keeps an audience mapper for `leio-code-apps-sdk`, so the user token is still valid for the MCP resource that validates `aud=leio-code-apps-sdk`.
 
@@ -476,7 +476,7 @@ https://leio-code.example.com/terms
 For OAuth provider setup, print the current registration summary:
 
 ```bash
-cd /Users/josaum/projects/example-workspace/leio-code/apps-sdk
+cd apps-sdk
 npm run auth:summary
 ```
 
@@ -500,7 +500,7 @@ For ChatGPT connector creation to succeed, the issuer must support RFC 7591 Dyna
 To reconcile that on a live realm:
 
 ```bash
-cd /Users/josaum/projects/example-workspace/leio-code/apps-sdk
+cd apps-sdk
 set -a
 source keycloak/.env.fly.local
 set +a
@@ -518,16 +518,16 @@ registered ChatGPT clients.
 With the app running locally:
 
 ```bash
-cd /Users/josaum/projects/example-workspace/leio-code/apps-sdk
+cd apps-sdk
 npm run smoke
 ```
 
 Against a deployed endpoint:
 
 ```bash
-cd /Users/josaum/projects/example-workspace/leio-code/apps-sdk
+cd apps-sdk
 LEIO_APPS_SDK_SMOKE_BASE_URL=https://leio-code.example.com \
-LEIO_APPS_SDK_SMOKE_REPO_ROOT=/Users/josaum/projects/example-workspace \
+LEIO_APPS_SDK_SMOKE_REPO_ROOT=/absolute/path/to/repo \
 npm run smoke
 ```
 

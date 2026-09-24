@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://leio-code.getjai.com/schemas/query-result-jsonld-v1.schema.json",
+  "title": "LEIO query result JSON-LD profile",
+  "description": "LEIO producer shape, not a general JSON-LD validator. RDF semantics require a JSON-LD processor. See docs/linked-data-standards.md.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "@context",
+    "@id",
+    "@type",
+    "query_id",
+    "kind",
+    "summary",
+    "confidence",
+    "entities",
+    "evidence",
+    "warnings",
+    "timing_ms",
+    "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+    "http://www.w3.org/ns/prov#endedAtTime",
+    "http://www.w3.org/ns/prov#wasAssociatedWith"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "@context": {
+      "const": {
+        "@version": 1.1,
+        "@vocab": "https://ontology.getjai.com/leio-code/v1#",
+        "meta": {
+          "@type": "@json"
+        },
+        "checkout": {
+          "@type": "@json"
+        },
+        "repo": {
+          "@type": "@id"
+        },
+        "http://www.w3.org/ns/prov#wasGeneratedBy": {
+          "@type": "@id"
+        },
+        "http://www.w3.org/ns/prov#endedAtTime": {
+          "@type": "http://www.w3.org/2001/XMLSchema#dateTime"
+        }
+      }
+    },
+    "@id": {
+      "type": "string",
+      "pattern": "^urn:leio-code:query:"
+    },
+    "@type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "query_id": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "entities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "@type"
+        ],
+        "properties": {
+          "@type": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "@type",
+          "kind",
+          "path",
+          "line",
+          "detail"
+        ],
+        "properties": {
+          "@type": {
+            "const": "Evidence"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "line": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "detail": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "timing_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "meta": {},
+    "http://www.w3.org/1999/02/22-rdf-syntax-ns#type": {
+      "const": {
+        "@id": "http://www.w3.org/ns/prov#Activity"
+      }
+    },
+    "http://www.w3.org/ns/prov#endedAtTime": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "http://www.w3.org/ns/prov#wasAssociatedWith": {
+      "type": "object",
+      "required": [
+        "@id",
+        "@type"
+      ],
+      "properties": {
+        "@id": {
+          "type": "string",
+          "format": "uri"
+        },
+        "@type": {
+          "const": "http://www.w3.org/ns/prov#SoftwareAgent"
+        }
+      }
+    }
+  },
+  "additionalProperties": true
+}

@@ -137,16 +137,31 @@ pub fn lattice_readiness(index: &RepoIndex, repo_root: &Path) -> Value {
         "rebuild_required": true,
         "current_indexed_at": index.indexed_at,
         "current_index_version": index.version,
+        "recovery": {
+            "program": "leio-code",
+            "args": ["--repo", normalized_root(repo_root), "export", "formal-context"],
+            "effect": "writes formal-context and lattice artifacts",
+            "source_freshness": "Reindex first if source files changed; lattice freshness compares the selected index."
+        },
     });
     let set_state = |result: &mut Value, state: &str, reason: String| {
         result["state"] = json!(state);
         result["reason"] = json!(reason);
         result["rebuild_required"] = json!(state != "current");
+        if state == "current" {
+            result["recovery"] = Value::Null;
+        }
     };
     let current_root = normalized_root(repo_root);
     if normalized_root(Path::new(&index.root)) != current_root {
         set_state(&mut result, "invalid", "Index belongs to another repository; use an index for this repo_root before rebuilding.".into());
         result["rebuild_required"] = json!(false);
+        result["recovery"] = json!({
+            "program": "leio-code",
+            "args": ["--repo", current_root, "index"],
+            "effect": "writes this repository's default index",
+            "next": "Retry navigation using the default index; remove the mismatched index_path override."
+        });
         return result;
     }
     let raw = match fs::read(&path) {
@@ -1079,6 +1094,15 @@ mod tests {
         let path = lattice_path(dir.path());
         let missing = lattice_readiness(&index, dir.path());
         assert_eq!(missing["state"], "missing");
+        assert_eq!(
+            missing["recovery"]["args"],
+            json!([
+                "--repo",
+                normalized_root(dir.path()),
+                "export",
+                "formal-context"
+            ])
+        );
         assert_eq!(missing["artifact_path"], path.display().to_string());
         assert!(!path.exists(), "readiness must never induce a lattice");
         fs::create_dir_all(path.parent().expect("parent")).expect("mkdir");
@@ -1113,6 +1137,10 @@ mod tests {
         let mismatched_index = lattice_readiness(&second_index, first.path());
         assert_eq!(mismatched_index["state"], "invalid");
         assert_eq!(mismatched_index["rebuild_required"], false);
+        assert_eq!(
+            mismatched_index["recovery"]["args"],
+            json!(["--repo", normalized_root(first.path()), "index"])
+        );
         fs::create_dir_all(lattice_path(second.path()).parent().expect("parent")).expect("mkdir");
         fs::copy(lattice_path(first.path()), lattice_path(second.path())).expect("copied artifact");
         assert_eq!(
