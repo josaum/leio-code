@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
-    io::{Read, Write},
+    io::{BufReader, BufWriter, Read, Write},
     path::{Path, PathBuf},
     process::{Command, Stdio},
     time::{Duration, Instant},
@@ -15,6 +15,25 @@ use std::{
 pub const MANIFEST: &str = ".leio-code/native-doctors.json";
 const MAX_MANIFEST: u64 = 256 * 1024;
 const MAX_OUTPUT: usize = 8 * 1024 * 1024;
+const MAX_BINARY: u64 = 512 * 1024 * 1024;
+const MAX_REQUEST: u64 = 128 * 1024 * 1024;
+struct RequestWriter<W> {
+    inner: W,
+    remaining: u64,
+}
+impl<W: Write> Write for RequestWriter<W> {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        if bytes.len() as u64 > self.remaining {
+            return Err(std::io::Error::other("native doctor input exceeds limit"));
+        }
+        let written = self.inner.write(bytes)?;
+        self.remaining -= written as u64;
+        Ok(written)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.inner.flush()
+    }
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Definition {
@@ -141,16 +160,50 @@ fn trust_path(root: &Path) -> Result<PathBuf> {
         digest(root.canonicalize()?.to_string_lossy().as_bytes())
     )))
 }
+fn open_binary(path: &Path) -> Result<fs::File> {
+    let mut options = fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        // Validate the opened object, without blocking on a FIFO or following a
+        // substituted symlink between a path metadata check and open.
+        options.custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW);
+    }
+    let file = options.open(path)?;
+    let metadata = file.metadata()?;
+    ensure!(metadata.is_file(), "doctor binary must be a regular file");
+    ensure!(
+        metadata.len() > 0 && metadata.len() <= MAX_BINARY,
+        "doctor binary size out of bounds"
+    );
+    Ok(file)
+}
+fn copy_binary(source: fs::File, destination: &mut impl Write) -> Result<String> {
+    // The opened file can grow after metadata validation. Bound the actual
+    // stream as well, and keep memory use independent of executable size.
+    let mut source = source.take(MAX_BINARY + 1);
+    let mut hash = Sha256::new();
+    let mut total = 0u64;
+    let mut buffer = [0u8; 16384];
+    loop {
+        let count = source.read(&mut buffer)?;
+        if count == 0 {
+            break;
+        }
+        total += count as u64;
+        ensure!(total <= MAX_BINARY, "doctor binary size out of bounds");
+        destination.write_all(&buffer[..count])?;
+        hash.update(&buffer[..count]);
+    }
+    ensure!(total > 0, "doctor binary size out of bounds");
+    Ok(format!("{:x}", hash.finalize()))
+}
 /// Explicit host action: install the reviewed binary and bind it to this root and catalog.
 pub fn trust(root: &Path, binary: &Path) -> Result<()> {
     discover(root)?.context("repository has no native doctor manifest")?;
     let root = root.canonicalize()?;
-    let bytes = fs::read(binary)?;
-    ensure!(
-        !bytes.is_empty() && bytes.len() <= 512 * 1024 * 1024,
-        "doctor binary size out of bounds"
-    );
-    let hash = digest(&bytes);
+    let source = open_binary(binary)?;
     let dir = state_dir()?;
     fs::create_dir_all(&dir)?;
     ensure!(
@@ -163,7 +216,7 @@ pub fn trust(root: &Path, binary: &Path) -> Result<()> {
         fs::set_permissions(&dir, fs::Permissions::from_mode(0o700))?;
     }
     let mut file = tempfile::NamedTempFile::new_in(&dir)?;
-    file.write_all(&bytes)?;
+    let hash = copy_binary(source, &mut file)?;
     file.as_file().sync_all()?;
     #[cfg(unix)]
     {
@@ -200,9 +253,7 @@ fn executable(root: &Path) -> Result<PathBuf> {
     let path = state_dir()?.join(&trust.binary_sha256);
     let metadata = fs::symlink_metadata(&path)?;
     ensure!(
-        metadata.is_file()
-            && !metadata.file_type().is_symlink()
-            && metadata.len() <= 512 * 1024 * 1024,
+        metadata.is_file() && !metadata.file_type().is_symlink() && metadata.len() <= MAX_BINARY,
         "invalid trusted binary"
     );
     ensure!(
@@ -309,12 +360,16 @@ fn invoke(
         names: names.to_vec(),
     };
     let mut input = tempfile::NamedTempFile::new()?;
-    serde_json::to_writer(&mut input, &request)?;
-    ensure!(
-        input.as_file().metadata()?.len() <= 128 * 1024 * 1024,
-        "native doctor input exceeds limit"
-    );
-    input.flush()?;
+    {
+        // JSON serialization emits many small writes; buffer those syscalls and
+        // enforce the budget as bytes are serialized, before growing the file.
+        let mut writer = RequestWriter {
+            inner: BufWriter::new(&mut input),
+            remaining: MAX_REQUEST,
+        };
+        serde_json::to_writer(&mut writer, &request)?;
+        writer.flush()?;
+    }
     let mut command = Command::new(binary);
     command
         .env("LEIO_DOCTOR_HOST_COMMIT", crate::BUILD_COMMIT)
@@ -373,6 +428,7 @@ fn invoke(
                 if exit.is_some() {
                     break;
                 }
+                std::thread::sleep(Duration::from_millis(5));
             }
             Ok(n) => {
                 ensure!(
@@ -397,7 +453,7 @@ fn invoke(
         exit.is_some_and(|status| status.success()),
         "native doctor process failed"
     );
-    let response: Response =
+    let mut response: Response =
         serde_json::from_slice(&bytes).context("invalid native doctor response")?;
     ensure!(
         response.protocol == 1 && response.request_id == request.request_id,
@@ -408,11 +464,25 @@ fn invoke(
             == names.iter().cloned().collect(),
         "native doctor response names mismatch"
     );
-    for envelope in response.results.values() {
+    for (name, envelope) in &mut response.results {
         ensure!(
             envelope.schema_version == SCHEMA_VERSION && envelope.confidence.is_finite(),
             "invalid native doctor envelope"
         );
+        // Legacy doctors omit completion metadata, so absence is not an error.
+        // An explicit unsuccessful result must still fail warning-based gates,
+        // even when the repository adapter forgot to emit a warning.
+        if envelope.meta.as_ref().is_some_and(|meta| {
+            meta.get("completed").and_then(serde_json::Value::as_bool) == Some(false)
+                || matches!(
+                    meta.get("state").and_then(serde_json::Value::as_str),
+                    Some("error" | "failed" | "incomplete")
+                )
+        }) {
+            envelope.warnings.push(format!(
+                "native doctor `{name}` reported an error or incomplete result"
+            ));
+        }
     }
     Ok(response.results)
 }
@@ -424,11 +494,8 @@ pub fn serve(doctors: Vec<Box<dyn Doctor>>) -> Result<()> {
         "expected --request PATH"
     );
     let file = fs::File::open(&args[2])?;
-    ensure!(
-        file.metadata()?.len() <= 128 * 1024 * 1024,
-        "request too large"
-    );
-    let request: Request = serde_json::from_reader(file)?;
+    ensure!(file.metadata()?.len() <= MAX_REQUEST, "request too large");
+    let request: Request = serde_json::from_reader(BufReader::new(file.take(MAX_REQUEST + 1)))?;
     ensure!(
         request.protocol == 1 && request.root.is_absolute(),
         "unsupported native doctor request"

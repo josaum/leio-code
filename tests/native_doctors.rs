@@ -1,6 +1,11 @@
 //! A repository can publish metadata, but execution requires separate host trust.
 use serde_json::{Value, json};
-use std::{fs, path::Path, process::Command};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    process::{Command, Stdio},
+    time::{Duration, Instant},
+};
 const BIN: &str = env!("CARGO_BIN_EXE_leio-code");
 fn command(root: &Path, state: &Path, args: &[&str]) -> std::process::Output {
     Command::new(BIN)
@@ -250,4 +255,166 @@ print(json.dumps({'protocol':1,'request_id':r['request_id'],'results':{n:e for n
     assert_eq!(rows.len(), 9);
     assert_eq!(rows.iter().filter(|e| e["warning_count"] == 0).count(), 8);
     assert_eq!(rows.iter().filter(|e| e["warning_count"] == 1).count(), 1);
+}
+
+fn native_fixture(names: &[&str]) -> (tempfile::TempDir, PathBuf, PathBuf) {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("repo");
+    let state = dir.path().join("trust");
+    fs::create_dir_all(root.join(".leio-code")).unwrap();
+    let definitions: Vec<_> = names
+        .iter()
+        .map(|name| json!({"name":name,"description":"fixture","suites":["all","ci"]}))
+        .collect();
+    fs::write(
+        root.join(leio_code::doctors::native::MANIFEST),
+        json!({"schema_version":1,"name":"fixture-pack","doctors":definitions}).to_string(),
+    )
+    .unwrap();
+    (dir, root, state)
+}
+
+#[test]
+fn explicit_failed_completion_cannot_pass_single_or_suite_gates() {
+    let (dir, root, state) = native_fixture(&["fixture-completion", "fixture-success"]);
+    for args in [
+        vec!["init", "--quiet"],
+        vec!["add", leio_code::doctors::native::MANIFEST],
+    ] {
+        assert!(
+            Command::new("git")
+                .args(args)
+                .current_dir(&root)
+                .status()
+                .unwrap()
+                .success()
+        );
+    }
+    let script = dir.path().join("pack.py");
+    fs::write(
+        &script,
+        r#"#!/usr/bin/env python3
+import json,pathlib,sys
+r=json.load(open(sys.argv[2]))
+results={}
+for name in r['names']:
+    e={'schema_version':'1.0','query_id':'fixture','kind':'doctor','summary':'fixture result','confidence':0.9,'entities':[],'evidence':[],'warnings':[],'timing_ms':0}
+    if name == 'fixture-completion':
+        e['meta']=json.load(open(pathlib.Path(r['root'])/'result-meta.json'))
+    results[name]=e
+print(json.dumps({'protocol':1,'request_id':r['request_id'],'results':results}))
+"#,
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&script, fs::Permissions::from_mode(0o700)).unwrap();
+    }
+    assert!(
+        command(
+            &root,
+            &state,
+            &["trust-doctor-pack", "--binary", script.to_str().unwrap()]
+        )
+        .status
+        .success()
+    );
+    for (metadata, succeeds) in [
+        (json!({}), true),
+        (json!({"state":"ok"}), true),
+        (json!({"completed":false}), false),
+        (json!({"state":"error"}), false),
+        (json!({"state":"failed"}), false),
+        (json!({"state":"incomplete"}), false),
+    ] {
+        fs::write(root.join("result-meta.json"), metadata.to_string()).unwrap();
+        for args in [["doctor", "fixture-completion"], ["doctor", "ci"]] {
+            let result = command(&root, &state, &args);
+            assert_eq!(
+                result.status.success(),
+                succeeds,
+                "{args:?} with {metadata}: {} {}",
+                String::from_utf8_lossy(&result.stdout),
+                String::from_utf8_lossy(&result.stderr)
+            );
+            let envelope: Value = serde_json::from_slice(&result.stdout).unwrap();
+            if !succeeds {
+                assert!(
+                    envelope["warnings"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .any(|warning| {
+                            warning
+                                .as_str()
+                                .unwrap()
+                                .contains("reported an error or incomplete result")
+                        })
+                );
+            }
+            if args[1] == "ci" {
+                let rows = envelope["entities"].as_array().unwrap();
+                let good = rows
+                    .iter()
+                    .find(|row| row["doctor"] == "fixture-success")
+                    .unwrap();
+                assert_eq!(good["warning_count"], 0);
+                assert_eq!(envelope["meta"]["failing_doctors"], usize::from(!succeeds));
+            }
+        }
+    }
+}
+
+fn bounded_trust_command(root: &Path, state: &Path, binary: &Path) -> std::process::Output {
+    let mut child = Command::new(BIN)
+        .args(["--repo"])
+        .arg(root)
+        .args(["trust-doctor-pack", "--binary"])
+        .arg(binary)
+        .env("LEIO_DOCTOR_TRUST_DIR", state)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if child.try_wait().unwrap().is_some() {
+            return child.wait_with_output().unwrap();
+        }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!("trust-doctor-pack blocked while rejecting {binary:?}");
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn trust_rejects_fifo_without_waiting_for_a_writer() {
+    use std::{ffi::CString, os::unix::ffi::OsStrExt};
+    let (dir, root, state) = native_fixture(&["fixture-contract"]);
+    let fifo = dir.path().join("source-fifo");
+    let path = CString::new(fifo.as_os_str().as_bytes()).unwrap();
+    assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+    let result = bounded_trust_command(&root, &state, &fifo);
+    assert!(!result.status.success());
+    assert!(String::from_utf8_lossy(&result.stderr).contains("must be a regular file"));
+    assert!(!state.exists());
+}
+
+#[test]
+fn trust_rejects_oversized_sparse_file_before_copying() {
+    let (dir, root, state) = native_fixture(&["fixture-contract"]);
+    let path = dir.path().join("oversized-binary");
+    fs::File::create(&path)
+        .unwrap()
+        .set_len(512 * 1024 * 1024 + 1)
+        .unwrap();
+    let result = bounded_trust_command(&root, &state, &path);
+    assert!(!result.status.success());
+    assert!(String::from_utf8_lossy(&result.stderr).contains("size out of bounds"));
+    assert!(!state.exists());
 }
