@@ -73,13 +73,23 @@ struct GetTicket {
     since_seq: Option<u64>,
 }
 
+struct SnapshotLock(std::fs::File);
+
+impl Drop for SnapshotLock {
+    fn drop(&mut self) {
+        // Release explicitly: concurrent process spawning can briefly inherit
+        // this descriptor before exec, extending a close-only flock lifetime.
+        let _ = fs2::FileExt::unlock(&self.0);
+    }
+}
+
 #[derive(Default)]
 pub struct SemanticBus {
     rows: Arc<Mutex<Vec<EmbeddingRow>>>,
     next_seq: Arc<Mutex<u64>>,
     persist_path: Arc<Mutex<Option<PathBuf>>>,
     embed: Arc<Mutex<Option<Arc<crate::embed::EmbedClient>>>>,
-    _snapshot_lock: Option<std::fs::File>,
+    _snapshot_lock: Option<SnapshotLock>,
 }
 
 impl SemanticBus {
@@ -115,7 +125,7 @@ impl SemanticBus {
         );
         let next = rows.iter().map(|row| row.seq).max().unwrap_or(0);
         Ok(Self {
-            _snapshot_lock: Some(lock),
+            _snapshot_lock: Some(SnapshotLock(lock)),
             rows: Arc::new(Mutex::new(rows)),
             next_seq: Arc::new(Mutex::new(next)),
             persist_path: Arc::new(Mutex::new(Some(path))),
@@ -1181,8 +1191,10 @@ mod tests {
         for thread in threads {
             thread.join().unwrap();
         }
+        let inherited = bus._snapshot_lock.as_ref().unwrap().0.try_clone().unwrap();
         drop(bus);
         let loaded = SemanticBus::load_or_default(Some(path)).unwrap();
+        drop(inherited);
         let rows = loaded.rows.lock().unwrap();
         assert_eq!(rows.len(), 64);
         assert_eq!(
