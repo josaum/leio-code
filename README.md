@@ -61,27 +61,19 @@ slowest 1.71 s run, is published with the methodology.
 
 **[See the complete benchmark and reproduce it →](docs/BENCHMARKS.md)**
 
-## Install with one prompt
+## Install
 
-Paste this into a local coding agent with terminal access:
-
-> Install the official LEIO Code local stdio MCP from https://github.com/josaum/leio-code by following docs/install-stdio.md. Inspect the installation script, check prerequisites, build the locked source, and verify the actual MCP handshake, 18 tools, context and session navigation. Register only the leio-code stdio server in this host, preserving other MCP entries. Use absolute paths and the installer output. Do not enable the HTTP integration. Tell me whether a host reconnect is required and report the installed revision and verification results.
-
-Or install from source yourself:
+Install the `leio-code` package. These commands download the prebuilt programs. They do not compile Rust.
 
 ```bash
-git clone https://github.com/josaum/leio-code.git ~/.local/share/leio-code/source
-cd ~/.local/share/leio-code/source
-bash scripts/install-stdio.sh
+pip install leio-code
+npm install -g leio-code
+cargo binstall leio-code
 ```
 
-Requires **Git, a C/C++ toolchain, stable Rust, Node.js 22+ and npm**. Compilation
-can take several minutes. The installer verifies the real stdio connection and
-prints MCP configuration. Register it in your host and reconnect; keep the
-checkout. No hosted HTTP service or SSH key is required. This is a source
-installation; prebuilt binaries and npm publication are not claimed.
+The Python wheel and the Node package install `leio-code`, `leio-harness`, and the stdio server `leio-mcp`. They register that server with harnesses already on the machine. Any other MCP host launches `leio-mcp`. `cargo binstall leio-code` installs Code. The release covers macOS arm64, macOS x64, and Linux x64. Pass an absolute `--repo` or `repo_root` for each codebase. Do not set `LEIO_CODE_REPO_ROOT`.
 
-[Complete setup and updates](docs/install-stdio.md) · [Source release 2.6.5](https://github.com/josaum/leio-code/releases/tag/leio-code-plugin-v2.6.5)
+[Release 2.6.5](https://github.com/josaum/leio-code/releases/tag/leio-code-plugin-v2.6.5)
 
 ## Your first useful query
 

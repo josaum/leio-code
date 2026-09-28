@@ -221,7 +221,7 @@ Phases B and C ship separately in their own repos.
 
 ## Why this matters
 
-The Example thesis (`CLAUDE.md`):
+The induction thesis (`CLAUDE.md`):
 
 > The domain model is induced from operational traces.
 > The graph constrains what is legal.

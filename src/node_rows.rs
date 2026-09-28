@@ -87,7 +87,7 @@ fn node_tenant_id(repo_root: &Path) -> String {
         .ok()
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| {
-            if crate::config::repo_profile(repo_root) == "example" {
+            if crate::config::repo_profile(repo_root) == crate::config::PROFILE_EXAMPLE {
                 "workspace".to_string()
             } else {
                 crate::config::repo_namespace(repo_root)
@@ -173,7 +173,11 @@ fn profile_active_cartridges(index: &RepoIndex) -> HashMap<String, Vec<String>> 
         let cartridges = profile
             .vars
             .iter()
-            .find(|var| var.name == "EXAMPLE_ACTIVE_CARTRIDGES")
+            .find(|var| {
+                crate::config::cartridge_activation_var_names()
+                    .iter()
+                    .any(|name| name == &var.name)
+            })
             .and_then(|var| var.value_preview.as_deref())
             .map(parse_csv_list)
             .unwrap_or_default();

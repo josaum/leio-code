@@ -743,7 +743,7 @@ const GENERIC_HEADINGS: &[&str] = &[
 
 fn is_ontology_iri(iri: &str) -> bool {
     (iri.starts_with("http://") || iri.starts_with("https://") || iri.starts_with("urn:"))
-        && !iri.starts_with("https://example.local/leio/")
+        && !crate::config::iri_is_local_vocabulary(iri)
         && !iri.starts_with("urn:leio:")
 }
 
@@ -764,7 +764,7 @@ fn first_heading(text: &str) -> Option<String> {
 }
 
 fn section_node(path: &str, line: u32) -> Result<NamedNode> {
-    let mut iri = String::from("https://example.local/leio/wiki/");
+    let mut iri = crate::config::wiki_iri_prefix();
     for ch in path.chars() {
         if ch.is_ascii_alphanumeric() || matches!(ch, '/' | '.' | '-' | '_') {
             iri.push(ch);

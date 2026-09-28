@@ -1,6 +1,6 @@
 # Durable engineering workflow
 
-`leio-harness workflow` adopts F22's intake, confirmation, plan approval, incremental execution and durable progress contracts. Runs persist in JSON-LD, independently of the calling agent or terminal. This is a local, same-user interface: a plan digest is a review binding, not a security credential.
+`leio-harness workflow` records intake, confirmation, plan approval, incremental execution, and durable progress. Runs persist in JSON-LD, independently of the calling agent or terminal. This is a local, same-user interface: a plan digest is a review binding, not a security credential.
 
 ## Run a workflow
 
@@ -52,7 +52,7 @@ These commands can be explicit `build`, `deploy`, `verify` and `rollback` steps 
 
 ## Provenance and limits
 
-Behavioral source: F22 DashboardService's session transitions, write-up progress and notification failure contracts, reviewed in the local F22 snapshot. No F22 implementation code was copied. The workflow executes local argv, with an agent-driven CLI and static-site delivery adapter. Remote infrastructure provisioning and authenticated multi-user approvals are outside this implementation. Evidence attachment is host-supplied; it does not certify coverage or completeness. No F22 capability is retired by these changes.
+The workflow executes local argv, with an agent-driven CLI and static-site delivery adapter. Remote infrastructure provisioning and authenticated multi-user approvals are outside this implementation. Evidence attachment is host-supplied; it does not certify coverage or completeness.
 
 See [JSON-LD 1.1 reference](../knowledge/json-ld-1.1.md).
 

@@ -122,7 +122,7 @@ version = "2.3.0"
         let lock = r#"{
   "version": "2.3.0",
   "packages": {
-    "": {"name": "@example/leio-code-mcp", "version": "2.3.0"},
+    "": {"name": "@leio/leio-code-mcp", "version": "2.3.0"},
     "node_modules/router": {"version": "2.2.0"}
   }
 }"#;

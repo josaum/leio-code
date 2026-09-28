@@ -1281,11 +1281,14 @@ fn tests_to_run(files: &[ScoredFile], task_tokens: &[String]) -> Vec<Value> {
                 "Shared tRPC package surface is in the ranked context".to_string(),
             ));
         }
-        if path.starts_with("example-ops/") {
-            commands.insert((
-                "pnpm --dir example-ops typecheck && pnpm --dir example-ops test".to_string(),
-                "Unified Example Ops frontend surface is in the ranked context".to_string(),
-            ));
+        for layout in crate::config::platform_layouts() {
+            if crate::config::path_has_platform_prefix(path, &layout.ops_root) {
+                let ops = &layout.ops_root;
+                commands.insert((
+                    format!("pnpm --dir {ops} typecheck && pnpm --dir {ops} test"),
+                    "Ops frontend surface is in the ranked context".to_string(),
+                ));
+            }
         }
     }
 

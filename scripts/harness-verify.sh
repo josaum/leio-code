@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# LEIO-Harness validation gate. Rust-only; no example-workspace required.
+# LEIO-Harness validation gate. Rust-only; a sibling workspace is not required.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

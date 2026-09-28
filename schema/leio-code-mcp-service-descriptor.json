@@ -478,7 +478,7 @@
           },
           "repo_root": {
             "type": "string",
-            "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root."
+            "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases."
           }
         },
         "additionalProperties": false,
@@ -880,7 +880,7 @@
         "properties": {
           "repo_root": {
             "type": "string",
-            "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root."
+            "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases."
           },
           "index_path": {
             "type": "string",
@@ -1285,7 +1285,7 @@
           },
           "repo_root": {
             "type": "string",
-            "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root."
+            "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases."
           },
           "index_path": {
             "type": "string",
@@ -1835,7 +1835,7 @@
         "properties": {
           "repo_root": {
             "type": "string",
-            "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root."
+            "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases."
           },
           "index_path": {
             "type": "string",
@@ -2247,7 +2247,7 @@
           },
           "repo_root": {
             "type": "string",
-            "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root."
+            "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases."
           },
           "index_path": {
             "type": "string",
@@ -2657,7 +2657,7 @@
           },
           "repo_root": {
             "type": "string",
-            "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root."
+            "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases."
           },
           "index_path": {
             "type": "string",
@@ -3055,7 +3055,7 @@
           },
           "repo_root": {
             "type": "string",
-            "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root."
+            "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases."
           },
           "index_path": {
             "type": "string",
@@ -3462,7 +3462,7 @@
           },
           "repo_root": {
             "type": "string",
-            "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root."
+            "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases."
           },
           "index_path": {
             "type": "string",
@@ -3876,7 +3876,7 @@
           },
           "repo_root": {
             "type": "string",
-            "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root."
+            "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases."
           },
           "index_path": {
             "type": "string",
@@ -4338,7 +4338,7 @@
           },
           "repo_root": {
             "type": "string",
-            "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root."
+            "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases."
           },
           "index_path": {
             "type": "string",
@@ -4735,7 +4735,7 @@
           },
           "repo_root": {
             "type": "string",
-            "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root."
+            "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases."
           },
           "timeout_ms": {
             "type": "integer",
@@ -5121,7 +5121,7 @@
         "properties": {
           "repo_root": {
             "type": "string",
-            "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root."
+            "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases."
           },
           "index_path": {
             "type": "string",
@@ -5525,7 +5525,7 @@
           },
           "repo_root": {
             "type": "string",
-            "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root."
+            "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases."
           }
         },
         "required": [
@@ -5974,7 +5974,7 @@
           },
           "repo_root": {
             "type": "string",
-            "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root."
+            "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases."
           },
           "index_path": {
             "type": "string",
@@ -6559,7 +6559,7 @@
           },
           "repo_root": {
             "type": "string",
-            "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root."
+            "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases."
           },
           "timeout_ms": {
             "type": "integer",
@@ -6948,7 +6948,7 @@
         "properties": {
           "repo_root": {
             "type": "string",
-            "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root."
+            "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases."
           }
         },
         "additionalProperties": false,
@@ -8299,7 +8299,7 @@
         {
           "name": "repo_root",
           "type": "string",
-          "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root.",
+          "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases.",
           "required": false
         }
       ],
@@ -8328,7 +8328,7 @@
           },
           "repo_root": {
             "type": "string",
-            "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root."
+            "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases."
           }
         },
         "additionalProperties": false,
@@ -8735,7 +8735,7 @@
         {
           "name": "repo_root",
           "type": "string",
-          "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root.",
+          "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases.",
           "required": false
         },
         {
@@ -8761,7 +8761,7 @@
         "properties": {
           "repo_root": {
             "type": "string",
-            "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root."
+            "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases."
           },
           "index_path": {
             "type": "string",
@@ -9177,7 +9177,7 @@
         {
           "name": "repo_root",
           "type": "string",
-          "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root.",
+          "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases.",
           "required": false
         },
         {
@@ -9218,7 +9218,7 @@
           },
           "repo_root": {
             "type": "string",
-            "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root."
+            "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases."
           },
           "index_path": {
             "type": "string",
@@ -9773,7 +9773,7 @@
         {
           "name": "repo_root",
           "type": "string",
-          "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root.",
+          "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases.",
           "required": false
         },
         {
@@ -9799,7 +9799,7 @@
         "properties": {
           "repo_root": {
             "type": "string",
-            "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root."
+            "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases."
           },
           "index_path": {
             "type": "string",
@@ -10220,7 +10220,7 @@
         {
           "name": "repo_root",
           "type": "string",
-          "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root.",
+          "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases.",
           "required": false
         },
         {
@@ -10268,7 +10268,7 @@
           },
           "repo_root": {
             "type": "string",
-            "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root."
+            "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases."
           },
           "index_path": {
             "type": "string",
@@ -10687,7 +10687,7 @@
         {
           "name": "repo_root",
           "type": "string",
-          "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root.",
+          "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases.",
           "required": false
         },
         {
@@ -10729,7 +10729,7 @@
           },
           "repo_root": {
             "type": "string",
-            "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root."
+            "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases."
           },
           "index_path": {
             "type": "string",
@@ -11134,7 +11134,7 @@
         {
           "name": "repo_root",
           "type": "string",
-          "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root.",
+          "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases.",
           "required": false
         },
         {
@@ -11165,7 +11165,7 @@
           },
           "repo_root": {
             "type": "string",
-            "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root."
+            "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases."
           },
           "index_path": {
             "type": "string",
@@ -11581,7 +11581,7 @@
         {
           "name": "repo_root",
           "type": "string",
-          "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root.",
+          "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases.",
           "required": false
         },
         {
@@ -11621,7 +11621,7 @@
           },
           "repo_root": {
             "type": "string",
-            "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root."
+            "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases."
           },
           "index_path": {
             "type": "string",
@@ -12046,7 +12046,7 @@
         {
           "name": "repo_root",
           "type": "string",
-          "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root.",
+          "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases.",
           "required": false
         },
         {
@@ -12096,7 +12096,7 @@
           },
           "repo_root": {
             "type": "string",
-            "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root."
+            "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases."
           },
           "index_path": {
             "type": "string",
@@ -12573,7 +12573,7 @@
         {
           "name": "repo_root",
           "type": "string",
-          "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root.",
+          "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases.",
           "required": false
         },
         {
@@ -12638,7 +12638,7 @@
           },
           "repo_root": {
             "type": "string",
-            "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root."
+            "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases."
           },
           "index_path": {
             "type": "string",
@@ -13042,7 +13042,7 @@
         {
           "name": "repo_root",
           "type": "string",
-          "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root.",
+          "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases.",
           "required": false
         },
         {
@@ -13066,7 +13066,7 @@
           },
           "repo_root": {
             "type": "string",
-            "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root."
+            "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases."
           },
           "timeout_ms": {
             "type": "integer",
@@ -13457,7 +13457,7 @@
         {
           "name": "repo_root",
           "type": "string",
-          "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root.",
+          "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases.",
           "required": false
         },
         {
@@ -13483,7 +13483,7 @@
         "properties": {
           "repo_root": {
             "type": "string",
-            "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root."
+            "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases."
           },
           "index_path": {
             "type": "string",
@@ -13896,7 +13896,7 @@
         {
           "name": "repo_root",
           "type": "string",
-          "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root.",
+          "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases.",
           "required": false
         }
       ],
@@ -13923,7 +13923,7 @@
           },
           "repo_root": {
             "type": "string",
-            "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root."
+            "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases."
           }
         },
         "required": [
@@ -14389,7 +14389,7 @@
         {
           "name": "repo_root",
           "type": "string",
-          "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root.",
+          "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases.",
           "required": false
         },
         {
@@ -14488,7 +14488,7 @@
           },
           "repo_root": {
             "type": "string",
-            "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root."
+            "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases."
           },
           "index_path": {
             "type": "string",
@@ -15082,7 +15082,7 @@
         {
           "name": "repo_root",
           "type": "string",
-          "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root.",
+          "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases.",
           "required": false
         },
         {
@@ -15119,7 +15119,7 @@
           },
           "repo_root": {
             "type": "string",
-            "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root."
+            "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases."
           },
           "timeout_ms": {
             "type": "integer",
@@ -15513,7 +15513,7 @@
         {
           "name": "repo_root",
           "type": "string",
-          "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root.",
+          "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases.",
           "required": false
         }
       ],
@@ -15526,7 +15526,7 @@
         "properties": {
           "repo_root": {
             "type": "string",
-            "description": "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root."
+            "description": "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases."
           }
         },
         "additionalProperties": false,

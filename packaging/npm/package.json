@@ -1,0 +1,33 @@
+{
+  "name": "leio-code",
+  "version": "2.6.5",
+  "description": "Prebuilt Leio Code and Leio Harness",
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/josaum/leio-code.git"
+  },
+  "homepage": "https://github.com/josaum/leio-code",
+  "bin": {
+    "leio-code": "bin/leio-code.js",
+    "leio-harness": "bin/leio-harness.js",
+    "leio-mcp": "bin/leio-mcp.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.28.0",
+    "zod": "^3.25.76"
+  },
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "files": [
+    "bin",
+    "server",
+    "install.js",
+    "register-mcp.js",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  }
+}

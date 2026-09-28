@@ -148,10 +148,10 @@ is real but lives outside the repo (system tools like `git`, `curl`).
 This is the **hardest piece**. The design here:
 
 **Calibration note for this monorepo specifically.** A quick survey of
-`example-workspace` found Express (`leio-code/apps-sdk/server.js`) and
-reqwest (`leio-code/vendor/example-client`) as the dominant idioms —
+the parent workspace found Express (`leio-code/apps-sdk/server.js`) and
+reqwest (the vendored HTTP client, since removed) as the dominant idioms —
 Python HTTP-server frameworks are barely used in the indexed surface,
-and `ExampleRouter`/`MyRouter` patterns in `src/indexer.rs` are
+and workspace-router / `MyRouter` patterns in `src/indexer.rs` are
 dormant/test-only. Phase 5 should focus the v1 server idioms on
 **Flask, FastAPI, Express, axum** (the common foursome) and the v1
 client idioms on **requests, httpx, fetch, axios, reqwest**. Add other
@@ -218,7 +218,7 @@ which route was meant.
 
 **Cross-host URLs** (`https://other-service/...`): match against routes
 in the same repo when the host resolves to a known service name (e.g.
-`EXAMPLE_GATEWAY_URL`-style env var → known service). Otherwise emit
+`GATEWAY_URL`-style env var → known service). Otherwise emit
 unresolved with `reason: NonLocalTarget`.
 
 **Confidence calibration is a non-goal for v1.** First implementation:

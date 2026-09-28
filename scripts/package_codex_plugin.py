@@ -2,7 +2,7 @@
 """Build portable LEIO Code plugin release artifacts.
 
 This packages a self-contained copy of the plugin so it can be installed into
-another repository or machine without depending on the full Example monorepo
+another repository or machine without depending on a sibling monorepo
 layout.
 """
 

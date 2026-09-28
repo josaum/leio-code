@@ -27,7 +27,7 @@ Do not invent doctor families. If the profile registers none, say so and stop.
 4. After a warning → `leio_code_explain` or `leio_code_find` on the flagged entity.
 5. Structural follow-up → `leio_code_graph` only when the doctor points at callers/imports.
 
-Never list a hard-coded catalog. The example profile has many doctors; the leio-code profile has a few. The live `capabilities` payload is the source of truth.
+Never list a hard-coded catalog. The workspace profile has many doctors; the leio-code profile has a few. The live `capabilities` payload is the source of truth.
 
 ## Output
 

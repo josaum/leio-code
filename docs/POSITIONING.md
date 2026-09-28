@@ -119,7 +119,7 @@ cloud-managed everything; security scanning use cases (CodeQL's territory).
 | Feature | Evidence |
 |---|---|
 | Local persistence: JSON index v12 + DuckDB FTS sidecar + RDF graph + query cache, all under `.leio-code/` | `src/indexer.rs`, `src/search.rs`, `src/code_graph.rs` |
-| Zero-config generic indexing (5 langs via tree-sitter; fresh repo indexes in ms) | empirical: 5-file repo → 3 ms; example 7,353 files → ~1.9 s |
+| Zero-config generic indexing (5 langs via tree-sitter; fresh repo indexes in ms) | empirical: 5-file repo → 3 ms; a 7,353-file workspace → ~1.9 s |
 | find: symbol / env-var / redis-key / api-route / docker-service / binary / route / callers | `src/query.rs` |
 | explain: env-var (+value provenance, redaction, sha256), redis-key, binary, route | `src/query.rs`, ROADMAP §5 shipped |
 | graph: callers/callees/callsites/symbols-in/imports/importers, resolved imports, dead-code | `src/graph_query.rs` |
@@ -135,10 +135,10 @@ cloud-managed everything; security scanning use cases (CodeQL's territory).
 
 | Feature | Gap | Severity |
 |---|---|---|
-| **Doctors on generic repos** | The generic profile exposes registry-derived, self-gating suites for repository hygiene, environment/import contracts, Codex orchestration, and LEIO release coherence. Query the live list with `leio-code capabilities`; Example-only doctors remain profile-gated. | Closed for P1; deepen via config-declared rules |
-| TS import resolution | `tsconfig.json` `compilerOptions.paths` + `baseUrl` drive resolution; legacy Example aliases are fallback-only | Closed for P1 |
+| **Doctors on generic repos** | The generic profile exposes registry-derived, self-gating suites for repository hygiene, environment/import contracts, Codex orchestration, and LEIO release coherence. Query the live list with `leio-code capabilities`; workspace-profile doctors remain profile-gated. | Closed for P1; deepen via config-declared rules |
+| TS import resolution | `tsconfig.json` `compilerOptions.paths` + `baseUrl` drive resolution; legacy workspace aliases are fallback-only | Closed for P1 |
 | Onboarding | `leio-code init` scaffolds config, indexes, prints capabilities + MCP wiring | Closed for P1 |
-| Orphan-files / route-projection / duckdb-contract doctors | `orphan-files` is config-driven on generic; Example path tables remain for Example-only suites | Medium |
+| Orphan-files / route-projection / duckdb-contract doctors | `orphan-files` is config-driven on generic; workspace path tables remain for workspace-profile suites | Medium |
 | Knowledge base / semantic search | Local Arrow `nodes.arrow` + formal-context, fully offline | Medium |
 | RDF namespace | `LEIO_CODE_RDF_NAMESPACE` + `[rdf] namespace` in `.leio-code/config.toml`; default remains `https://example.local/leio/code#` | Closed |
 | Package distribution | `make install` and GitHub Release binaries on `leio-code-plugin-v*`; no Homebrew formula in this tree; crates.io is not published — see `docs/RELEASE-CHECKLIST.md` | High for public adoption |
@@ -147,7 +147,7 @@ cloud-managed everything; security scanning use cases (CodeQL's territory).
 
 | Feature | Why it matters |
 |---|---|
-| **Config-declared contract rules** (import boundaries, env contracts) so any repo gets doctor value without writing Rust | Converts the moat feature from "Example-only" to "self-service" |
+| **Config-declared contract rules** (import boundaries, env contracts) so any repo gets doctor value without writing Rust | Converts the moat feature from "workspace-profile" to "self-service" |
 | Package-manager distribution (crates.io blocked by vendored path deps; no brew tap; no CI release binaries) | The #1 adoption blocker |
 | Evolving playbook (ACE-style co-edit/doctor/symbol counters) | ROADMAP P1.5; compounding context quality |
 | `doctor --suggest` (proposal diffs) | ROADMAP P2 |
@@ -161,7 +161,7 @@ cloud-managed everything; security scanning use cases (CodeQL's territory).
 | Dimension | Bar | Today |
 |---|---|---|
 | Breadth of indexed entities | symbols + infra entities + routes + deploy topology | **Leads category** |
-| Contract drift detection | agent-consumable, cross-artifact | **Leads category** (but Example-gated) |
+| Contract drift detection | agent-consumable, cross-artifact | **Leads category** (but workspace-profile-gated) |
 | Privacy / locality | zero network by default, local artifacts | **Meets** (needs public claim + doc) |
 | Agent ergonomics | MCP-first, capability routing, stable envelopes | **Meets** |
 | Self-service onboarding | one command from zero to answers | **Meets** (`init`); distribution still build/install/Docker (not crates.io) |

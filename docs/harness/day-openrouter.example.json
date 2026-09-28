@@ -1,6 +1,6 @@
 {
   "goal": "Opt-in OpenRouter model routing by work-shape. Rankings are adoption, not quality.",
-  "repo": "/Users/josaum/projects/example-workspace",
+  "repo": "/path/to/repo",
   "worktreeRoot": "/tmp/leio-wt-openrouter",
   "outputDir": "/tmp/leio-runs-openrouter",
   "timeoutMs": 300000,

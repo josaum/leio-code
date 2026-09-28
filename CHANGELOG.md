@@ -9,7 +9,7 @@ All notable changes to LEIO Code. Format follows [Keep a Changelog](https://keep
   or explicitly trusted Rust packs. Catalog discovery executes no repository code;
   native execution binds canonical root, catalog and binary hashes and enforces
   bounded input/output, process deadlines and response identity. Hosted execution
-  stays disabled. Example, sovereign parsers-rs and Reference remain separate projects.
+  stays disabled. Sovereign parsers-rs remains a separate repository. Other product repositories stay separate.
 
 - Complete the local navigation editing loop with bounded live source, definition
   relocation after edits, exact candidate open actions, context-to-nav routes and
@@ -304,9 +304,9 @@ All notable changes to LEIO Code. Format follows [Keep a Changelog](https://keep
   local compiled wiki only; the MCP `leio_code_milvus` and
   `leio_code_kb_bootstrap` tools were removed and `search_repository_memory`
   now runs read-only `leio-code find symbol`.
-- Vendored example crates. `vendor/fca-fast-core` and the `example-client`
+- Vendored crates removed. `vendor/fca-fast-core` and the client
   path dependency are deleted; leio-code no longer vendors or path-depends on
-  any example-workspace crate. FCA concept-lattice induction now runs in the
+  any external-workspace crate. FCA concept-lattice induction now runs in the
   pre-built `fca_fast` parser wheel (PyO3, committed for macos-arm64 and
   manylinux aarch64/x86_64 under `artifacts/wheels/`, invoked hermetically via
   `uv run --no-project`; override with `LEIO_FCA_WHEEL` /
@@ -334,11 +334,11 @@ All notable changes to LEIO Code. Format follows [Keep a Changelog](https://keep
   Arrow hits, so symbol/file navigation works on any repo; lattice verbs
   (`parent` / `child` / `peer` / `align`) and `export formal-context` fail
   fast with an actionable error instead of running unbounded FCA concept
-  enumeration (the example workspace context is 36,505 objects / 287,170
+  enumeration (one workspace context is 36,505 objects / 287,170
   incidences — full Ganter next-closure never finishes there).
 - CLI lookups no longer reindex on almost every invocation: the
   `LEIO_INDEX_TTL_SECS` default is 300s (was 5s), so a typical `find` on the
-  example workspace went from ~1.2s (full reindex) to ~130ms (search only).
+  that workspace went from ~1.2s (full reindex) to ~130ms (search only).
 - Claude/Grok plugin stdio no longer depends on the host cwd. Plugin
   `mcpServers` launches `${CLAUDE_PLUGIN_ROOT}/scripts/launch-stdio-mcp.sh`
   instead of pointing at the project-relative `.mcp.json`, so initialize
@@ -414,7 +414,7 @@ All notable changes to LEIO Code. Format follows [Keep a Changelog](https://keep
   collapses sibling sections, and optionally reranks with BGE-M3 when
   `LEIO_CODE_EMBED_URL` is set. Unchanged files are reused.
 - Remote BGE-M3 encoder: `[embed] url` / `LEIO_CODE_EMBED_URL` posts to
-  OpenAI `/v1/embeddings` (TEI on Proxmox GPU). Fallback remains Example
+  OpenAI `/v1/embeddings` (TEI on Proxmox GPU). Fallback remains
   `/v2/embed`.
 - Local Arrow adaptive/find ranks with query-time BGE-M3 cosine against
   `semantic_vec` / `code_vec` when the encoder is configured.
@@ -486,7 +486,7 @@ All notable changes to LEIO Code. Format follows [Keep a Changelog](https://keep
 
 ### Added
 - **Generic doctor pack** — the doctor system now delivers value on any repo,
-  not just the Example workspace:
+  not just one large workspace:
   - `env-contract` (generic profile): flags env vars read in code but declared
     nowhere in the repo (.env* files, profiles, secret sets, k8s ConfigMaps,
     inline declarations). Inactive when the repo has zero declaration sources;
@@ -495,7 +495,7 @@ All notable changes to LEIO Code. Format follows [Keep a Changelog](https://keep
     boundaries declared as `[[doctors.import_boundary.rules]]`
     (`name` / `from_prefix` / `deny_prefixes`). No-ops with zero rules.
   - `orphan-files` is now registered for the generic profile with
-    config-driven surfaces (`[doctors.orphan_files] surfaces`); Example
+    config-driven surfaces (`[doctors.orphan_files] surfaces`); workspace-profile
     defaults unchanged.
   - `redis-key-hygiene` and `rust-toolchain-pin-coherence` promoted to the
     generic profile (both no-op cleanly when their inputs are absent).

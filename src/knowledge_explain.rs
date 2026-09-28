@@ -418,7 +418,7 @@ LIMIT 40
 
 fn is_ontology_subject(iri: &str) -> bool {
     (iri.starts_with("http://") || iri.starts_with("https://") || iri.starts_with("urn:"))
-        && !iri.starts_with("https://example.local/leio/")
+        && !crate::config::iri_is_local_vocabulary(iri)
 }
 
 fn grounding_sparql(tokens: &[String]) -> String {

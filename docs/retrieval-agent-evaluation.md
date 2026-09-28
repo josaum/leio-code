@@ -29,7 +29,7 @@ known gaps, not solved by the aggregate improvement. Per-task paths and binary
 identities are recorded in `benchmarks/retrieval-agent-results.json`.
 
 Both existing LEIO repository golden tasks also passed. This evaluation does not
-measure call-edge accuracy, runtime behavior, latency or F22 retrieval quality.
+measure call-edge accuracy, runtime behavior, or latency.
 
 # Instruction distribution
 

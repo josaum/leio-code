@@ -2769,8 +2769,24 @@ fn route_mount_rank(route: &AggregatedApiRoute) -> u8 {
     }
 }
 
+fn platform_layouts() -> Vec<crate::config::PlatformLayout> {
+    crate::config::platform_layouts()
+}
+
+fn path_under_platform_api(path: &str) -> bool {
+    platform_layouts()
+        .iter()
+        .any(|layout| crate::config::path_has_platform_prefix(path, &layout.api_root))
+}
+
+fn path_under_platform_routers(path: &str) -> bool {
+    platform_layouts()
+        .iter()
+        .any(|layout| path.starts_with(&format!("{}/{}/routers/", layout.api_root, layout.package)))
+}
+
 fn route_scope_rank(route: &AggregatedApiRoute) -> u8 {
-    if route.file_path.starts_with("example-api/") {
+    if path_under_platform_api(&route.file_path) {
         return 0;
     }
     if route.file_path.starts_with("cartridges/") {
@@ -2788,60 +2804,66 @@ fn route_role_rank(route: &AggregatedApiRoute) -> u8 {
 }
 
 fn example_router_registry(index: &RepoIndex) -> ExampleRouterRegistry {
-    let registry_rel = "example-api/example/routers/__init__.py";
-    let registry_path = Path::new(&index.root).join(registry_rel);
-    let Ok(source) = fs::read_to_string(registry_path) else {
-        return ExampleRouterRegistry::default();
-    };
-
     let spec_re = Regex::new(r#""([A-Za-z0-9_]+)":\s*\("([^.][^"]*|(?:\.[^"]+))",\s*"[^"]+"\)"#)
         .expect("valid router spec regex");
     let mounted_re = Regex::new(r#"\("([A-Za-z0-9_]+)",\s*(?:None|"[^"]*")\)"#)
         .expect("valid mounted router regex");
 
-    let mut registry = ExampleRouterRegistry::default();
-    for caps in spec_re.captures_iter(&source) {
-        let router_name = caps.get(1).map(|m| m.as_str()).unwrap_or_default();
-        let module_name = caps.get(2).map(|m| m.as_str()).unwrap_or_default();
-        if let Some(path) = router_module_to_file(module_name) {
-            registry
-                .file_to_router
-                .insert(path.clone(), router_name.to_string());
-            registry
-                .router_to_file
-                .insert(router_name.to_string(), path);
+    for layout in platform_layouts() {
+        let registry_rel = format!("{}/{}/routers/__init__.py", layout.api_root, layout.package);
+        let registry_path = Path::new(&index.root).join(registry_rel);
+        let Ok(source) = fs::read_to_string(registry_path) else {
+            continue;
+        };
+
+        let mut registry = ExampleRouterRegistry::default();
+        for caps in spec_re.captures_iter(&source) {
+            let router_name = caps.get(1).map(|m| m.as_str()).unwrap_or_default();
+            let module_name = caps.get(2).map(|m| m.as_str()).unwrap_or_default();
+            if let Some(path) = router_module_to_file(&layout, module_name) {
+                registry
+                    .file_to_router
+                    .insert(path.clone(), router_name.to_string());
+                registry
+                    .router_to_file
+                    .insert(router_name.to_string(), path);
+            }
         }
+
+        let full_entries_start = source.find("_FULL_ROUTER_ENTRIES").unwrap_or(0);
+        let mounted_source = &source[full_entries_start..];
+        for caps in mounted_re.captures_iter(mounted_source) {
+            let router_name = caps.get(1).map(|m| m.as_str()).unwrap_or_default();
+            if let Some(path) = registry.router_to_file.get(router_name) {
+                registry.mounted_files.insert(path.clone());
+            }
+        }
+
+        expand_included_router_files(Path::new(&index.root), &layout, &mut registry);
+        return registry;
     }
 
-    let full_entries_start = source.find("_FULL_ROUTER_ENTRIES").unwrap_or(0);
-    let mounted_source = &source[full_entries_start..];
-    for caps in mounted_re.captures_iter(mounted_source) {
-        let router_name = caps.get(1).map(|m| m.as_str()).unwrap_or_default();
-        if let Some(path) = registry.router_to_file.get(router_name) {
-            registry.mounted_files.insert(path.clone());
-        }
-    }
-
-    expand_included_router_files(Path::new(&index.root), &mut registry);
-
-    registry
+    ExampleRouterRegistry::default()
 }
 
 fn active_cartridges_from_env() -> HashSet<String> {
-    std::env::var("EXAMPLE_ACTIVE_CARTRIDGES")
-        .ok()
-        .map(|value| parse_cartridge_list(&value).into_iter().collect())
-        .unwrap_or_default()
+    let mut cartridges = HashSet::new();
+    for name in crate::config::cartridge_activation_var_names() {
+        if let Ok(value) = std::env::var(name) {
+            cartridges.extend(parse_cartridge_list(&value));
+        }
+    }
+    cartridges
 }
 
 fn cartridge_activation_profiles(index: &RepoIndex) -> HashMap<String, Vec<String>> {
     let mut profiles_by_cartridge: HashMap<String, Vec<String>> = HashMap::new();
     for profile in &index.profiles {
-        let Some(var) = profile
-            .vars
-            .iter()
-            .find(|var| var.name == "EXAMPLE_ACTIVE_CARTRIDGES")
-        else {
+        let Some(var) = profile.vars.iter().find(|var| {
+            crate::config::cartridge_activation_var_names()
+                .iter()
+                .any(|name| name == &var.name)
+        }) else {
             continue;
         };
         let Some(value) = &var.value_preview else {
@@ -2907,7 +2929,7 @@ fn route_mount_metadata(
         return (mounted, status.to_string(), None);
     }
 
-    if file_path.starts_with("example-api/example/routers/") {
+    if path_under_platform_routers(file_path) {
         return (false, "unmounted".to_string(), None);
     }
 
@@ -2930,7 +2952,11 @@ fn route_mount_metadata(
     (false, "unknown".to_string(), None)
 }
 
-fn expand_included_router_files(root: &Path, registry: &mut ExampleRouterRegistry) {
+fn expand_included_router_files(
+    root: &Path,
+    layout: &crate::config::PlatformLayout,
+    registry: &mut ExampleRouterRegistry,
+) {
     let import_re = Regex::new(
         r#"(?m)^\s*from\s+([A-Za-z0-9_\.]+|\.+[A-Za-z0-9_\.]*)\s+import\s+router(?:\s+as\s+([A-Za-z_][A-Za-z0-9_]*))?"#,
     )
@@ -2959,7 +2985,7 @@ fn expand_included_router_files(root: &Path, registry: &mut ExampleRouterRegistr
                 .map(|m| m.as_str())
                 .unwrap_or("router")
                 .to_string();
-            if let Some(imported_path) = router_module_to_file(module_name) {
+            if let Some(imported_path) = router_module_to_file(layout, module_name) {
                 alias_to_path.insert(alias, imported_path);
             }
         }
@@ -2981,8 +3007,11 @@ fn expand_included_router_files(root: &Path, registry: &mut ExampleRouterRegistr
 }
 
 fn load_core_auth_policy(index: &RepoIndex) -> CoreAuthPolicy {
-    let main_path = Path::new(&index.root).join("example-api/example/main.py");
-    let Ok(source) = fs::read_to_string(main_path) else {
+    let Some(source) = platform_layouts().iter().find_map(|layout| {
+        let main_path =
+            Path::new(&index.root).join(format!("{}/{}/main.py", layout.api_root, layout.package));
+        fs::read_to_string(main_path).ok()
+    }) else {
         return CoreAuthPolicy::default();
     };
 
@@ -3068,7 +3097,7 @@ fn route_auth_metadata(
         );
     }
 
-    if file_path.starts_with("example-api/example/routers/") {
+    if path_under_platform_routers(file_path) {
         if let Some(suffix) = core_auth_policy.exempt_suffixes.iter().find(|suffix| {
             route_path
                 .trim_end_matches('/')
@@ -3167,12 +3196,14 @@ fn append_public_path(public_paths: &mut Vec<String>, path: String) {
 }
 
 fn loader_declared_cartridge_public_paths(index: &RepoIndex, cartridge: &str) -> Vec<String> {
-    let loader_path = Path::new(&index.root)
-        .join("example-api")
-        .join("example")
-        .join("cartridges")
-        .join("__init__.py");
-    let Ok(source) = fs::read_to_string(loader_path) else {
+    let Some(source) = platform_layouts().iter().find_map(|layout| {
+        let loader_path = Path::new(&index.root)
+            .join(&layout.api_root)
+            .join(&layout.package)
+            .join("cartridges")
+            .join("__init__.py");
+        fs::read_to_string(loader_path).ok()
+    }) else {
         return Vec::new();
     };
     let string_re =
@@ -3201,11 +3232,14 @@ fn loader_declared_cartridge_public_paths(index: &RepoIndex, cartridge: &str) ->
         .unwrap_or_default()
 }
 
-fn router_module_to_file(module_name: &str) -> Option<String> {
+fn router_module_to_file(
+    layout: &crate::config::PlatformLayout,
+    module_name: &str,
+) -> Option<String> {
     if module_name.starts_with('.') {
         let level = module_name.chars().take_while(|c| *c == '.').count();
         let rel = module_name[level..].trim_matches('.');
-        let mut package_parts = vec!["example".to_string(), "routers".to_string()];
+        let mut package_parts = vec![layout.package.clone(), "routers".to_string()];
         let parent_hops = level.saturating_sub(1).min(package_parts.len());
         package_parts.truncate(package_parts.len().saturating_sub(parent_hops));
         if !rel.is_empty() {
@@ -3218,11 +3252,16 @@ fn router_module_to_file(module_name: &str) -> Option<String> {
         if package_parts.is_empty() {
             return None;
         }
-        return Some(format!("example-api/{}.py", package_parts.join("/")));
+        return Some(format!(
+            "{}/{}.py",
+            layout.api_root,
+            package_parts.join("/")
+        ));
     }
-    if let Some(rel) = module_name.strip_prefix("example.") {
+    let prefix = format!("{}.", layout.package);
+    if let Some(rel) = module_name.strip_prefix(&prefix) {
         let rel = rel.replace('.', "/");
-        return Some(format!("example-api/example/{}.py", rel));
+        return Some(format!("{}/{}/{}.py", layout.api_root, layout.package, rel));
     }
     None
 }

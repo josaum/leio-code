@@ -6,6 +6,11 @@
 //!   the doctor registry and capability surface.
 //! - `rdf.namespace` → `LEIO_CODE_RDF_NAMESPACE` (defaults to
 //!   [`DEFAULT_CODE_RDF_NAMESPACE`]). Used by code-graph N-Quads export.
+//! - Platform layout overrides ([`PLATFORM_API_ROOT_ENV`],
+//!   [`PLATFORM_PACKAGE_ENV`], [`PLATFORM_OPS_ROOT_ENV`],
+//!   [`PLATFORM_CONTRACTS_ROOT_ENV`], [`PLATFORM_CARTRIDGE_ENV`]) add one
+//!   private checkout beside the neutral defaults. Unset means only those
+//!   defaults are recognized.
 //! - `embed.url` / `embed.model` → `LEIO_CODE_EMBED_URL` /
 //!   `LEIO_CODE_EMBED_MODEL` (optional BGE-M3 encoder). Direct TEI URLs end in
 //!   `/embed`; LiteLLM/OpenAI-compatible bases receive `/v1/embeddings`.
@@ -21,12 +26,12 @@ use serde::Deserialize;
 pub const PROFILE_GENERIC: &str = "generic";
 pub const PROFILE_LEIO_CODE: &str = "leio-code";
 pub const PROFILE_EXAMPLE: &str = "example";
-pub const PROFILE_MYCELIA: &str = "mycelia";
 /// Published RDF vocabulary prefix for code-graph terms.
 ///
-/// Chosen as a stable, already-exported Example IRI so existing N-Quads and
-/// SPARQL keep resolving. Changing the default would rewrite every historical
-/// `graph.nq`. Overrides must still end in `#` or `/` after normalization.
+/// Stable published IRI so existing N-Quads and SPARQL keep resolving when
+/// this default is left alone. Changing it rewrites newly exported graphs.
+/// Set [`CODE_RDF_NAMESPACE_ENV`] to keep a previously exported vocabulary host.
+/// Overrides must still end in `#` or `/` after normalization.
 pub const DEFAULT_CODE_RDF_NAMESPACE: &str = "https://example.local/leio/code#";
 /// Env var that overrides [`DEFAULT_CODE_RDF_NAMESPACE`] / `[rdf] namespace`.
 pub const CODE_RDF_NAMESPACE_ENV: &str = "LEIO_CODE_RDF_NAMESPACE";
@@ -36,6 +41,35 @@ pub const EMBED_URL_ENV: &str = "LEIO_CODE_EMBED_URL";
 pub const EMBED_MODEL_ENV: &str = "LEIO_CODE_EMBED_MODEL";
 /// Workspace-standard dense model. Must stay 1024-d BGE-M3.
 pub const DEFAULT_EMBED_MODEL: &str = "BAAI/bge-m3";
+
+/// Neutral API directory recognized for route mounting and Python modules.
+///
+/// Not a real product tree. [`PLATFORM_API_ROOT_ENV`] adds another root when
+/// a checkout uses a different directory name.
+pub const DEFAULT_PLATFORM_API_ROOT: &str = "example-api";
+/// Neutral Python package under [`DEFAULT_PLATFORM_API_ROOT`].
+pub const DEFAULT_PLATFORM_PACKAGE: &str = "example";
+/// Neutral frontend app directory for import roots and topic tagging.
+pub const DEFAULT_PLATFORM_OPS_ROOT: &str = "example-ops";
+/// Neutral package root for `@contracts/*` import fallbacks.
+pub const DEFAULT_PLATFORM_CONTRACTS_ROOT: &str = "packages/example-ops-contracts";
+/// Neutral cartridge-activation variable read from the process and indexed profiles.
+pub const DEFAULT_CARTRIDGE_ACTIVATION_VAR: &str = "EXAMPLE_ACTIVE_CARTRIDGES";
+/// Extra API directory beside [`DEFAULT_PLATFORM_API_ROOT`].
+pub const PLATFORM_API_ROOT_ENV: &str = "LEIO_CODE_PLATFORM_API_ROOT";
+/// Extra Python package name beside [`DEFAULT_PLATFORM_PACKAGE`].
+pub const PLATFORM_PACKAGE_ENV: &str = "LEIO_CODE_PLATFORM_PACKAGE";
+/// Extra ops-app directory beside [`DEFAULT_PLATFORM_OPS_ROOT`].
+pub const PLATFORM_OPS_ROOT_ENV: &str = "LEIO_CODE_PLATFORM_OPS_ROOT";
+/// Extra contracts package root beside [`DEFAULT_PLATFORM_CONTRACTS_ROOT`].
+pub const PLATFORM_CONTRACTS_ROOT_ENV: &str = "LEIO_CODE_PLATFORM_CONTRACTS_ROOT";
+/// Extra cartridge-activation variable name beside [`DEFAULT_CARTRIDGE_ACTIVATION_VAR`].
+///
+/// The value is the variable's name, not its contents. Indexed profile files
+/// and the process environment are both scanned for that name.
+pub const PLATFORM_CARTRIDGE_ENV: &str = "LEIO_CODE_PLATFORM_CARTRIDGE_ENV";
+/// Absolute prefix for machine-local markdown links. Read by `scripts/check_doc_links.py`.
+pub const LINK_PREFIX_ENV: &str = "LEIO_CODE_LINK_PREFIX";
 
 /// Whether live-infrastructure probes (Supabase reachability) should
 /// self-skip instead of emitting warnings.
@@ -199,7 +233,7 @@ pub struct OrphanFilesConfig {
 pub struct EmbedConfig {
     /// Direct TEI `/embed` or LiteLLM/OpenAI-compatible base. Env [`EMBED_URL_ENV`] wins.
     pub url: Option<String>,
-    /// Model id posted to the encoder. Defaults to [`DEFAULT_EMBED_MODEL`].
+    /// Model id posted to `/v1/embeddings`. Defaults to [`DEFAULT_EMBED_MODEL`].
     pub model: Option<String>,
 }
 
@@ -210,7 +244,7 @@ pub fn load_repo_config(root: &Path) -> Option<LeioConfig> {
 }
 
 pub fn repo_profile(root: &Path) -> String {
-    let resolved = std::env::var("LEIO_CODE_WORKSPACE_PROFILE")
+    std::env::var("LEIO_CODE_WORKSPACE_PROFILE")
         .ok()
         .filter(|value| !value.trim().is_empty())
         .or_else(|| {
@@ -220,13 +254,7 @@ pub fn repo_profile(root: &Path) -> String {
         })
         .unwrap_or_else(|| PROFILE_GENERIC.to_string())
         .trim()
-        .to_ascii_lowercase();
-
-    if resolved == PROFILE_MYCELIA {
-        PROFILE_EXAMPLE.to_string()
-    } else {
-        resolved
-    }
+        .to_ascii_lowercase()
 }
 
 /// Env-only embed URL for the **query** path.
@@ -245,7 +273,7 @@ pub fn embed_query_url() -> Option<String> {
         .and_then(|raw| normalize_http_base(&raw))
 }
 
-/// Resolve the remote embedding URL for **ingest/export**.
+/// Resolve the remote embedding base URL for **ingest/export**.
 ///
 /// Precedence: [`EMBED_URL_ENV`], then `EMBEDDING_API_URL`, then `[embed] url`.
 /// Empty values are treated as unset. Scheme is added when missing.
@@ -345,14 +373,176 @@ pub fn repo_namespace(root: &Path) -> String {
         })
 }
 
+/// One optional platform tree: API package, ops app, and contracts package.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlatformLayout {
+    pub api_root: String,
+    pub package: String,
+    pub ops_root: String,
+    pub contracts_root: String,
+}
+
+fn nonempty_env(name: &str) -> Option<String> {
+    std::env::var(name)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn trimmed_override(value: Option<&str>, default: &str) -> String {
+    value
+        .map(str::trim)
+        .filter(|item| !item.is_empty())
+        .unwrap_or(default)
+        .trim_matches('/')
+        .to_string()
+}
+
+/// Neutral layout, plus one extra layout when any override is set.
+///
+/// The neutral layout stays first so fixtures that use the published directory
+/// names still resolve when an operator has also configured a private checkout.
+pub fn platform_layouts_from(
+    api_root: Option<&str>,
+    package: Option<&str>,
+    ops_root: Option<&str>,
+    contracts_root: Option<&str>,
+) -> Vec<PlatformLayout> {
+    let default = PlatformLayout {
+        api_root: DEFAULT_PLATFORM_API_ROOT.to_string(),
+        package: DEFAULT_PLATFORM_PACKAGE.to_string(),
+        ops_root: DEFAULT_PLATFORM_OPS_ROOT.to_string(),
+        contracts_root: DEFAULT_PLATFORM_CONTRACTS_ROOT.to_string(),
+    };
+    let mut layouts = vec![default.clone()];
+    let any_override = [api_root, package, ops_root, contracts_root]
+        .into_iter()
+        .any(|value| value.is_some_and(|item| !item.trim().is_empty()));
+    if !any_override {
+        return layouts;
+    }
+    let extra = PlatformLayout {
+        api_root: trimmed_override(api_root, DEFAULT_PLATFORM_API_ROOT),
+        package: trimmed_override(package, DEFAULT_PLATFORM_PACKAGE),
+        ops_root: trimmed_override(ops_root, DEFAULT_PLATFORM_OPS_ROOT),
+        contracts_root: trimmed_override(contracts_root, DEFAULT_PLATFORM_CONTRACTS_ROOT),
+    };
+    if extra != default
+        && !extra.api_root.is_empty()
+        && !extra.package.is_empty()
+        && !extra.ops_root.is_empty()
+        && !extra.contracts_root.is_empty()
+    {
+        layouts.push(extra);
+    }
+    layouts
+}
+
+/// [`platform_layouts_from`] using the process environment.
+pub fn platform_layouts() -> Vec<PlatformLayout> {
+    platform_layouts_from(
+        nonempty_env(PLATFORM_API_ROOT_ENV).as_deref(),
+        nonempty_env(PLATFORM_PACKAGE_ENV).as_deref(),
+        nonempty_env(PLATFORM_OPS_ROOT_ENV).as_deref(),
+        nonempty_env(PLATFORM_CONTRACTS_ROOT_ENV).as_deref(),
+    )
+}
+
+/// Cartridge-activation variable names, default first, then the env override.
+pub fn cartridge_activation_var_names_from(extra: Option<&str>) -> Vec<String> {
+    let mut names = vec![DEFAULT_CARTRIDGE_ACTIVATION_VAR.to_string()];
+    if let Some(extra) = extra.map(str::trim).filter(|value| !value.is_empty())
+        && !names.iter().any(|name| name == extra)
+    {
+        names.push(extra.to_string());
+    }
+    names
+}
+
+/// [`cartridge_activation_var_names_from`] using [`PLATFORM_CARTRIDGE_ENV`].
+pub fn cartridge_activation_var_names() -> Vec<String> {
+    cartridge_activation_var_names_from(nonempty_env(PLATFORM_CARTRIDGE_ENV).as_deref())
+}
+
+/// `path` equals `root` or lives under `root/`.
+pub fn path_has_platform_prefix(path: &str, root: &str) -> bool {
+    !root.is_empty() && (path == root || path.starts_with(&format!("{root}/")))
+}
+
+/// Whether indexed text names the ops surface, including a configured ops directory.
+pub fn text_mentions_ops_surface(value: &str) -> bool {
+    let value = value.to_ascii_lowercase();
+    if value.contains("autopilot") || value.contains("ops-console") {
+        return true;
+    }
+    platform_layouts().iter().any(|layout| {
+        let ops = layout.ops_root.to_ascii_lowercase();
+        !ops.is_empty() && value.contains(&ops)
+    })
+}
+
+/// Parent of a code or knowledge namespace (`…/leio/code#` → `…/leio/`).
+pub fn vocabulary_root(namespace: &str) -> String {
+    let trimmed = namespace.trim().trim_end_matches(['#', '/']);
+    match trimmed.rfind('/') {
+        Some(idx) if idx > 0 => format!("{}/", &trimmed[..idx]),
+        _ => String::new(),
+    }
+}
+
+/// Published vocabulary prefix, plus the prefix implied by an env namespace.
+pub fn leio_iri_prefixes_from(env_namespace: Option<&str>) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut push = |namespace: &str| {
+        let prefix = vocabulary_root(namespace);
+        if !prefix.is_empty() && !out.iter().any(|item| item == &prefix) {
+            out.push(prefix);
+        }
+    };
+    push(DEFAULT_CODE_RDF_NAMESPACE);
+    if let Some(raw) = env_namespace
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        push(&resolve_code_namespace(Some(raw)));
+    }
+    out
+}
+
+/// [`leio_iri_prefixes_from`] using [`CODE_RDF_NAMESPACE_ENV`].
+pub fn leio_iri_prefixes() -> Vec<String> {
+    leio_iri_prefixes_from(nonempty_env(CODE_RDF_NAMESPACE_ENV).as_deref())
+}
+
+/// True when `iri` is under a published or env-selected vocabulary prefix.
+pub fn iri_is_local_vocabulary(iri: &str) -> bool {
+    leio_iri_prefixes()
+        .iter()
+        .any(|prefix| iri.starts_with(prefix.as_str()))
+}
+
+/// Wiki section IRIs. An env namespace wins so emitted IRIs stay on that host.
+pub fn wiki_iri_prefix_from(env_namespace: Option<&str>) -> String {
+    let prefixes = leio_iri_prefixes_from(env_namespace);
+    let root = prefixes
+        .last()
+        .cloned()
+        .unwrap_or_else(|| vocabulary_root(DEFAULT_CODE_RDF_NAMESPACE));
+    format!("{root}wiki/")
+}
+
+/// [`wiki_iri_prefix_from`] using [`CODE_RDF_NAMESPACE_ENV`].
+pub fn wiki_iri_prefix() -> String {
+    wiki_iri_prefix_from(nonempty_env(CODE_RDF_NAMESPACE_ENV).as_deref())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::path::PathBuf;
 
     /// Env mutation in these tests is unsound under parallel test threads, so
-    /// every workspace-profile test serializes on this lock and restores the
-    /// prior value.
+    /// workspace-profile tests serialize on this lock and restore the prior value.
     static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     fn restore_workspace_profile(prior: Option<String>) {
@@ -377,14 +567,70 @@ mod tests {
     }
 
     #[test]
-    fn repo_profile_aliases_mycelia_to_example() {
+    fn repo_profile_returns_configured_name_unchanged() {
         let _guard = ENV_LOCK.lock().unwrap();
         let prior = std::env::var("LEIO_CODE_WORKSPACE_PROFILE").ok();
         // SAFETY: serialized test-only process environment mutation.
-        unsafe { std::env::set_var("LEIO_CODE_WORKSPACE_PROFILE", "mycelia") };
-        let root = PathBuf::from("/tmp/arbitrary-repo");
-        assert_eq!(repo_profile(&root), PROFILE_EXAMPLE);
+        unsafe { std::env::remove_var("LEIO_CODE_WORKSPACE_PROFILE") };
+        let dir = tempfile::tempdir().expect("tempdir");
+        let cfg = dir.path().join(".leio-code");
+        std::fs::create_dir_all(&cfg).expect("mkdir");
+        std::fs::write(cfg.join("config.toml"), "workspace_profile = \"example\"\n")
+            .expect("write");
+        assert_eq!(repo_profile(dir.path()), PROFILE_EXAMPLE);
+        std::fs::write(
+            cfg.join("config.toml"),
+            "workspace_profile = \"custom-pack\"\n",
+        )
+        .expect("write");
+        assert_eq!(repo_profile(dir.path()), "custom-pack");
         restore_workspace_profile(prior);
+    }
+
+    #[test]
+    fn platform_layouts_keep_neutral_default_and_optional_override() {
+        let layouts = platform_layouts_from(None, None, None, None);
+        assert_eq!(layouts.len(), 1);
+        assert_eq!(layouts[0].api_root, DEFAULT_PLATFORM_API_ROOT);
+        let layouts = platform_layouts_from(Some("platform-api"), Some("platform_pkg"), None, None);
+        assert_eq!(layouts.len(), 2);
+        assert_eq!(layouts[1].api_root, "platform-api");
+        assert_eq!(layouts[1].package, "platform_pkg");
+        assert_eq!(layouts[1].ops_root, DEFAULT_PLATFORM_OPS_ROOT);
+    }
+
+    #[test]
+    fn vocabulary_prefix_follows_namespace_override() {
+        let prefixes = leio_iri_prefixes_from(Some("https://vocabulary.example/code"));
+        assert!(
+            prefixes
+                .iter()
+                .any(|prefix| prefix == "https://example.local/leio/")
+        );
+        assert!(
+            prefixes
+                .iter()
+                .any(|prefix| prefix == "https://vocabulary.example/")
+        );
+        assert_eq!(
+            wiki_iri_prefix_from(None),
+            "https://example.local/leio/wiki/"
+        );
+        assert_eq!(
+            wiki_iri_prefix_from(Some("https://vocabulary.example/code#")),
+            "https://vocabulary.example/wiki/"
+        );
+    }
+
+    #[test]
+    fn cartridge_activation_names_keep_the_neutral_default() {
+        let names = cartridge_activation_var_names_from(Some("PLATFORM_CARTRIDGES"));
+        assert_eq!(names[0], DEFAULT_CARTRIDGE_ACTIVATION_VAR);
+        assert_eq!(names[1], "PLATFORM_CARTRIDGES");
+        assert_eq!(
+            cartridge_activation_var_names_from(Some(DEFAULT_CARTRIDGE_ACTIVATION_VAR)),
+            vec![DEFAULT_CARTRIDGE_ACTIVATION_VAR.to_string()]
+        );
     }
 
     #[test]

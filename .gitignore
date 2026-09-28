@@ -40,8 +40,9 @@ metadata.json
 
 # python tooling + model-sweep outputs
 .coverage
+/packaging/dist/
 benchmarks/model-sweep/
-benchmarks/reference-sweep/
+benchmarks/governed-sweep/
 benchmarks/experiments/
 
 # Local LEIO trio snapshots and reports (generated verification evidence).
