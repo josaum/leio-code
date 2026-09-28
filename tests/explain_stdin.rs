@@ -34,6 +34,17 @@ fn write(root: &Path, rel: &str, body: &str) {
     fs::write(&path, body).expect("write file");
 }
 
+fn assert_embedded_context(document: &Value) {
+    let context = document["@context"]
+        .as_object()
+        .expect("JSON-LD output must embed its context document");
+    assert_eq!(context["@version"], 1.1);
+    assert_eq!(
+        context["@vocab"],
+        "https://ontology.getjai.com/leio-code/v1#"
+    );
+}
+
 /// Stage a synthetic repo with a `.env` declaring FOO/BAR/BAZ and a Rust
 /// source file that references them. This gives `explain env-var <NAME>`
 /// something to chew on for each name.
@@ -234,7 +245,7 @@ fn jsonld_format_produces_array_of_jsonld_envelopes() {
     assert_eq!(arr.len(), 2);
     // Each rendered envelope should carry JSON-LD framing.
     for env in arr {
-        assert_eq!(env["@context"], "https://ontology.getjai.com/leio-code/v1#");
+        assert_embedded_context(env);
         assert_eq!(env["@type"], "ExplainResult");
         assert!(
             env["@id"]
@@ -320,10 +331,7 @@ fn full_pipeline_find_then_explain_stdin() {
     let find_stdout = String::from_utf8_lossy(&find_out.stdout).to_string();
     // Sanity-check the find output is a JSON-LD envelope.
     let find_doc: Value = serde_json::from_str(&find_stdout).expect("find stdout is JSON");
-    assert_eq!(
-        find_doc["@context"],
-        "https://ontology.getjai.com/leio-code/v1#"
-    );
+    assert_embedded_context(&find_doc);
     let entity_count = find_doc["entities"].as_array().expect("entities").len();
     assert!(
         entity_count >= 2,

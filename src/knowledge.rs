@@ -1813,16 +1813,16 @@ impl ArticleLike for Article<'_> {
 mod tests {
     use super::*;
     use crate::arrow_ipc::read_ipc_stream_path;
-    use std::time::SystemTime;
+    use std::collections::HashSet;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static NEXT_TEMP_REPO: AtomicU64 = AtomicU64::new(0);
 
     fn temp_repo() -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
             "leio-kb-{}-{}",
             std::process::id(),
-            SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .map(|d| d.as_nanos())
-                .unwrap_or(0)
+            NEXT_TEMP_REPO.fetch_add(1, Ordering::Relaxed)
         ));
         fs::create_dir_all(dir.join("docs")).unwrap();
         fs::create_dir_all(dir.join("fixtures")).unwrap();
@@ -1857,6 +1857,18 @@ mod tests {
         )
         .unwrap();
         dir
+    }
+
+    #[test]
+    fn temp_repositories_are_unique_within_the_test_process() {
+        let repos = (0..16).map(|_| temp_repo()).collect::<Vec<_>>();
+        let unique = repos.iter().collect::<HashSet<_>>();
+
+        assert_eq!(unique.len(), repos.len());
+
+        for repo in repos {
+            let _ = fs::remove_dir_all(repo);
+        }
     }
 
     fn first_title(envelope: &QueryEnvelope) -> Option<&str> {

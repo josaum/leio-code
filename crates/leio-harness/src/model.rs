@@ -159,3 +159,44 @@ fn default_grace_ms() -> u64 {
 fn default_output_bytes() -> usize {
     4 * 1024 * 1024
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn run_spec_deserialization_applies_supervisor_defaults() {
+        let spec: RunSpec = serde_json::from_value(json!({
+            "runId": "run-defaults",
+            "argv": ["/usr/bin/true"],
+            "cwd": "/tmp",
+            "outputDir": "/tmp/run-defaults",
+            "timeoutMs": 1_000
+        }))
+        .expect("deserialize run spec");
+
+        assert_eq!(spec.kill_grace_ms, 2_000);
+        assert_eq!(spec.max_output_bytes, 4 * 1024 * 1024);
+        assert!(spec.env_allowlist.is_empty());
+        assert!(spec.env.is_empty());
+    }
+
+    #[test]
+    fn agent_session_deserialization_applies_protocol_defaults() {
+        let spec: AgentSessionSpec = serde_json::from_value(json!({
+            "sessionId": "session-defaults",
+            "cwd": "/tmp",
+            "outputDir": "/tmp/session-defaults",
+            "agentArgv": ["agent", "stdio"]
+        }))
+        .expect("deserialize agent session spec");
+
+        assert_eq!(spec.idle_timeout_ms, 600_000);
+        assert_eq!(spec.max_frame_bytes, 16 * 1024 * 1024);
+        assert!(spec.preflight_leio);
+        assert!(spec.preflight_cmd.is_empty());
+        assert!(spec.env_allowlist.is_empty());
+        assert!(spec.env.is_empty());
+    }
+}

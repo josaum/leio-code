@@ -8,7 +8,7 @@ use std::fs;
 use std::path::Path;
 
 use leio_code::indexer::{build_or_update_index, default_index_path};
-use leio_code::jsonld::{CONTEXT, apply_where_filter, render_envelope_as_jsonld};
+use leio_code::jsonld::{apply_where_filter, embedded_context, render_envelope_as_jsonld};
 use leio_code::query::{explain_env_var, find_env_vars};
 use leio_code::value_resolution::ValueResolutionOpts;
 use tempfile::TempDir;
@@ -32,7 +32,7 @@ fn find_envvar_format_jsonld_has_context_and_type() {
     let envelope = find_env_vars(&index, "FOO");
 
     let doc = render_envelope_as_jsonld(&envelope);
-    assert_eq!(doc.get("@context").and_then(|v| v.as_str()), Some(CONTEXT));
+    assert_eq!(doc["@context"], embedded_context());
     assert_eq!(
         doc.get("@type").and_then(|v| v.as_str()),
         Some("FindResult")
@@ -89,7 +89,7 @@ fn explain_envvar_format_jsonld_has_context() {
     let envelope = explain_env_var(&index, "FOO", ValueResolutionOpts::default());
 
     let doc = render_envelope_as_jsonld(&envelope);
-    assert_eq!(doc.get("@context").and_then(|v| v.as_str()), Some(CONTEXT));
+    assert_eq!(doc["@context"], embedded_context());
     assert_eq!(
         doc.get("@type").and_then(|v| v.as_str()),
         Some("ExplainResult")
@@ -114,10 +114,7 @@ fn jsonld_output_roundtrips_through_jq_subset() {
         Some("FOO")
     );
     // Envelope-level metadata survives filtering.
-    assert_eq!(
-        filtered.get("@context").and_then(|v| v.as_str()),
-        Some(CONTEXT)
-    );
+    assert_eq!(filtered["@context"], embedded_context());
 }
 
 #[test]

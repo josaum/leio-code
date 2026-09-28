@@ -1165,4 +1165,35 @@ mod tests {
 
         assert_eq!(selected.seq, 2);
     }
+
+    #[test]
+    fn ranked_parent_returns_none_without_matching_dimensions() {
+        let rows = vec![row(1, vec![1.0, 0.0, 0.0])];
+
+        assert!(select_ranked_parent(&rows, &[1.0, 0.0], 1.0).is_none());
+    }
+
+    #[test]
+    fn json_vector_accepts_numbers_and_rejects_invalid_shapes() {
+        assert_eq!(
+            json_vector(&serde_json::json!({"vector": [1, 2.5, -3]})).unwrap(),
+            vec![1.0, 2.5, -3.0]
+        );
+        assert!(json_vector(&serde_json::json!({"missing": []})).is_err());
+        assert!(json_vector(&serde_json::json!({"vector": [1, "two"]})).is_err());
+    }
+
+    #[test]
+    fn mean_absolute_cosine_handles_empty_and_nonempty_populations() {
+        assert_eq!(mean_abs_cosine(&[1.0, 0.0], &[]), 0.0);
+
+        let rows = vec![
+            row(1, vec![1.0, 0.0]),
+            row(2, vec![0.0, 1.0]),
+            row(3, vec![-1.0, 0.0]),
+        ];
+        let similarity = mean_abs_cosine(&[1.0, 0.0], &rows);
+
+        assert!((similarity - (2.0 / 3.0)).abs() < f32::EPSILON);
+    }
 }

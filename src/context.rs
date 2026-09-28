@@ -787,7 +787,9 @@ fn finalize_file_ranking(
                 match tier {
                     3 => "graph proximity: import edges + symbol caller/callee chain to top seeds",
                     2 => "graph proximity to top-ranked seeds (import edge in code-graph cache)",
-                    _ => "graph proximity via matched symbols (callers/callees in code-graph cache)",
+                    _ => {
+                        "graph proximity via matched symbols (callers/callees in code-graph cache)"
+                    }
                 }
                 .to_string(),
             );
@@ -1307,10 +1309,17 @@ fn doctor_suggestions(available: &[String], task_tokens: &[String]) -> Vec<Value
     // Names come from the selected repository's catalog. The engine does not
     // own mappings from product symptoms to product-specific doctor policy.
     let tokens: HashSet<_> = task_tokens.iter().map(String::as_str).collect();
-    let mut suggestions: Vec<Value> = available.iter().filter(|name| name.split('-').any(|part| tokens.contains(part))).take(3).map(|name|json!({
-        "tool":"leio_code_doctor", "kind":name,
-        "reason":"task matches a doctor advertised by the selected repository"
-    })).collect();
+    let mut suggestions: Vec<Value> = available
+        .iter()
+        .filter(|name| name.split('-').any(|part| tokens.contains(part)))
+        .take(3)
+        .map(|name| {
+            json!({
+                "tool":"leio_code_doctor", "kind":name,
+                "reason":"task matches a doctor advertised by the selected repository"
+            })
+        })
+        .collect();
     if !available.is_empty() && suggestions.is_empty() {
         suggestions.push(json!({
             "tool": "leio_code_doctor",
@@ -2476,7 +2485,9 @@ mod tests {
         let intents = classify_intents("marker", &tokens);
         let needles = extract_identifier_needles("marker");
         let rank = |cache: Option<&CodeGraphQueryCache>| {
-            rank_files(&index, &tokens, "marker", 10, &idf, intents, &needles, cache)
+            rank_files(
+                &index, &tokens, "marker", 10, &idf, intents, &needles, cache,
+            )
         };
         let plain = rank(None);
         let with_graph = rank(Some(&cache));

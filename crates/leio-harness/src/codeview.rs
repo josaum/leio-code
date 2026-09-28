@@ -133,3 +133,51 @@ fn normalize_f32(vector: &mut [f32]) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn code_view_check_reports_missing_index_as_stale() {
+        let repo = TempDir::new().expect("temp repo");
+
+        let status = check_code_view(repo.path());
+
+        assert!(!status.fresh);
+        assert_eq!(status.repo, repo.path().display().to_string());
+        assert_eq!(status.file_count, None);
+        assert_eq!(status.indexed_at, None);
+        assert!(status.reason.contains("missing or stale"));
+    }
+
+    #[test]
+    fn code_view_check_accepts_a_fresh_nonempty_index() {
+        let repo = TempDir::new().expect("temp repo");
+        fs::write(repo.path().join("sample.rs"), "pub fn indexed() {}\n").expect("write source");
+        let index_path = default_index_path(repo.path());
+        let index = build_or_update_index(repo.path(), &index_path, true).expect("build index");
+        assert!(!index.files.is_empty());
+
+        let status = check_code_view(repo.path());
+
+        assert!(status.fresh);
+        assert_eq!(status.file_count, Some(index.files.len() as u64));
+        assert!(status.indexed_at.is_some());
+        assert_eq!(status.reason, "index summary matches current index");
+    }
+
+    #[test]
+    fn normalization_leaves_zero_vectors_unchanged() {
+        let mut empty = Vec::<f32>::new();
+        let mut zero = vec![0.0, 0.0, 0.0];
+
+        normalize_f32(&mut empty);
+        normalize_f32(&mut zero);
+
+        assert!(empty.is_empty());
+        assert_eq!(zero, vec![0.0, 0.0, 0.0]);
+    }
+}

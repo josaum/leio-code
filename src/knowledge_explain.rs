@@ -963,7 +963,9 @@ impl PrefixTriage {
                 let pairs = self
                     .suggestions
                     .iter()
-                    .map(|(unknown, known)| format!("{} -> {}", show_prefix(unknown), show_prefix(known)))
+                    .map(|(unknown, known)| {
+                        format!("{} -> {}", show_prefix(unknown), show_prefix(known))
+                    })
                     .collect::<Vec<_>>()
                     .join(", ");
                 format!("did you mean {pairs}?")
@@ -1602,7 +1604,10 @@ SELECT ?s ?hours WHERE { ?s :hoursWeekday ?hours }"#,
         assert_eq!(triage.shadowed, vec!["rdfs".to_string()]);
         let summary = triage.summary().expect("summary");
         assert!(summary.contains("shadows"), "{summary}");
-        assert!(summary.contains("unused prefix declaration owl:"), "{summary}");
+        assert!(
+            summary.contains("unused prefix declaration owl:"),
+            "{summary}"
+        );
     }
 
     #[test]
@@ -1639,10 +1644,7 @@ SELECT ?s ?hours WHERE { ?s :hoursWeekday ?hours }"#,
 
         assert_eq!(envelope.meta.as_ref().unwrap()["grounded"], false);
         assert!(
-            envelope
-                .warnings
-                .iter()
-                .any(|row| row == "unknown-prefix"),
+            envelope.warnings.iter().any(|row| row == "unknown-prefix"),
             "{:?}",
             envelope.warnings
         );
@@ -1657,4 +1659,3 @@ SELECT ?s ?hours WHERE { ?s :hoursWeekday ?hours }"#,
         );
     }
 }
-

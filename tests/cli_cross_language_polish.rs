@@ -253,7 +253,14 @@ fn jsonld_find_binary_emits_context_and_type() {
     let (stdout, _stderr, code) = run_cli(tmp.path(), &["find", "binary", "--format", "jsonld"]);
     assert_eq!(code, 0, "stderr: {_stderr}");
     let env = parse_json(&stdout);
-    assert_eq!(env["@context"], "https://ontology.getjai.com/leio-code/v1#");
+    let context = env["@context"]
+        .as_object()
+        .expect("JSON-LD output must embed its context document");
+    assert_eq!(context["@version"], 1.1);
+    assert_eq!(
+        context["@vocab"],
+        "https://ontology.getjai.com/leio-code/v1#"
+    );
     assert_eq!(env["@type"], "FindResult");
     let entities = env["entities"].as_array().unwrap();
     assert!(!entities.is_empty(), "expected at least one binary");
