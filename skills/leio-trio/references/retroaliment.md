@@ -22,7 +22,7 @@ incomplete" is not.
 | an induced invariant (FCA-mined implication that held and now does not) | a **baseline entry** the `induced-invariants` doctor validates against | leio-code `baselines/induced-invariants.json` (curated by a human; the miner proposes) |
 | LEIO retrieval missing something a task needed (a literal, a dict-dispatch edge, a route id) | a **golden context task** whose `expected_paths_any` names the file LEIO should have ranked | leio-code `benchmarks/context-golden-tasks.json`, re-measured by `leio-bench` |
 | behaviour of the code under change | a **regression test** next to the code, encoding *why* (the test must fail if the business rule changes) | the owning repo |
-| an Reference Provider boundary (asked period beyond `as_of`, a value quoted without status, a demo profile mistaken for prod) | an **assertion in this skill's evals**, and a note in `govern-reference.md` if the rule was missing | `skills/leio-trio/evals/evals.json` |
+| a Reference Provider boundary (asked period beyond `as_of`, a value quoted without status, a demo profile mistaken for prod) | an **assertion in this skill's evals**, and a note in `govern-reference.md` if the rule was missing | `skills/leio-trio/evals/evals.json` |
 | a lane reporting status the runtime did not produce | a **harness doctor** tightening (the family that guards fabricated swarm status) | leio-code `src/doctors/` |
 
 ## 3. File it where it can act

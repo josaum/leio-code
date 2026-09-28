@@ -20,7 +20,7 @@ punishes the inner debug loop and discourages running `doctor` continuously.
 - `leio-code watch` runs as a long-lived process, watches the repo root,
   debounces file events, and updates the DuckDB + oxigraph index in place.
 - A file edit shows up in `find` / `explain` output within 2s of save on a
-  workspace the size of `example-workspace/`.
+  workspace of several thousand files.
 - `--watch` is also accepted by `doctor` so CI-style checks can run on every
   change.
 
@@ -97,7 +97,7 @@ support, not a precondition).
 
 **Problem.** Users want filters ("show targets that use `pacto` but not
 `jaipay`"). Inventing a query DSL inside leio-code duplicates capability the
-broader Example stack already provides via oxigraph + SPARQL and via the
+broader stack already provides via oxigraph + SPARQL and via the
 Crepe/Datalog reasoner in `example-platform`.
 
 **Done when.**

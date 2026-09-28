@@ -33,5 +33,5 @@ transport = "streamable_http"
 #
 # [mcp_servers.leio_code_stdio]
 # command = "node"
-# args = ["/Users/you/projects/example-workspace/leio-code/mcp/index.js"]
+# args = ["/path/to/leio-code/mcp/index.js"]
 # transport = "stdio"

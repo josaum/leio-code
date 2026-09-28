@@ -48,7 +48,7 @@ workspace_profile = "generic"
 # model = "BAAI/bge-m3"
 
 # RDF vocabulary for code-graph exports. Default is the published
-# Example namespace. Env LEIO_CODE_RDF_NAMESPACE wins when set.
+# namespace. Env LEIO_CODE_RDF_NAMESPACE wins when set.
 # [rdf]
 # namespace = "https://example.com/code#"
 

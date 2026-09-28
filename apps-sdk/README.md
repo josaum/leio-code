@@ -197,9 +197,9 @@ The Docker build context is trimmed by [`.dockerignore`](../.dockerignore).
 
 ## GCP Deploy (canonical public Apps SDK)
 
-Canonical public path is the **dedicated GCP VM** `example-leio` at
-`https://leio-code.getjai.com` — **not** Fly, and not example-platform /
-example-vigoros compose. Short runbook: [docs/DEPLOY-GCP.md](../docs/DEPLOY-GCP.md).
+Canonical public path is the **dedicated GCP VM** at
+`https://leio-code.getjai.com` — **not** Fly, and not the platform or
+shared-Keycloak compose stacks. Short runbook: [docs/DEPLOY-GCP.md](../docs/DEPLOY-GCP.md).
 
 ## Fly.io (decommissioned)
 

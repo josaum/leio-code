@@ -179,10 +179,10 @@ These references inform the guidance; they do not validate an authorship finding
 
 ## Reference Provider integration
 
-Reference owns its adapter and validation in `app/reference_demo/conversation_evidence.py`
-and `LeioBridge.conversation`. It accepts local CLI transport only, preserves the
+Reference Provider owns its adapter and validation next to
+`LeioBridge.conversation`. It accepts local CLI transport only, preserves the
 packet/source references and enforces context validity and unsigned status.
-The configured local Reference dispatcher recognizes
+The configured local dispatcher recognizes
 `prepare conversation review <relative file>` and returns the packet without
 putting it in governed claims or logging private excerpts in its event payload.
 Programmatic callers can select multiple sources, an account and target.

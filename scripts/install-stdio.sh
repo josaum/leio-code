@@ -16,10 +16,12 @@ node -e 'if (Number(process.versions.node.split(".")[0]) < 22) { console.error("
 
 # Use the checkout's own target directory, independent of a host override.
 cd "${ROOT}"
-CARGO_TARGET_DIR="${ROOT}/target" cargo build --locked --release -p leio-code >&2
+CARGO_TARGET_DIR="${ROOT}/target" cargo build --locked --release -p leio-code -p leio-harness >&2
 npm ci --prefix "${ROOT}/mcp" --omit=dev --ignore-scripts >&2
 mkdir -p "${PREFIX}/bin"
 install -m 0755 "${ROOT}/target/release/leio-code" "${PREFIX}/bin/leio-code"
+install -m 0755 "${ROOT}/target/release/leio-harness" "${PREFIX}/bin/leio-harness"
+"${PREFIX}/bin/leio-harness" --version >&2
 
 # Exercise the actual wrapper and binary before suggesting host registration.
 LEIO_CODE_BIN="${PREFIX}/bin/leio-code" node "${ROOT}/scripts/verify-stdio.mjs" >&2
@@ -31,10 +33,15 @@ console.log(JSON.stringify({
     'leio-code': {
       command: process.execPath,
       args: [path.join(root, 'mcp/index.js')],
-      env: { LEIO_CODE_BIN: path.join(prefix, 'bin/leio-code') }
+      env: {
+        LEIO_CODE_BIN: path.join(prefix, 'bin/leio-code'),
+        LEIO_HARNESS_BIN: path.join(prefix, 'bin/leio-harness')
+      }
     }
   }
 }, null, 2));
 JS
 echo "Keep this checkout: the MCP entrypoint and installed Node dependencies live here." >&2
-echo "Register only leio-code stdio in your host; reconnect its MCP session after registration." >&2
+echo "Register that command, args, and env in any host that can launch a stdio process. Do not set LEIO_CODE_REPO_ROOT." >&2
+echo "Pass an absolute repo_root on each MCP call, or --repo on each CLI command. One install serves many codebases." >&2
+echo "Reconnect the host MCP session after registration." >&2

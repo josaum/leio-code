@@ -50,13 +50,13 @@ execution currently requires a Unix host.
 
 ## Ownership after migration
 
-- Example operational, deployment, tenant, OCR/layout integration and agent-role
-  contracts: `example-workspace/tools/leio-doctors`.
+- Workspace operational, deployment, tenant, OCR/layout integration and agent-role
+  contracts: the owning repository's `tools/leio-doctors`.
 - Generic parser, shared Arrow pin, documented binding and parser CI contracts:
   sovereign `josaum/parsers-rs/.leio-code/rust-doctors`.
 - LEIO's own product/release checks: `tools/leio-self-doctors` in this repository.
-- Reference remains a separate project. No Reference policy or source is moved into
-  either Example or parsers-rs by this migration.
+- The governed-knowledge project remains separate. No governed-knowledge policy or source is moved into
+  either that workspace or parsers-rs by this migration.
 
 Generic orphan detection takes its production surfaces and dynamic entrypoint
 exceptions from `[doctors.orphan_files]`, never product names compiled into LEIO.

@@ -10,6 +10,21 @@ edition = "2024"
 description = "Agent-first code intelligence for one repository at a time"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/josaum/leio-code"
+readme = "public/README.md"
+keywords = ["leio", "mcp", "code-intelligence", "cli"]
+categories = ["command-line-utilities", "development-tools"]
+
+[package.metadata.binstall]
+pkg-fmt = "bin"
+
+[package.metadata.binstall.overrides.aarch64-apple-darwin]
+pkg-url = "https://github.com/josaum/leio-code/releases/download/leio-code-plugin-v{ version }/leio-code-darwin-arm64"
+
+[package.metadata.binstall.overrides.x86_64-apple-darwin]
+pkg-url = "https://github.com/josaum/leio-code/releases/download/leio-code-plugin-v{ version }/leio-code-darwin-amd64"
+
+[package.metadata.binstall.overrides.x86_64-unknown-linux-gnu]
+pkg-url = "https://github.com/josaum/leio-code/releases/download/leio-code-plugin-v{ version }/leio-code-linux-amd64"
 
 [dependencies]
 # Formal store + anchored-or-refuse SPARQL envelope, split out so runtimes

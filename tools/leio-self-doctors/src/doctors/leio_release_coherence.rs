@@ -347,10 +347,13 @@ mod tests {
                 &format!("[package]\nname = \"{package}\"\nversion = \"{version}\"\n"),
             );
         }
-        for package in ["mcp", "apps-sdk"] {
+        for (package, name) in [
+            ("mcp", "@leio/leio-code-mcp"),
+            ("apps-sdk", "@leio/leio-code-apps-sdk"),
+        ] {
             write(
                 &root.join(format!("{package}/package.json")),
-                &format!("{{\"name\":\"@example/{package}\",\"version\":\"{version}\"}}"),
+                &format!("{{\"name\":\"{name}\",\"version\":\"{version}\"}}"),
             );
             write(
                 &root.join(format!("{package}/package-lock.json")),

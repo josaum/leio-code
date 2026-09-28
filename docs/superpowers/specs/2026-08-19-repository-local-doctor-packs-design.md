@@ -14,7 +14,7 @@ This design introduces safe, declarative doctor packs stored in the repository t
 <repository>/.leio-code/doctors/<doctor-name>.toml
 ```
 
-LEIO remains the execution engine. The target repository owns the policy specification, severity decisions, paths, and tests. The first migration moves `office-parsers-clippy-gate` from compiled LEIO code into `/Users/josaum/projects/example-workspace/.leio-code/doctors/office-parsers-clippy-gate.toml`. It preserves existing severity classifications and introduces one approved tightening that the current Example workspace already satisfies: the strict Clippy fragments must occur inside the `office-parsers-clippy` target, and that target must include `--all-targets`.
+LEIO remains the execution engine. The target repository owns the policy specification, severity decisions, paths, and tests. The first migration moves `office-parsers-clippy-gate` from compiled LEIO code into `$OWNING_REPO/.leio-code/doctors/office-parsers-clippy-gate.toml`. It preserves existing severity classifications and introduces one approved tightening that the current owning repository already satisfies: the strict Clippy fragments must occur inside the `office-parsers-clippy` target, and that target must include `--all-targets`.
 
 Version 1 is intentionally bounded. It performs static, repository-local checks only. It does not execute shell commands, invoke build tools, access the network, expand environment variables, or load native plugins.
 
@@ -268,10 +268,10 @@ The Example migration declares `integrity_severity = "warning"` and `severity = 
 The new repository-owned specification will be:
 
 ```text
-/Users/josaum/projects/example-workspace/.leio-code/doctors/office-parsers-clippy-gate.toml
+$OWNING_REPO/.leio-code/doctors/office-parsers-clippy-gate.toml
 ```
 
-It preserves existing strict warning classifications and intentionally tightens the location and completeness of the Clippy recipe. The current Example target already satisfies the tightened contract. Strict warnings are emitted for:
+It preserves existing strict warning classifications and intentionally tightens the location and completeness of the Clippy recipe. The current owning-repository target already satisfies the tightened contract. Strict warnings are emitted for:
 
 1. Missing `office-parsers-clippy` Make target.
 2. Missing `cargo clippy --workspace` in that target.
@@ -477,7 +477,7 @@ Implementation follows test-driven development.
 
 ### Real-repository verification
 
-The source-built LEIO binary will run against `/Users/josaum/projects/example-workspace` and prove:
+The source-built LEIO binary will run against `$OWNING_REPO` and prove:
 
 - Targeted `office-parsers-clippy-gate` execution.
 - Zero strict warnings on the current repository state.
@@ -503,7 +503,7 @@ branch: main
 Example remains:
 
 ```text
-/Users/josaum/projects/example-workspace
+$OWNING_REPO
 branch: fix/office-parsers-remaining-holes
 ```
 

@@ -48,6 +48,7 @@ import {
   LeioToolOutputSchema,
   LeioWatchToolOutputSchema,
 } from "./output-schemas.js";
+import { pluginRootFromEnv, resolveLeioCheckout } from "./install-root.js";
 import { resolveBinaryPath as resolveTrustedBinary } from "./resolve-binary.js";
 import { confineToRepo } from "./export-paths.js";
 import { buildEvidenceContract } from "./evidence-contract.js";
@@ -65,33 +66,17 @@ import {
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const rawPluginRoot = path.resolve(
-  process.env.CLAUDE_PLUGIN_ROOT ?? path.resolve(__dirname, ".."),
+const rawPluginRoot = pluginRootFromEnv(
+  process.env,
+  path.resolve(__dirname, ".."),
 );
-const pluginRootBasename = path.basename(rawPluginRoot);
 
 function resolveLeioCodeRoot() {
-  const candidates = [];
-
-  candidates.push(rawPluginRoot);
-
-  if (
-    pluginRootBasename === ".claude-plugin" ||
-    pluginRootBasename === ".codex-plugin"
-  ) {
-    candidates.push(path.resolve(rawPluginRoot, ".."));
-    candidates.push(path.resolve(rawPluginRoot, "..", "leio-code"));
-  }
-
-  for (const candidate of candidates) {
+  return resolveLeioCheckout(rawPluginRoot, (candidate) => {
     const cargoToml = path.join(candidate, "Cargo.toml");
     const mcpIndex = path.join(candidate, "mcp", "index.js");
-    if (fs.existsSync(cargoToml) && fs.existsSync(mcpIndex)) {
-      return candidate;
-    }
-  }
-
-  return candidates[0];
+    return fs.existsSync(cargoToml) && fs.existsSync(mcpIndex);
+  });
 }
 
 const leioCodeRoot = resolveLeioCodeRoot();
@@ -304,7 +289,7 @@ const EXPORT_OBJECT_KINDS = [
 const repoRootField = z
   .string()
   .describe(
-    "Absolute repository root to inspect. Defaults to LEIO_CODE_REPO_ROOT or the nearest detected project root.",
+    "Absolute path of the codebase for this call. One installed server can inspect many repositories; pass each root separately. LEIO_CODE_REPO_ROOT is an optional single-repository pin. Leave it unset when you work across codebases.",
   )
   .optional();
 const indexPathField = z

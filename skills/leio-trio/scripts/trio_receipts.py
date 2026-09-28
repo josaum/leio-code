@@ -25,7 +25,7 @@ Checks (each is a finding in the JSON output):
                        must come from a runtime artifact, not from a claim.
 
 Exit codes: 0 = no fabrication signal; 1 = at least one cited LEIO query id did not resolve in the
-given repos, or an Reference id is malformed; 2 = usage error. Everything else is informational so the
+given repos, or a receipt id is malformed; 2 = usage error. Everything else is informational so the
 reader judges — the script counts, it does not grade prose.
 """
 from __future__ import annotations
@@ -42,7 +42,7 @@ QUERY_ID_RE = re.compile(
 RES_RE = re.compile(r"(?<![A-Za-z0-9_])res:[A-Za-z0-9_-]*(?![A-Za-z0-9_-])")
 SNAP_RE = re.compile(r"(?<![A-Za-z0-9_])snap:[A-Za-z0-9_-]*(?![A-Za-z0-9_-])")
 CL_RE = re.compile(r"(?<![A-Za-z0-9_])cl:[A-Za-z0-9_-]*(?![A-Za-z0-9_-])")
-EVENT_RE = re.compile(r"urn:reference:event:[A-Za-z0-9._:-]+")
+EVENT_RE = re.compile(r"urn:[a-z0-9-]+:event:[A-Za-z0-9._:-]+")
 CAPTION_MARKERS = (
     "governed (signed)", "interpretation (unsigned)", "not known", "unsigned host reasoning",
     "future outcome not observed", "[signed", "[unsigned", "(signed)", "(unsigned)",

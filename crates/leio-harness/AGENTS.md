@@ -6,7 +6,7 @@ Crate: `~/projects/leio-code/crates/leio-harness`
 Binary: `leio-harness` (`bus`, `codeview`, `day`, worktrees).  
 Hermes plugin (memory tools): `~/.hermes/plugins/leio-harness`.
 
-This is the team runtime. Do not treat example-workspace as the source.
+This is the team runtime. Do not treat a parent workspace as the source.
 
 ## Ship
 

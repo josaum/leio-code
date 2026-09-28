@@ -2506,22 +2506,32 @@ fn resolve_ts_import_specifier(
     if !alias_candidates.is_empty() {
         return alias_candidates;
     }
-    // Legacy hardcoded fallbacks (Example workspace shapes), kept so repos
-    // whose tsconfigs are missing from the index or unparseable still resolve.
-    let base = if let Some(rest) = specifier.strip_prefix("@jai/trpc/") {
-        Some(format!("packages/trpc/src/{rest}"))
+    // Directory fallbacks for repos whose tsconfigs are missing or unparseable.
+    // The neutral layout is tried first; [`crate::config::PLATFORM_CONTRACTS_ROOT_ENV`]
+    // and [`crate::config::PLATFORM_OPS_ROOT_ENV`] add a private checkout.
+    let mut bases = Vec::new();
+    if let Some(rest) = specifier.strip_prefix("@jai/trpc/") {
+        bases.push(format!("packages/trpc/src/{rest}"));
     } else if let Some(rest) = specifier.strip_prefix("@contracts/generated/") {
-        Some(format!("packages/example-ops-contracts/generated/{rest}"))
+        for layout in crate::config::platform_layouts() {
+            bases.push(format!("{}/generated/{rest}", layout.contracts_root));
+        }
     } else if let Some(rest) = specifier.strip_prefix("@contracts/analytics/") {
-        Some(format!("packages/example-ops-contracts/analytics/{rest}"))
-    } else if let Some(rest) = specifier.strip_prefix("@/") {
-        ts_app_src_root(owner_path).map(|root| format!("{root}/{rest}"))
-    } else {
-        None
-    };
-    base.into_iter()
-        .flat_map(|base| expand_ts_candidate_paths(context, &base))
-        .collect()
+        for layout in crate::config::platform_layouts() {
+            bases.push(format!("{}/analytics/{rest}", layout.contracts_root));
+        }
+    } else if let Some(rest) = specifier.strip_prefix("@/")
+        && let Some(root) = ts_app_src_root(owner_path)
+    {
+        bases.push(format!("{root}/{rest}"));
+    }
+    for base in bases {
+        let expanded = expand_ts_candidate_paths(context, &base);
+        if !expanded.is_empty() {
+            return expanded;
+        }
+    }
+    Vec::new()
 }
 
 /// Resolves a non-relative TS specifier through tsconfig alias tables.
@@ -2595,15 +2605,18 @@ fn resolve_with_alias_table(
     Vec::new()
 }
 
-fn ts_app_src_root(owner_path: &str) -> Option<&'static str> {
-    if owner_path.starts_with("example-ops/") {
-        Some("example-ops/src")
-    } else if owner_path.starts_with("jai-pay/") {
-        Some("jai-pay/src")
+fn ts_app_src_root(owner_path: &str) -> Option<String> {
+    for layout in crate::config::platform_layouts() {
+        if crate::config::path_has_platform_prefix(owner_path, &layout.ops_root) {
+            return Some(format!("{}/src", layout.ops_root));
+        }
+    }
+    if owner_path.starts_with("jai-pay/") {
+        Some("jai-pay/src".to_string())
     } else if owner_path.starts_with("health-audit-console/") {
-        Some("health-audit-console")
+        Some("health-audit-console".to_string())
     } else if owner_path.starts_with("vigoros/app/") {
-        Some("vigoros/app/src")
+        Some("vigoros/app/src".to_string())
     } else {
         None
     }
@@ -2683,13 +2696,21 @@ fn resolve_python_relative_module(owner_path: &str, specifier: &str) -> Option<S
 }
 
 fn resolve_python_absolute_module(specifier: &str) -> Option<String> {
-    for (prefix, root) in [
-        ("example", "example-api/example"),
-        ("cartridges", "cartridges"),
-        ("event_jepa_cube", "jcube/event_jepa_cube"),
-    ] {
+    let mut pairs = Vec::new();
+    for layout in crate::config::platform_layouts() {
+        pairs.push((
+            layout.package.clone(),
+            format!("{}/{}", layout.api_root, layout.package),
+        ));
+    }
+    pairs.push(("cartridges".to_string(), "cartridges".to_string()));
+    pairs.push((
+        "event_jepa_cube".to_string(),
+        "jcube/event_jepa_cube".to_string(),
+    ));
+    for (prefix, root) in pairs {
         if specifier == prefix {
-            return Some(root.to_string());
+            return Some(root);
         }
         if let Some(rest) = specifier.strip_prefix(&format!("{prefix}.")) {
             return Some(format!("{root}/{}", rest.replace('.', "/")));
@@ -3328,15 +3349,15 @@ def caller():
     #[test]
     fn csharp_top_level_program_graph_keeps_framework_calls() {
         let source = r#"
-using F22.Client.Web.F22Dashboard.Components;
+using Demo.Components;
 var builder = WebApplication.CreateBuilder(args);
-builder.Services.AddScoped<HomeContentService>();
+builder.Services.AddScoped<HomeContent>();
 var app = builder.Build();
-app.MapF22BlazorWeb<App>();
+app.MapWeb<App>();
 app.Run();
 "#;
         let parsed = parse_file_graph(
-            "src/Client/Web/F22.Client.Web.F22Dashboard/Program.cs",
+            "src/Program.cs",
             SourceLanguage::CSharp,
             source,
             "repo",
@@ -3344,10 +3365,7 @@ app.Run();
         )
         .expect("top-level C# graph should parse");
 
-        assert_eq!(
-            parsed.imports[0].module_specifiers,
-            vec!["F22.Client.Web.F22Dashboard.Components"]
-        );
+        assert_eq!(parsed.imports[0].module_specifiers, vec!["Demo.Components"]);
         assert!(
             parsed.definitions.is_empty(),
             "top-level statements have no named declarations"
@@ -3358,12 +3376,7 @@ app.Run();
                 .iter()
                 .any(|call| call.callee_name == "CreateBuilder")
         );
-        assert!(
-            parsed
-                .calls
-                .iter()
-                .any(|call| call.callee_name == "MapF22BlazorWeb")
-        );
+        assert!(parsed.calls.iter().any(|call| call.callee_name == "MapWeb"));
         assert!(parsed.calls.iter().any(|call| call.callee_name == "Run"));
         assert!(
             parsed
@@ -3375,7 +3388,7 @@ app.Run();
             !parsed
                 .calls
                 .iter()
-                .any(|call| ["App", "HomeContentService"].contains(&call.callee_name.as_str()))
+                .any(|call| ["App", "HomeContent"].contains(&call.callee_name.as_str()))
         );
     }
 

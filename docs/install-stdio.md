@@ -1,7 +1,22 @@
-# Install LEIO Code with one agent prompt
+# Install LEIO Code
 
-Paste this into a local coding agent with terminal access (for example, Codex
-or Claude Code). A browser-only chat cannot install software on your computer.
+Install the `leio-code` package. These commands download the prebuilt programs:
+
+```bash
+pip install leio-code
+npm install -g leio-code
+cargo binstall leio-code
+```
+
+The Python wheel and the Node package install `leio-code`, `leio-harness`, and
+the stdio server `leio-mcp`. They register that server with harnesses already
+on the machine. Any other MCP host launches `leio-mcp`.
+`cargo binstall leio-code` installs Code. Release binaries cover macOS arm64,
+macOS x64, and Linux x64. `scripts/build_packages.py` builds the wheel and the
+npm package from the GitHub release assets.
+
+The steps below are for changing Leio itself. A browser-only chat cannot
+install software on your computer.
 
 > Install the official LEIO Code local stdio MCP from
 > https://github.com/josaum/leio-code by following docs/install-stdio.md.
@@ -25,22 +40,26 @@ or Claude Code). A browser-only chat cannot install software on your computer.
    preserve local work and never reset it. An intentional update uses a clean
    checkout and a fast-forward-only pull.
 3. Read `scripts/install-stdio.sh` and `scripts/verify-stdio.mjs`. Run
-   `bash scripts/install-stdio.sh` from the checkout. It builds from Cargo.lock,
-   installs the CLI under `~/.local/share/leio-code/bin`, installs locked Node
-   dependencies without lifecycle scripts, and verifies the MCP in a disposable
-   synthetic repository. It prints the host configuration as JSON on stdout.
-   Builds require network access to public dependency registries and can take
-   several minutes. Rust does not need to be compiled on every MCP start.
-4. Register the printed **absolute** Node executable, MCP entrypoint and
-   `LEIO_CODE_BIN` environment variable in the current host. Use the host's
-   supported configuration mechanism, first inspecting an existing entry named
-   `leio-code`. Preserve other servers and avoid duplicate registrations. The
-   installer does not modify host configuration. Codex uses `mcp_servers` in
-   TOML; Claude-compatible JSON uses the printed `mcpServers` shape.
+   `bash scripts/install-stdio.sh` from the checkout. It builds `leio-code` and
+   `leio-harness` from Cargo.lock, installs both under
+   `~/.local/share/leio-code/bin`, installs locked Node dependencies without
+   lifecycle scripts, and verifies the MCP in a disposable synthetic
+   repository. It prints the host configuration as JSON on stdout. Builds
+   require network access to public dependency registries and can take several
+   minutes. Rust does not need to be compiled on every MCP start.
+4. Register the printed **absolute** Node executable, MCP entrypoint,
+   `LEIO_CODE_BIN`, and `LEIO_HARNESS_BIN` in the current host. Copy `command`,
+   `args`, and `env` into that host's stdio server entry. The printed
+   `mcpServers` object is the JSON shape used by hosts that store servers that
+   way; a host with a different file copies the same three fields. Do not set
+   `LEIO_CODE_REPO_ROOT`. Preserve other servers and avoid a second `leio-code`
+   entry. The installer does not modify host configuration.
 5. Reconnect the host's MCP session when required. Then call
    `leio_code_context(task, repo_root)` against the user's chosen absolute
-   repository and inspect provider identity and limitations. Every navigation
-   call uses that root and an explicit session. Use `kind`, not `action`:
+   repository and inspect provider identity and limitations. A different
+   codebase is a different absolute `repo_root`; the same server process can
+   answer for each of them. Harness commands take `--repo` the same way.
+   Every navigation call uses that root and an explicit session. Use `kind`, not `action`:
    inventory the exact file with `graph symbols-in`, copy a returned stable
    symbol URN into `goto`, then use `callees` or `neighbors` → inspect candidates
    → `select(index)` → `here`. A file containing multiple definitions may not

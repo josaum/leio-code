@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 # Fast GCP deploy path: reuse published leio-code CLI binary instead of
 # recompiling Rust. Prefer apps-sdk/Dockerfile (full source build) for
-# release tags; this file is for bringing up example-leio quickly.
+# release tags; this file is for bringing up the GCP host quickly.
 
 FROM jquant/leio-code:latest AS leio-bin
 

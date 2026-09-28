@@ -1799,10 +1799,7 @@ fn topics_for_text(text: &str) -> BTreeSet<String> {
         ("trace", &["trace", "event", "sse", "prov"][..]),
         ("gepa", &["gepa", "bandit", "mcts"][..]),
         ("jcube", &["jcube", "jepa", "twin"][..]),
-        (
-            "autopilot",
-            &["autopilot", "ops-console", "example-ops"][..],
-        ),
+        ("autopilot", &["autopilot", "ops-console"][..]),
         ("hospital", &["health", "hospital", "glosa", "sentinel"][..]),
         (
             "collections",
@@ -1822,6 +1819,9 @@ fn topics_for_text(text: &str) -> BTreeSet<String> {
         if needles.iter().any(|needle| value.contains(needle)) {
             topics.insert(topic.to_string());
         }
+    }
+    if crate::config::text_mentions_ops_surface(&value) {
+        topics.insert("autopilot".to_string());
     }
 
     // Content-derived tokens: tokenize the identifier text (snake_case +
@@ -2013,10 +2013,7 @@ fn families_for_text(text: &str) -> BTreeSet<&'static str> {
     {
         families.insert("document_intelligence");
     }
-    if ["autopilot", "ops-console", "example-ops"]
-        .iter()
-        .any(|needle| value.contains(needle))
-    {
+    if crate::config::text_mentions_ops_surface(&value) {
         families.insert("ops_surface");
     }
     families

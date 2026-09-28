@@ -244,6 +244,6 @@ strategy.
   resolvable — if the algorithm fires often, the graph balloons. Real
   monorepos have 1000s of HTTP calls.
 
-  *Mitigation:* Profile on `example-workspace/`. If the dataflow pass adds
+  *Mitigation:* Profile on a large workspace. If the dataflow pass adds
   >20% to indexing time, gate it behind `--with-dataflow` until a faster
   implementation lands.

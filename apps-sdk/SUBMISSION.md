@@ -44,8 +44,8 @@ Pass `--password '<value>'` to pin a known credential for the submission form.
 **Do not commit reviewer passwords** — paste only into the plugin submission portal.
 
 Legacy dev user: `leio-dev` / `change-me-local-dev` (local smoke only).
-- Default deployment analyzes the server checkout (`example-workspace` on
-  `example-leio`). Reviewers can also pass `repo_url` for allowlisted public
+- Default deployment analyzes the server checkout on the Apps SDK VM.
+  Reviewers can also pass `repo_url` for allowlisted public
   repos.
 
 ## Tool surface (standard deployment)

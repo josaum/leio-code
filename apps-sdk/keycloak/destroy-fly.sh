@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Decommission Fly LEIO surfaces after GCP cutover (auth.getjai.com + example-leio).
+# Decommission Fly LEIO surfaces after GCP cutover (auth.getjai.com).
 # Safe to re-run: ignores missing apps/volumes.
 set -euo pipefail
 

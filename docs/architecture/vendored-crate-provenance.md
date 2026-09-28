@@ -96,4 +96,4 @@ A vendored copy stays pinnable only if local-only behavior lives outside the cra
 
 ## Profiles
 
-Registered for `PROFILE_LEIO_CODE` (where the first-party copies live) and `PROFILE_EXAMPLE`. Deliberately **not** `PROFILE_GENERIC`: an unrelated repository's `cargo vendor` output is third-party and not ours to record.
+Registered for `PROFILE_LEIO_CODE` (where the first-party copies live) and the workspace profile beside it. Deliberately **not** `PROFILE_GENERIC`: an unrelated repository's `cargo vendor` output is third-party and not ours to record.

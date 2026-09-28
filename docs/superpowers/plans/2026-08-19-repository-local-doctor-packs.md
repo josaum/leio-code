@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Work in two existing repositories without switching branches: LEIO at `/Users/josaum/projects/leio-code` on `main`, and Example at `/Users/josaum/projects/example-workspace` on `fix/office-parsers-remaining-holes`.
+- Work in two existing repositories without switching branches: LEIO at `/Users/josaum/projects/leio-code` on `main`, and the owning repository at `$OWNING_REPO` on `fix/office-parsers-remaining-holes`.
 - Do not push, merge, rebase, install, or publish LEIO.
 - Preserve all unrelated dirty and untracked state; every commit stages explicit paths only.
 - Local packs live only at `<repo>/.leio-code/doctors/*.toml` and use schema version `1`.
@@ -779,7 +779,7 @@ git add -- apps-sdk/process-runner.js apps-sdk/process-runner.test.js apps-sdk/s
 git commit -m "feat(apps-sdk): authorize repository-local doctors dynamically"
 ```
 
-### Task 8: Add the Example-owned office-parser policy
+### Task 8: Add the owning-repository office-parser policy
 
 **Files:**
 - Create in Example: `.leio-code/doctors/office-parsers-clippy-gate.toml`
@@ -791,7 +791,7 @@ git commit -m "feat(apps-sdk): authorize repository-local doctors dynamically"
 
 - [ ] **Step 1: Write failing exact-policy fixture tests in LEIO**
 
-Copy the exact intended TOML into a test constant or load the Example file only in the final cross-repository smoke, while synthetic `TempDir` tests materialize Makefile, Cargo workspace/members, verify script, and operations script. Cover all strict failures, target scoping, `--all-targets`, informational optional target/adoption gaps, and strict discovery integrity failures.
+Copy the exact intended TOML into a test constant or load that repository's file only in the final cross-repository smoke, while synthetic `TempDir` tests materialize Makefile, Cargo workspace/members, verify script, and operations script. Cover all strict failures, target scoping, `--all-targets`, informational optional target/adoption gaps, and strict discovery integrity failures.
 
 Define one fixture wrapper in `tests/local_doctor_packs.rs`:
 
@@ -809,7 +809,7 @@ impl OfficePolicyFixture {
 }
 ```
 
-`OfficePolicyFixture::run()` calls discovery with `compiled_names_after_office_migration()`, a test helper that returns the real compiled-name set minus only `office-parsers-clippy-gate`. This simulates the intended Task 9 registry state without weakening the production collision rule or deleting the compiled fallback before the Example file is committed.
+`OfficePolicyFixture::run()` calls discovery with `compiled_names_after_office_migration()`, a test helper that returns the real compiled-name set minus only `office-parsers-clippy-gate`. This simulates the intended Task 9 registry state without weakening the production collision rule or deleting the compiled fallback before that repository's file is committed.
 
 ```rust
 #[test]
@@ -832,7 +832,7 @@ Expected: fixture fails because the exact migration policy has not been added to
 
 - [ ] **Step 3: Add the exact Example policy and finish fixture parity**
 
-Create `/Users/josaum/projects/example-workspace/.leio-code/doctors/office-parsers-clippy-gate.toml` with ten checks:
+Create `$OWNING_REPO/.leio-code/doctors/office-parsers-clippy-gate.toml` with ten checks:
 
 ```toml
 schema_version = 1
@@ -919,7 +919,7 @@ contains = "office_parsers_clippy_features"
 severity = "info"
 ```
 
-Do not modify any other Example file. The old compiled doctor still resolves this name until Task 9; the local collision is expected and safe during this intermediate commit.
+Do not modify any other file in that repository. The old compiled doctor still resolves this name until Task 9; the local collision is expected and safe during this intermediate commit.
 
 - [ ] **Step 4: Run fixture parity and commit Example explicitly**
 
@@ -927,12 +927,12 @@ Do not modify any other Example file. The old compiled doctor still resolves thi
 cd /Users/josaum/projects/leio-code
 cargo test --test local_doctor_packs office_policy -- --nocapture
 
-cd /Users/josaum/projects/example-workspace
+cd $OWNING_REPO
 git add -- .leio-code/doctors/office-parsers-clippy-gate.toml
 git commit --only -m "feat(leio): own office parsers clippy doctor" -- .leio-code/doctors/office-parsers-clippy-gate.toml
 ```
 
-Expected: fixture tests pass; Example commits exactly one new file and preserves unrelated WIP.
+Expected: fixture tests pass; that repository commits exactly one new file and preserves unrelated WIP.
 
 - [ ] **Step 5: Commit the LEIO parity fixture separately**
 
@@ -964,7 +964,7 @@ In `tests/local_doctor_pack_cli.rs`, define `fn capabilities_for_repo(root: &Pat
 #[test]
 fn office_clippy_gate_is_local_for_example_not_compiled() {
     assert!(!doctor_names().contains(&"office-parsers-clippy-gate"));
-    let capabilities = capabilities_for_repo(Path::new("/Users/josaum/projects/example-workspace"));
+    let capabilities = capabilities_for_repo(Path::new("$OWNING_REPO"));
     assert!(capabilities.doctor_kinds.contains(&"office-parsers-clippy-gate".to_string()));
 }
 ```
@@ -992,10 +992,10 @@ cargo fmt --check
 cargo test --test local_doctor_packs --test local_doctor_pack_cli --test diagnostics_format --test schema_version -- --nocapture
 cargo test self_contract --lib
 
-cargo run --quiet -- --repo /Users/josaum/projects/example-workspace capabilities
-cargo run --quiet -- --repo /Users/josaum/projects/example-workspace doctor office-parsers-clippy-gate --format json
-cargo run --quiet -- --repo /Users/josaum/projects/example-workspace doctor office-parsers-clippy-gate --format sarif
-cargo run --quiet -- --repo /Users/josaum/projects/example-workspace doctor all --format json
+cargo run --quiet -- --repo $OWNING_REPO capabilities
+cargo run --quiet -- --repo $OWNING_REPO doctor office-parsers-clippy-gate --format json
+cargo run --quiet -- --repo $OWNING_REPO doctor office-parsers-clippy-gate --format sarif
+cargo run --quiet -- --repo $OWNING_REPO doctor all --format json
 ```
 
 Expected: capabilities lists the local doctor; targeted JSON/SARIF report zero warnings and informational missing feature-target adoption; `all` includes the opted-in doctor plus pack integrity; `baseline`/`ci` are unchanged.
@@ -1061,12 +1061,12 @@ Expected: all pass, or any unrelated committed baseline failure is recorded with
 
 ```bash
 cd /Users/josaum/projects/leio-code
-cargo run --quiet -- --repo /Users/josaum/projects/example-workspace capabilities
-cargo run --quiet -- --repo /Users/josaum/projects/example-workspace doctor office-parsers-clippy-gate --format json
-cargo run --quiet -- --repo /Users/josaum/projects/example-workspace doctor office-parsers-clippy-gate --format sarif
-cargo run --quiet -- --repo /Users/josaum/projects/example-workspace doctor all --format json
-cargo run --quiet -- --repo /Users/josaum/projects/example-workspace doctor baseline --format json
-cargo run --quiet -- --repo /Users/josaum/projects/example-workspace doctor ci --format json
+cargo run --quiet -- --repo $OWNING_REPO capabilities
+cargo run --quiet -- --repo $OWNING_REPO doctor office-parsers-clippy-gate --format json
+cargo run --quiet -- --repo $OWNING_REPO doctor office-parsers-clippy-gate --format sarif
+cargo run --quiet -- --repo $OWNING_REPO doctor all --format json
+cargo run --quiet -- --repo $OWNING_REPO doctor baseline --format json
+cargo run --quiet -- --repo $OWNING_REPO doctor ci --format json
 ```
 
 Expected: local targeted/all behavior passes; optional Arrow adoption remains informational; fixed suites remain unchanged.
@@ -1076,8 +1076,8 @@ Expected: local targeted/all behavior passes; optional Arrow adoption remains in
 ```bash
 git -C /Users/josaum/projects/leio-code status --short --branch
 git -C /Users/josaum/projects/leio-code log --oneline --decorate -12
-git -C /Users/josaum/projects/example-workspace status --short --branch
-git -C /Users/josaum/projects/example-workspace log --oneline --decorate -12
+git -C $OWNING_REPO status --short --branch
+git -C $OWNING_REPO log --oneline --decorate -12
 ```
 
 Expected: LEIO remains on `main`; Example remains on `fix/office-parsers-remaining-holes`; only pre-existing unrelated WIP/log artifacts remain; nothing is pushed or installed.
