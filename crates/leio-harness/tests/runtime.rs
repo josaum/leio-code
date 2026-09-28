@@ -745,6 +745,77 @@ fn agent_proxy_approval_mismatch_never_spawns() {
     assert!(String::from_utf8_lossy(&output.stderr).contains("approval token mismatch"));
 }
 
+#[test]
+fn agent_proxy_failed_preflight_never_spawns_agent() {
+    let root = tempdir().unwrap();
+    let marker = root.path().join("spawned");
+    let spec = root.path().join("agent-spec.json");
+    fs::write(
+        &spec,
+        serde_json::to_vec(&json!({
+            "sessionId": "sess-preflight",
+            "cwd": root.path(),
+            "outputDir": root.path().join("runs"),
+            "agentArgv": ["/usr/bin/touch", marker],
+            "idleTimeoutMs": 8000,
+            "preflightLeio": true,
+            "preflightCmd": ["/bin/sh", "-c", "exit 7"]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let output = Command::new(bin())
+        .args(["agent", "--spec", spec.to_str().unwrap()])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    assert!(!marker.exists());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("LEIO preflight failed"));
+}
+
+#[test]
+fn agent_proxy_oversized_response_is_a_fatal_bridge_error() {
+    let root = tempdir().unwrap();
+    let spec = root.path().join("agent-spec.json");
+    fs::write(
+        &spec,
+        serde_json::to_vec(&json!({
+            "sessionId": "sess-oversized",
+            "cwd": root.path(),
+            "outputDir": root.path().join("runs"),
+            "agentArgv": ["/bin/sh", "-c", "printf 'this-frame-is-deliberately-longer-than-sixteen-bytes\\n'; sleep 30"],
+            "idleTimeoutMs": 8000,
+            "maxFrameBytes": 16,
+            "preflightLeio": false
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let output = Command::new(bin())
+        .args(["agent", "--spec", spec.to_str().unwrap()])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let result: serde_json::Value = serde_json::from_slice(
+        &fs::read(root.path().join("runs/sess-oversized/result.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(result["status"], "infra_error");
+    assert!(
+        result["error"]
+            .as_str()
+            .unwrap()
+            .contains("ACP bridge failed")
+    );
+    assert!(String::from_utf8_lossy(&output.stderr).contains("ACP frame exceeds 16 bytes"));
+}
+
 fn spawn_line_reader<R: Read + Send + 'static>(reader: R) -> mpsc::Receiver<String> {
     let (tx, rx) = mpsc::channel();
     thread::spawn(move || {

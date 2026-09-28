@@ -149,43 +149,58 @@ pub fn serve(spec: AgentSessionSpec) -> Result<AgentSessionResult> {
     let response_tx = tx.clone();
     let response_seq = seq.clone();
     let response_activity = last_activity_ms.clone();
+    let response_fatal = fatal.clone();
     let stdout_thread = thread::spawn(move || -> Result<()> {
-        let mut parent_stdout = std::io::stdout();
-        let mut reader = BufReader::new(agent_stdout);
-        let mut line = Vec::new();
-        loop {
-            line.clear();
-            let read = read_line_bounded(&mut reader, &mut line, frame_cap)
-                .context("read agent stdout")?;
-            if read == 0 {
-                break;
+        let result = (|| -> Result<()> {
+            let mut parent_stdout = std::io::stdout();
+            let mut reader = BufReader::new(agent_stdout);
+            let mut line = Vec::new();
+            loop {
+                line.clear();
+                let read = read_line_bounded(&mut reader, &mut line, frame_cap)
+                    .context("read agent stdout")?;
+                if read == 0 {
+                    break;
+                }
+                record_frame(&response_tx, &response_seq, "acp_response", &line)?;
+                response_activity.store(now_ms(), Ordering::Relaxed);
+                parent_stdout.write_all(&line)?;
+                parent_stdout.flush()?;
             }
-            record_frame(&response_tx, &response_seq, "acp_response", &line)?;
-            response_activity.store(now_ms(), Ordering::Relaxed);
-            parent_stdout.write_all(&line)?;
-            parent_stdout.flush()?;
+            Ok(())
+        })();
+        if result.is_err() {
+            response_fatal.store(true, Ordering::Relaxed);
         }
-        Ok(())
+        result
     });
 
     // Agent stderr -> our stderr, with a bounded event record.
     let stderr_tx = tx.clone();
     let stderr_seq = seq.clone();
+    let stderr_fatal = fatal.clone();
     let stderr_thread = thread::spawn(move || -> Result<()> {
-        let mut reader = BufReader::new(agent_stderr);
-        let mut line = Vec::new();
-        loop {
-            line.clear();
-            let read = read_line_bounded(&mut reader, &mut line, frame_cap)
-                .context("read agent stderr")?;
-            if read == 0 {
-                break;
+        let result = (|| -> Result<()> {
+            let mut reader = BufReader::new(agent_stderr);
+            let mut line = Vec::new();
+            loop {
+                line.clear();
+                let read = read_line_bounded(&mut reader, &mut line, frame_cap)
+                    .context("read agent stderr")?;
+                if read == 0 {
+                    break;
+                }
+                eprint!("{}", String::from_utf8_lossy(&line));
+                let truncated: Vec<u8> =
+                    line.iter().take(MAX_STDERR_EVENT_BYTES).copied().collect();
+                record_frame(&stderr_tx, &stderr_seq, "acp_agent_stderr", &truncated)?;
             }
-            eprint!("{}", String::from_utf8_lossy(&line));
-            let truncated: Vec<u8> = line.iter().take(MAX_STDERR_EVENT_BYTES).copied().collect();
-            record_frame(&stderr_tx, &stderr_seq, "acp_agent_stderr", &truncated)?;
+            Ok(())
+        })();
+        if result.is_err() {
+            stderr_fatal.store(true, Ordering::Relaxed);
         }
-        Ok(())
+        result
     });
     drop(tx);
 
@@ -311,6 +326,11 @@ fn run_preflight(spec: &AgentSessionSpec) -> Result<()> {
 }
 
 fn run_with_timeout(command: &mut Command, timeout_ms: u64) -> Result<std::process::ExitStatus> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
     let mut child = command.spawn().context("spawn preflight")?;
     let deadline = Instant::now() + Duration::from_millis(timeout_ms);
     loop {
@@ -410,4 +430,161 @@ fn now_ms() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeMap;
+    use std::io::Cursor;
+    use tempfile::TempDir;
+
+    fn valid_spec(root: &Path) -> AgentSessionSpec {
+        AgentSessionSpec {
+            session_id: "session-test".to_owned(),
+            cwd: root.display().to_string(),
+            output_dir: root.join("runs").display().to_string(),
+            agent_argv: vec!["/usr/bin/true".to_owned()],
+            env_allowlist: Vec::new(),
+            env: BTreeMap::new(),
+            idle_timeout_ms: 1_000,
+            max_frame_bytes: 1_024,
+            preflight_leio: false,
+            preflight_cmd: Vec::new(),
+            required_approval_token: None,
+            approval_token: None,
+        }
+    }
+
+    #[test]
+    fn validation_rejects_each_invalid_session_boundary() {
+        let root = TempDir::new().expect("tempdir");
+        let spec = valid_spec(root.path());
+        validate(&spec).expect("valid spec");
+
+        let mut missing_session = spec.clone();
+        missing_session.session_id = "  ".to_owned();
+        assert!(
+            validate(&missing_session)
+                .unwrap_err()
+                .to_string()
+                .contains("session_id is required")
+        );
+
+        let mut missing_agent = spec.clone();
+        missing_agent.agent_argv.clear();
+        assert!(
+            validate(&missing_agent)
+                .unwrap_err()
+                .to_string()
+                .contains("agent_argv must be non-empty")
+        );
+
+        let mut blank_agent = spec.clone();
+        blank_agent.agent_argv = vec!["  ".to_owned()];
+        assert!(validate(&blank_agent).is_err());
+
+        let mut zero_frame_cap = spec.clone();
+        zero_frame_cap.max_frame_bytes = 0;
+        assert!(
+            validate(&zero_frame_cap)
+                .unwrap_err()
+                .to_string()
+                .contains("max_frame_bytes must be positive")
+        );
+
+        let mut missing_cwd = spec;
+        missing_cwd.cwd = root.path().join("missing").display().to_string();
+        assert!(
+            validate(&missing_cwd)
+                .unwrap_err()
+                .to_string()
+                .contains("cwd is not a directory")
+        );
+    }
+
+    #[test]
+    fn bounded_line_reader_accepts_the_limit_and_rejects_oversized_frames() {
+        let mut exact = Cursor::new(b"1234\nnext\n".to_vec());
+        let mut line = Vec::new();
+        assert_eq!(read_line_bounded(&mut exact, &mut line, 5).unwrap(), 5);
+        assert_eq!(line, b"1234\n");
+
+        let mut oversized = Cursor::new(b"1234\n".to_vec());
+        let error = read_line_bounded(&mut oversized, &mut Vec::new(), 4).unwrap_err();
+        assert!(error.to_string().contains("ACP frame exceeds 4 bytes"));
+
+        let mut empty = Cursor::new(Vec::<u8>::new());
+        assert_eq!(
+            read_line_bounded(&mut empty, &mut Vec::new(), 4).unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn frame_records_are_redacted_and_mark_parse_errors() {
+        let (tx, rx) = channel();
+        let seq = Arc::new(AtomicU64::new(7));
+        let secret =
+            br#"{"jsonrpc":"2.0","id":42,"method":"session/start","params":{"token":"secret"}}
+"#;
+
+        record_frame(&tx, &seq, "acp_request", secret).expect("record valid frame");
+        record_frame(&tx, &seq, "acp_request", b"not-json\n").expect("record malformed frame");
+
+        let valid = rx.recv().expect("valid event");
+        assert_eq!(valid.seq, 7);
+        assert_eq!(valid.kind, "acp_request");
+        let payload: serde_json::Value =
+            serde_json::from_slice(&valid.payload).expect("valid payload");
+        assert_eq!(payload["method"], "session/start");
+        assert_eq!(payload["id"], 42);
+        assert_eq!(payload["frame_len"], secret.len());
+        assert!(payload.get("params").is_none());
+        assert!(!String::from_utf8_lossy(&valid.payload).contains("secret"));
+
+        let malformed = rx.recv().expect("malformed event");
+        assert_eq!(malformed.seq, 8);
+        let payload: serde_json::Value =
+            serde_json::from_slice(&malformed.payload).expect("malformed payload");
+        assert_eq!(payload["parse_error"], true);
+    }
+
+    #[test]
+    fn frame_recording_reports_a_closed_event_channel() {
+        let (tx, rx) = channel();
+        drop(rx);
+
+        assert!(record_frame(&tx, &Arc::new(AtomicU64::new(1)), "request", b"{}\n").is_err());
+    }
+
+    #[test]
+    fn custom_preflight_accepts_success_and_reports_failure() {
+        let root = TempDir::new().expect("tempdir");
+        let mut spec = valid_spec(root.path());
+        spec.preflight_cmd = vec!["/bin/sh".to_owned(), "-c".to_owned(), "exit 0".to_owned()];
+        run_preflight(&spec).expect("successful preflight");
+
+        spec.preflight_cmd[2] = "exit 9".to_owned();
+        let error = run_preflight(&spec).unwrap_err();
+        assert!(error.to_string().contains("LEIO preflight failed"));
+    }
+
+    #[test]
+    fn preflight_timeout_terminates_the_entire_process_group() {
+        let root = TempDir::new().expect("tempdir");
+        let marker = root.path().join("orphaned-preflight");
+        let mut command = Command::new("/bin/sh");
+        command
+            .args(["-c", "sleep 0.2; touch \"$MARKER\""])
+            .env("MARKER", &marker);
+
+        let error = run_with_timeout(&mut command, 10).unwrap_err();
+
+        assert!(error.to_string().contains("preflight timed out after 10ms"));
+        assert!(
+            !marker.exists(),
+            "timed-out preflight escaped its process group"
+        );
+    }
 }
