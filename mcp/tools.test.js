@@ -441,14 +441,13 @@ test("MCP rejects invalid explain/graph/knowledge input as isError", async (t) =
   });
 });
 
-test("audit json either returns an envelope or the known output-schema mismatch", async (t) => {
+test("audit json returns a valid structured envelope", async (t) => {
   await withClient(t, async ({ call }) => {
     const result = await call("leio_code_audit", { format: "json", strict: false });
-    if (result.structuredContent) {
-      assert.ok(result.structuredContent.tool_family === "audit");
-      return;
-    }
-    assert.equal(result.isError, true);
-    assert.match(textOf(result), /Output validation error|envelope\.summary/i);
+    assert.ok(!result.isError, textOf(result));
+    assert.ok(result.structuredContent);
+    assert.equal(result.structuredContent.tool_family, "audit");
+    assert.equal(result.structuredContent.envelope_summary?.kind, "audit");
+    assert.equal(typeof result.structuredContent.envelope_summary?.summary, "string");
   });
 });

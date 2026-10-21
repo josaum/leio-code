@@ -1326,6 +1326,7 @@ dependencies = [
 name = "leio-code"
 version = "2.6.5"
 dependencies = [
+ "aho-corasick",
  "anyhow",
  "arrow-array",
  "arrow-buffer",

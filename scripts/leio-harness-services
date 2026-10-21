@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+"""Explicit local control of the retired login-time bus/embedding LaunchAgents.
+Coding tasks require neither service. No agent is woken and no message is sent.
+"""
+import argparse
+import json
+import os
+from pathlib import Path
+import subprocess
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("action", choices=("start", "stop", "status"))
+args = parser.parse_args()
+domain = f"gui/{os.getuid()}"
+manual = Path.home() / ".leio-harness/manual-services"
+labels = ("ai.jquant.leio-embed", "ai.jquant.leio-bus")
+results = []
+for label in labels:
+    target = f"{domain}/{label}"
+    state = subprocess.run(["launchctl", "print", target], capture_output=True, text=True)
+    if args.action == "start" and state.returncode != 0:
+        plist = manual / f"{label}.plist"
+        if not plist.is_file():
+            results.append({"service": label, "error": f"manual service definition missing: {plist}"})
+            continue
+        operation = subprocess.run(["launchctl", "bootstrap", domain, str(plist)], capture_output=True, text=True)
+        if operation.returncode != 0:
+            results.append({"service": label, "error": operation.stderr.strip()})
+            continue
+    elif args.action == "stop" and state.returncode == 0:
+        operation = subprocess.run(["launchctl", "bootout", target], capture_output=True, text=True)
+        if operation.returncode != 0:
+            results.append({"service": label, "error": operation.stderr.strip()})
+            continue
+    state = subprocess.run(["launchctl", "print", target], capture_output=True, text=True)
+    fields = {}
+    if state.returncode == 0:
+        for line in state.stdout.splitlines():
+            key, separator, value = line.strip().partition(" = ")
+            if separator and key in ("state", "pid", "last exit code"):
+                fields[key] = value
+    results.append({"service": label, "registered": state.returncode == 0, **fields})
+print(json.dumps({"codingTasksNeedTheseServices": False, "services": results}, indent=2))
+raise SystemExit(1 if any("error" in result for result in results) else 0)

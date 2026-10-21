@@ -1,5 +1,6 @@
 // Verify the installed transport, context identity and durable cursor history.
 import assert from 'node:assert/strict';
+import {STDIO_TOOL_CATALOG} from '../mcp/mcp-spec-2025-11-25.js';
 import { mkdtemp, mkdir, writeFile, rm, realpath } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -23,7 +24,9 @@ try {
   await writeFile(path.join(fixture, 'src/lib.rs'), 'pub fn caller() { callee(); }\npub fn callee() {}\n');
   await client.connect(transport);
   const { tools } = await client.listTools();
-  assert.equal(tools.length, 18, 'Expected the local 18-tool distribution');
+  assert.deepEqual(tools.map(tool=>tool.name).sort(),Object.keys(STDIO_TOOL_CATALOG).sort(), 'Installed tools match the canonical stdio catalog');
+  assert.ok(tools.some(tool => tool.name === 'leio_code_task'));
+  assert.match(client.getInstructions(), /leio_code_task/);
   assert.ok(tools.some(tool => tool.name === 'leio_code_nav'));
   const call = async (name, args) => {
     const result = await client.callTool({ name, arguments: { repo_root: fixture, ...args } });

@@ -32,6 +32,7 @@ pkg-url = "https://github.com/josaum/leio-code/releases/download/leio-code-plugi
 # share one mechanism instead of re-implementing it.
 leio-knowledge-core = { path = "crates/leio-knowledge-core", version = "2.6.5" }
 anyhow = "1"
+aho-corasick = "=1.1.4"
 tempfile = "3"
 libc = "0.2"
 arrow-array = "=58.3.0"

@@ -52,15 +52,23 @@ pub fn doctor_names_for_root(root: &Path) -> Vec<String> {
     names
 }
 pub fn run_doctor(name: &str, index: &RepoIndex, root: &Path) -> Option<QueryEnvelope> {
-    if let Some(doctor) = registry().into_iter().find(|d| d.name() == name) {
-        return Some(doctor.run(index, root));
+    let result = if let Some(doctor) = registry().into_iter().find(|d| d.name() == name) {
+        Some(doctor.run(index, root))
+    } else {
+        native::run_one(name, index, root).or_else(|| {
+            local_rows(root, name, false)
+                .into_iter()
+                .next()
+                .map(|(_, e)| e)
+        })
+    };
+    if let Some(ref env) = result {
+        crate::playbook::record_doctor_observations_best_effort(
+            root,
+            &[(name.to_owned(), env.clone())],
+        );
     }
-    native::run_one(name, index, root).or_else(|| {
-        local_rows(root, name, false)
-            .into_iter()
-            .next()
-            .map(|(_, e)| e)
-    })
+    result
 }
 pub const BASELINE_DOCTOR_NAMES: &[&str] = &["repo-hygiene"];
 pub const CI_EXTRA_DOCTOR_NAMES: &[&str] = &["skill-contract"];
@@ -100,6 +108,7 @@ fn run_suite(index: &RepoIndex, root: &Path, suite: &str) -> QueryEnvelope {
     }
     rows.extend(native::run_suite(suite, index, root));
     rows.extend(local_rows(root, suite, true));
+    crate::playbook::record_doctor_observations_best_effort(root, &rows);
     let mut warnings = Vec::new();
     let mut evidence = Vec::new();
     let mut entities = Vec::new();

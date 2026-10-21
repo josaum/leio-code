@@ -51,6 +51,7 @@ pub mod process;
 pub mod receipts;
 pub mod shm;
 pub mod sigreg;
+pub mod task;
 pub mod tui;
 pub mod workflow;
 pub mod worktree;

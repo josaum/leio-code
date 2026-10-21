@@ -11,7 +11,7 @@ use sha2::{Digest, Sha256};
 
 use super::Doctor;
 use super::utils::{git_tracked_files, query_id};
-use crate::model::{QueryEnvelope, RepoIndex};
+use crate::model::{EvidenceItem, QueryEnvelope, RepoIndex};
 
 const REGISTRY_PATH: &str = "skills/registry.toml";
 const MIN_DESCRIPTION_CHARS: usize = 40;
@@ -116,6 +116,18 @@ impl Findings {
                     "rule": rule,
                     "count": count,
                 })
+            })
+            .collect()
+    }
+
+    fn evidence(&self) -> Vec<EvidenceItem> {
+        self.counts
+            .iter()
+            .map(|((path, rule), count)| EvidenceItem {
+                kind: "skill_contract_violation".to_string(),
+                path: path.clone(),
+                line: None,
+                detail: format!("{rule} (count={count})"),
             })
             .collect()
     }
@@ -811,7 +823,7 @@ fn build_envelope(
         },
         confidence: if finding_count == 0 { 0.98 } else { 0.72 },
         entities: findings.entities(),
-        evidence: Vec::new(),
+        evidence: findings.evidence(),
         warnings: findings.warnings(),
         meta: Some(json!({
             "registry_entries": registry_entries,

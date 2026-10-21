@@ -10,6 +10,9 @@ import {
   IMPLEMENTATION_STDIO,
   INSTRUCTIONS_APPS_SDK,
   INSTRUCTIONS_STDIO,
+  MCP_ERROR_HEADER_MISMATCH,
+  MCP_ERROR_MISSING_REQUIRED_CLIENT_CAPABILITY,
+  MCP_ERROR_UNSUPPORTED_PROTOCOL_VERSION,
   PACKAGE_VERSION,
   LEGACY_PROTOCOL_VERSION,
   PROTOCOL_VERSION,
@@ -18,15 +21,18 @@ import {
   STDIO_TOOL_CATALOG,
   TOOL_EXECUTION_FORBIDDEN,
   appsSdkServerOptions,
+  assertSupportedRequestProtocolVersion,
   buildDiscoverResult,
   decorateCacheableResult,
   assertToolName,
   executionErrorResult,
   finalizeCallToolResult,
+  isStatelessHttpRequest,
   protocolMeta,
   stdioServerOptions,
   toolAnnotations,
   toolRegistrationConfig,
+  validateHttpProtocolRequest,
   wrapToolHandler,
 } from "./mcp-spec-2025-11-25.js";
 import { LeioToolOutputSchema } from "./output-schemas.js";
@@ -177,7 +183,83 @@ test("protocolMeta is a Result._meta object", () => {
   assert.equal(meta["io.leio/mcpProtocolVersion"], PROTOCOL_VERSION);
   assert.equal(meta["io.modelcontextprotocol/protocolVersion"], PROTOCOL_VERSION);
   assert.equal(meta["io.modelcontextprotocol/serverInfo"].name, "leio-code");
+  assert.equal(
+    meta["io.modelcontextprotocol/serverInfo"].websiteUrl,
+    IMPLEMENTATION_STDIO.websiteUrl,
+  );
+  assert.ok(Array.isArray(meta["io.modelcontextprotocol/serverInfo"].icons));
   assert.equal(meta.tool, "leio_code_find");
+});
+
+test("2026-07-28 error codes and per-request version validation", () => {
+  assert.equal(MCP_ERROR_HEADER_MISMATCH, -32020);
+  assert.equal(MCP_ERROR_MISSING_REQUIRED_CLIENT_CAPABILITY, -32021);
+  assert.equal(MCP_ERROR_UNSUPPORTED_PROTOCOL_VERSION, -32022);
+
+  assert.equal(assertSupportedRequestProtocolVersion({}), "2026-07-28");
+  assert.equal(
+    assertSupportedRequestProtocolVersion({
+      params: { _meta: { "io.modelcontextprotocol/protocolVersion": "2025-11-25" } },
+    }),
+    "2025-11-25",
+  );
+  assert.throws(
+    () =>
+      assertSupportedRequestProtocolVersion({
+        params: { _meta: { "io.modelcontextprotocol/protocolVersion": "1999-01-01" } },
+      }),
+    (err) =>
+      err.code === -32022 &&
+      err.data?.requested === "1999-01-01" &&
+      Array.isArray(err.data?.supported) &&
+      err.data.supported.includes("2026-07-28"),
+  );
+
+  const mismatch = validateHttpProtocolRequest({
+    headers: { "mcp-protocol-version": "2026-07-28" },
+    body: {
+      jsonrpc: "2.0",
+      id: 7,
+      method: "tools/list",
+      params: { _meta: { "io.modelcontextprotocol/protocolVersion": "2025-11-25" } },
+    },
+  });
+  assert.equal(mismatch?.status, 400);
+  assert.equal(mismatch?.body?.error?.code, -32020);
+  assert.equal(mismatch?.body?.id, 7);
+
+  const unsupportedHeader = validateHttpProtocolRequest({
+    headers: { "mcp-protocol-version": "2020-01-01" },
+    body: { jsonrpc: "2.0", id: 8, method: "tools/list" },
+  });
+  assert.equal(unsupportedHeader?.status, 400);
+  assert.equal(unsupportedHeader?.body?.error?.code, -32022);
+  assert.deepEqual(unsupportedHeader?.body?.error?.data, {
+    supported: ["2026-07-28", "2025-11-25"],
+    requested: "2020-01-01",
+  });
+
+  assert.equal(
+    isStatelessHttpRequest({
+      headers: {},
+      body: { jsonrpc: "2.0", id: 1, method: "server/discover" },
+    }),
+    true,
+  );
+  assert.equal(
+    isStatelessHttpRequest({
+      headers: {},
+      body: { jsonrpc: "2.0", id: 1, method: "initialize" },
+    }),
+    false,
+  );
+  assert.equal(
+    isStatelessHttpRequest({
+      headers: { "mcp-session-id": "sess-1" },
+      body: { jsonrpc: "2.0", id: 1, method: "tools/list" },
+    }),
+    false,
+  );
 });
 
 test("discover result lists both protocol eras", () => {
@@ -234,6 +316,7 @@ test("stdio initialize still works for legacy clients and discover is registered
   });
 
   assert.equal(client.getServerCapabilities()?.tools !== undefined, true);
+  assert.equal(client.getServerCapabilities()?.tools?.listChanged, undefined);
   const info = client.getServerVersion();
   assert.equal(info.name, "leio-code");
   assert.equal(info.version, PACKAGE_VERSION);

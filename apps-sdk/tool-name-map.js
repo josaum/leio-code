@@ -38,6 +38,7 @@ export const hostedOnlyTools = [
  * counterpart. It is not an alias for inspect_repository_status.
  */
 export const stdioLocalOnlyTools = [
+  "leio_code_task",
   "leio_code_conversation",
   "leio_code_export",
   "leio_code_index",

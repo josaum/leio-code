@@ -16,8 +16,9 @@
 //! Bump [`CODE_GRAPH_VERSION`] / [`QUERY_CACHE_VERSION`] when the schemas
 //! change so stale caches force a rebuild.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs;
+use std::hash::Hash;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
@@ -162,7 +163,7 @@ pub struct CachedGraphCallsite {
     pub expr: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct ParsedFileGraph {
     path: String,
     language: SourceLanguage,
@@ -172,7 +173,7 @@ struct ParsedFileGraph {
     calls: Vec<CallEdge>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct Definition {
     stable_iri: String,
     occurrence_iri: String,
@@ -183,7 +184,7 @@ struct Definition {
     end_line: usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct ImportEdge {
     owner_iri: String,
     raw: String,
@@ -193,19 +194,37 @@ struct ImportEdge {
     line: Option<usize>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct CallEdge {
     owner_iri: String,
     callee_name: String,
     callee_expr: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ParsedFilesSidecar {
+    version: u32,
+    repo_slug: String,
+    revision: String,
+    files: BTreeMap<String, CachedParsedFile>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CachedParsedFile {
+    bytes: usize,
+    modified_unix_ms: i128,
+    parsed: ParsedFileGraph,
+}
+
 #[derive(Debug, Clone)]
 struct GraphBuildResult {
     nquads: String,
     query_cache: CodeGraphQueryCache,
+    parsed_sidecar: ParsedFilesSidecar,
     code_namespace: String,
     parsed_file_count: usize,
+    reused_file_count: usize,
+    reparsed_file_count: usize,
     symbol_count: usize,
     occurrence_count: usize,
     import_edge_count: usize,
@@ -354,7 +373,18 @@ pub fn export_code_graph(
         "urn:leio:graph:code:{repo_slug}:{}",
         slug_component(&revision)
     );
-    let build = build_graph(index, root, &repo_slug, &revision, &graph_iri)?;
+    let parsed_sidecar_path = output_dir.join("parsed-files.json");
+    let previous_sidecar: Option<ParsedFilesSidecar> = fs::read(&parsed_sidecar_path)
+        .ok()
+        .and_then(|raw| serde_json::from_slice(&raw).ok());
+    let build = build_graph_with_cache(
+        index,
+        root,
+        &repo_slug,
+        &revision,
+        &graph_iri,
+        previous_sidecar.as_ref(),
+    )?;
 
     fs::create_dir_all(output_dir)
         .with_context(|| format!("failed to create {}", output_dir.display()))?;
@@ -368,6 +398,9 @@ pub fn export_code_graph(
         .context("failed to serialize code graph query cache")?;
     fs::write(&query_cache_path, query_cache_raw)
         .with_context(|| format!("failed to write {}", query_cache_path.display()))?;
+    if let Ok(sidecar_raw) = serde_json::to_vec(&build.parsed_sidecar) {
+        let _ = crate::sidecar::write_atomic(&parsed_sidecar_path, &sidecar_raw);
+    }
 
     let manifest = CodeGraphManifest {
         version: CODE_GRAPH_VERSION,
@@ -422,6 +455,8 @@ pub fn export_code_graph(
             "graph_path": graph_path.display().to_string(),
             "query_cache_path": query_cache_path.display().to_string(),
             "parsed_files": manifest.parsed_file_count,
+            "reused_files": build.reused_file_count,
+            "reparsed_files": build.reparsed_file_count,
             "symbols": manifest.symbol_count,
             "occurrences": manifest.occurrence_count,
             "imports": manifest.import_edge_count,
@@ -455,6 +490,7 @@ pub fn export_code_graph(
     })
 }
 
+#[cfg(test)]
 fn build_graph(
     index: &RepoIndex,
     root: &Path,
@@ -462,13 +498,81 @@ fn build_graph(
     revision: &str,
     graph_iri: &str,
 ) -> Result<GraphBuildResult> {
+    build_graph_with_cache(index, root, repo_slug, revision, graph_iri, None)
+}
+
+fn rewrite_parsed_file_revision(
+    mut parsed: ParsedFileGraph,
+    old_revision: &str,
+    new_revision: &str,
+) -> ParsedFileGraph {
+    if old_revision == new_revision {
+        return parsed;
+    }
+    let old_tag = format!("@{}:", slug_component(old_revision));
+    let new_tag = format!("@{}:", slug_component(new_revision));
+    for def in &mut parsed.definitions {
+        if def.occurrence_iri.contains(&old_tag) {
+            def.occurrence_iri = def.occurrence_iri.replace(&old_tag, &new_tag);
+        }
+    }
+    for imp in &mut parsed.imports {
+        if imp.owner_iri.contains(&old_tag) {
+            imp.owner_iri = imp.owner_iri.replace(&old_tag, &new_tag);
+        }
+    }
+    for call in &mut parsed.calls {
+        if call.owner_iri.contains(&old_tag) {
+            call.owner_iri = call.owner_iri.replace(&old_tag, &new_tag);
+        }
+    }
+    parsed
+}
+
+fn build_graph_with_cache(
+    index: &RepoIndex,
+    root: &Path,
+    repo_slug: &str,
+    revision: &str,
+    graph_iri: &str,
+    previous_sidecar: Option<&ParsedFilesSidecar>,
+) -> Result<GraphBuildResult> {
     let resolver = build_import_resolver_context(index, root);
     let mut parsed_files = Vec::new();
+    let mut next_sidecar_files = BTreeMap::new();
     let mut warnings = Vec::new();
     let mut language_counts = BTreeMap::new();
+    let mut reused_file_count = 0usize;
+    let mut reparsed_file_count = 0usize;
+    let valid_previous = previous_sidecar
+        .filter(|sidecar| sidecar.version == CODE_GRAPH_VERSION && sidecar.repo_slug == repo_slug);
 
     for file in &index.files {
         if !supports_code_graph(file.language) {
+            continue;
+        }
+
+        if let Some(prev) = valid_previous
+            && let Some(cached) = prev.files.get(&file.path)
+            && cached.bytes == file.bytes
+            && cached.modified_unix_ms == file.modified_unix_ms
+            && cached.parsed.language == file.language
+        {
+            let parsed =
+                rewrite_parsed_file_revision(cached.parsed.clone(), &prev.revision, revision);
+            *language_counts
+                .entry(file.language.as_str().to_string())
+                .or_insert(0usize) += 1;
+            next_sidecar_files.insert(
+                file.path.clone(),
+                CachedParsedFile {
+                    bytes: file.bytes,
+                    modified_unix_ms: file.modified_unix_ms,
+                    parsed: parsed.clone(),
+                },
+            );
+            parsed_files.push(parsed);
+            reused_file_count += 1;
             continue;
         }
 
@@ -489,7 +593,16 @@ fn build_graph(
                 *language_counts
                     .entry(file.language.as_str().to_string())
                     .or_insert(0usize) += 1;
+                next_sidecar_files.insert(
+                    file.path.clone(),
+                    CachedParsedFile {
+                        bytes: file.bytes,
+                        modified_unix_ms: file.modified_unix_ms,
+                        parsed: parsed.clone(),
+                    },
+                );
                 parsed_files.push(parsed);
+                reparsed_file_count += 1;
             }
             Err(error) => warnings.push(format!("failed to parse {}: {}", file.path, error)),
         }
@@ -502,11 +615,11 @@ fn build_graph(
     let mut symbol_lookup_qual_name = BTreeMap::new();
     let mut files = BTreeMap::new();
     let mut file_lookup_path = BTreeMap::new();
-    let mut file_imports = BTreeMap::new();
-    let mut file_import_details = BTreeMap::new();
-    let mut importers_by_raw = BTreeMap::new();
-    let mut importers_by_target_path = BTreeMap::new();
-    let mut file_symbols = BTreeMap::new();
+    let mut file_imports = UniqueBuckets::new();
+    let mut file_import_details = UniqueBuckets::new();
+    let mut importers_by_raw = UniqueBuckets::new();
+    let mut importers_by_target_path = UniqueBuckets::new();
+    let mut file_symbols = UniqueBuckets::new();
     for file in &parsed_files {
         files.insert(
             file.file_iri.clone(),
@@ -573,9 +686,9 @@ fn build_graph(
     let mut import_edge_count = 0usize;
     let mut call_edge_count = 0usize;
     let mut resolved_call_edge_count = 0usize;
-    let mut callers_by_symbol = BTreeMap::new();
-    let mut callees_by_symbol = BTreeMap::new();
-    let mut callsites_by_symbol = BTreeMap::new();
+    let mut callers_by_symbol = UniqueBuckets::new();
+    let mut callees_by_symbol = UniqueBuckets::new();
+    let mut callsites_by_symbol = UniqueBuckets::new();
 
     // Env/redis occurrences live on `index.files[]`, but this loop iterates
     // `parsed_files` (which carry only definitions/imports/calls). Precompute a
@@ -863,7 +976,7 @@ fn build_graph(
             );
             let candidate_symbols = resolve_import_symbols(
                 &file_lookup_path,
-                &file_symbols,
+                &file_symbols.values,
                 &resolution.candidate_paths,
                 &import.imported_names,
             );
@@ -1030,16 +1143,24 @@ fn build_graph(
             symbol_lookup_qual_name,
             files,
             file_lookup_path,
-            file_imports,
-            file_import_details,
-            importers_by_raw,
-            importers_by_target_path,
-            callers_by_symbol,
-            callees_by_symbol,
-            callsites_by_symbol,
-            file_symbols,
+            file_imports: file_imports.values,
+            file_import_details: file_import_details.values,
+            importers_by_raw: importers_by_raw.values,
+            importers_by_target_path: importers_by_target_path.values,
+            callers_by_symbol: callers_by_symbol.values,
+            callees_by_symbol: callees_by_symbol.values,
+            callsites_by_symbol: callsites_by_symbol.values,
+            file_symbols: file_symbols.values,
+        },
+        parsed_sidecar: ParsedFilesSidecar {
+            version: CODE_GRAPH_VERSION,
+            repo_slug: repo_slug.to_string(),
+            revision: revision.to_string(),
+            files: next_sidecar_files,
         },
         parsed_file_count: parsed_files.len(),
+        reused_file_count,
+        reparsed_file_count,
         symbol_count,
         occurrence_count,
         import_edge_count,
@@ -1050,74 +1171,85 @@ fn build_graph(
     })
 }
 
+struct UniqueBuckets<T, K> {
+    values: BTreeMap<String, Vec<T>>,
+    identities: HashMap<String, HashSet<K>>,
+}
+
+impl<T, K: Eq + Hash> UniqueBuckets<T, K> {
+    fn new() -> Self {
+        Self {
+            values: BTreeMap::new(),
+            identities: HashMap::new(),
+        }
+    }
+
+    fn insert(&mut self, bucket: &str, identity: K, value: T) {
+        if self
+            .identities
+            .entry(bucket.to_owned())
+            .or_default()
+            .insert(identity)
+        {
+            self.values
+                .entry(bucket.to_owned())
+                .or_default()
+                .push(value);
+        }
+    }
+}
+
+type NeighborIdentity = (String, String, Option<usize>, String);
+type CallsiteIdentity = (String, String, Option<usize>, String);
+type ImporterIdentity = (String, String, Option<usize>);
+
 fn push_unique_neighbor(
-    map: &mut BTreeMap<String, Vec<CachedGraphNeighbor>>,
+    map: &mut UniqueBuckets<CachedGraphNeighbor, NeighborIdentity>,
     key: &str,
     neighbor: CachedGraphNeighbor,
 ) {
-    let bucket = map.entry(key.to_string()).or_default();
-    if bucket.iter().any(|existing| {
-        existing.iri == neighbor.iri
-            && existing.path == neighbor.path
-            && existing.line == neighbor.line
-            && existing.kind == neighbor.kind
-    }) {
-        return;
-    }
-    bucket.push(neighbor);
+    let identity = (
+        neighbor.iri.clone(),
+        neighbor.path.clone(),
+        neighbor.line,
+        neighbor.kind.clone(),
+    );
+    map.insert(key, identity, neighbor);
 }
 
 fn push_unique_callsite(
-    map: &mut BTreeMap<String, Vec<CachedGraphCallsite>>,
+    map: &mut UniqueBuckets<CachedGraphCallsite, CallsiteIdentity>,
     key: &str,
     callsite: CachedGraphCallsite,
 ) {
-    let bucket = map.entry(key.to_string()).or_default();
-    if bucket.iter().any(|existing| {
-        existing.owner_iri == callsite.owner_iri
-            && existing.path == callsite.path
-            && existing.line == callsite.line
-            && existing.expr == callsite.expr
-    }) {
-        return;
-    }
-    bucket.push(callsite);
+    let identity = (
+        callsite.owner_iri.clone(),
+        callsite.path.clone(),
+        callsite.line,
+        callsite.expr.clone(),
+    );
+    map.insert(key, identity, callsite);
 }
 
-fn push_unique_string(map: &mut BTreeMap<String, Vec<String>>, key: &str, value: String) {
-    let bucket = map.entry(key.to_string()).or_default();
-    if bucket.iter().any(|existing| existing == &value) {
-        return;
-    }
-    bucket.push(value);
+fn push_unique_string(map: &mut UniqueBuckets<String, String>, key: &str, value: String) {
+    map.insert(key, value.clone(), value);
 }
 
 fn push_unique_import(
-    map: &mut BTreeMap<String, Vec<CachedGraphImport>>,
+    map: &mut UniqueBuckets<CachedGraphImport, String>,
     key: &str,
     value: CachedGraphImport,
 ) {
-    let bucket = map.entry(key.to_string()).or_default();
-    if bucket.iter().any(|existing| existing.raw == value.raw) {
-        return;
-    }
-    bucket.push(value);
+    map.insert(key, value.raw.clone(), value);
 }
 
 fn push_unique_importer(
-    map: &mut BTreeMap<String, Vec<CachedGraphImporter>>,
+    map: &mut UniqueBuckets<CachedGraphImporter, ImporterIdentity>,
     key: &str,
     value: CachedGraphImporter,
 ) {
-    let bucket = map.entry(key.to_string()).or_default();
-    if bucket.iter().any(|existing| {
-        existing.file_iri == value.file_iri
-            && existing.raw_import == value.raw_import
-            && existing.line == value.line
-    }) {
-        return;
-    }
-    bucket.push(value);
+    let identity = (value.file_iri.clone(), value.raw_import.clone(), value.line);
+    map.insert(key, identity, value);
 }
 
 /// Reparse one live file using the same qualified identities as graph navigation.
@@ -3294,6 +3426,272 @@ fn relative_to(base: &Path, path: &Path) -> String {
 mod tests {
     use super::*;
 
+    fn cached_neighbor(iri: &str) -> CachedGraphNeighbor {
+        CachedGraphNeighbor {
+            iri: iri.to_owned(),
+            name: "original".to_owned(),
+            qual_name: "original::name".to_owned(),
+            kind: "function".to_owned(),
+            path: "src/example.py".to_owned(),
+            line: Some(1),
+        }
+    }
+
+    #[test]
+    fn indexed_neighbor_dedup_matches_scan_identity_and_first_value_order() {
+        let first = cached_neighbor("urn:first");
+        let mut ignored_metadata = first.clone();
+        ignored_metadata.name = "changed".to_owned();
+        ignored_metadata.qual_name = "changed::name".to_owned();
+        let mut other_path = first.clone();
+        other_path.path = "src/other.py".to_owned();
+        let mut other_line = first.clone();
+        other_line.line = None;
+        let mut other_kind = first.clone();
+        other_kind.kind = "class".to_owned();
+        let input = [
+            ("z", first.clone()),
+            ("z", cached_neighbor("urn:second")),
+            ("z", ignored_metadata),
+            ("a", first),
+            ("z", other_path),
+            ("z", other_line),
+            ("z", other_kind),
+        ];
+        let mut expected: BTreeMap<String, Vec<CachedGraphNeighbor>> = BTreeMap::new();
+        let mut actual = UniqueBuckets::new();
+        for (key, value) in input {
+            let bucket = expected.entry(key.to_owned()).or_default();
+            if !bucket.iter().any(|existing| {
+                existing.iri == value.iri
+                    && existing.path == value.path
+                    && existing.line == value.line
+                    && existing.kind == value.kind
+            }) {
+                bucket.push(value.clone());
+            }
+            push_unique_neighbor(&mut actual, key, value);
+        }
+        assert_eq!(
+            serde_json::to_vec(&actual.values).unwrap(),
+            serde_json::to_vec(&expected).unwrap()
+        );
+        assert_eq!(actual.values["z"].len(), 5);
+        assert_eq!(actual.values["a"].len(), 1);
+        assert_eq!(actual.values["z"][0].name, "original");
+    }
+
+    #[test]
+    fn indexed_callsite_dedup_preserves_all_identity_components() {
+        let first = CachedGraphCallsite {
+            owner_iri: "urn:owner".to_owned(),
+            owner_kind: "function".to_owned(),
+            owner_name: "original".to_owned(),
+            owner_qual_name: "original::name".to_owned(),
+            path: "example.py".to_owned(),
+            line: Some(1),
+            expr: "helper".to_owned(),
+        };
+        let mut ignored_metadata = first.clone();
+        ignored_metadata.owner_kind = "class".to_owned();
+        ignored_metadata.owner_name = "changed".to_owned();
+        ignored_metadata.owner_qual_name = "changed::name".to_owned();
+        let mut other_owner = first.clone();
+        other_owner.owner_iri = "urn:other".to_owned();
+        let mut other_path = first.clone();
+        other_path.path = "other.py".to_owned();
+        let mut other_line = first.clone();
+        other_line.line = None;
+        let mut other_expr = first.clone();
+        other_expr.expr = "obj.helper".to_owned();
+        let input = [
+            first,
+            ignored_metadata,
+            other_owner,
+            other_path,
+            other_line,
+            other_expr,
+        ];
+        let mut expected: Vec<CachedGraphCallsite> = Vec::new();
+        let mut actual = UniqueBuckets::new();
+        for value in input {
+            if !expected.iter().any(|existing| {
+                existing.owner_iri == value.owner_iri
+                    && existing.path == value.path
+                    && existing.line == value.line
+                    && existing.expr == value.expr
+            }) {
+                expected.push(value.clone());
+            }
+            push_unique_callsite(&mut actual, "urn:target", value);
+        }
+        assert_eq!(
+            serde_json::to_vec(&actual.values["urn:target"]).unwrap(),
+            serde_json::to_vec(&expected).unwrap()
+        );
+        assert_eq!(expected.len(), 5);
+        assert_eq!(expected[0].owner_name, "original");
+    }
+
+    #[test]
+    fn indexed_import_dedup_preserves_original_raw_identity_and_metadata() {
+        let first = CachedGraphImport {
+            raw: "import original".to_owned(),
+            syntax_kind: "python_import".to_owned(),
+            module_specifiers: vec!["original".to_owned()],
+            imported_names: Vec::new(),
+            line: Some(1),
+            resolution_kind: "resolved".to_owned(),
+            candidate_paths: vec!["original.py".to_owned()],
+            candidate_symbols: Vec::new(),
+        };
+        let mut duplicate = first.clone();
+        duplicate.line = Some(99);
+        duplicate.candidate_paths = vec!["changed.py".to_owned()];
+        let mut other = first.clone();
+        other.raw = "import other".to_owned();
+        let mut imports = UniqueBuckets::new();
+        push_unique_import(&mut imports, "file", first.clone());
+        push_unique_import(&mut imports, "file", duplicate);
+        push_unique_import(&mut imports, "file", other.clone());
+        push_unique_import(&mut imports, "other-file", first.clone());
+        assert_eq!(
+            serde_json::to_value(&imports.values["file"]).unwrap(),
+            serde_json::to_value([first, other]).unwrap()
+        );
+        assert_eq!(imports.values["other-file"].len(), 1);
+        let mut strings = UniqueBuckets::new();
+        for raw in ["import original", "import other", "import original"] {
+            push_unique_string(&mut strings, "file", raw.to_owned());
+        }
+        assert_eq!(strings.values["file"], ["import original", "import other"]);
+    }
+
+    #[test]
+    fn indexed_importer_dedup_matches_scan_identity_and_first_value_order() {
+        let first = CachedGraphImporter {
+            raw_import: "import original".to_owned(),
+            file_iri: "urn:file".to_owned(),
+            path: "original.py".to_owned(),
+            language: "python".to_owned(),
+            line: Some(1),
+        };
+        let mut ignored_metadata = first.clone();
+        ignored_metadata.path = "changed.py".to_owned();
+        ignored_metadata.language = "rust".to_owned();
+        let mut other_file = first.clone();
+        other_file.file_iri = "urn:other".to_owned();
+        let mut other_raw = first.clone();
+        other_raw.raw_import = "import other".to_owned();
+        let mut other_line = first.clone();
+        other_line.line = None;
+        let mut expected: Vec<CachedGraphImporter> = Vec::new();
+        let mut actual = UniqueBuckets::new();
+        for value in [first, ignored_metadata, other_file, other_raw, other_line] {
+            if !expected.iter().any(|existing| {
+                existing.file_iri == value.file_iri
+                    && existing.raw_import == value.raw_import
+                    && existing.line == value.line
+            }) {
+                expected.push(value.clone());
+            }
+            push_unique_importer(&mut actual, "target", value);
+        }
+        assert_eq!(
+            serde_json::to_vec(&actual.values["target"]).unwrap(),
+            serde_json::to_vec(&expected).unwrap()
+        );
+        assert_eq!(expected.len(), 4);
+        assert_eq!(expected[0].path, "original.py");
+    }
+
+    #[test]
+    fn indexed_large_symbol_bucket_is_complete_ordered_and_deterministic() {
+        let populate = || {
+            let mut values = UniqueBuckets::new();
+            for _ in 0..2 {
+                for index in 0..50_000 {
+                    push_unique_neighbor(
+                        &mut values,
+                        "ontology.ttl",
+                        cached_neighbor(&format!("urn:symbol:{index}")),
+                    );
+                }
+            }
+            values.values
+        };
+        let first = populate();
+        let second = populate();
+        assert_eq!(first["ontology.ttl"].len(), 50_000);
+        for (index, neighbor) in first["ontology.ttl"].iter().enumerate() {
+            assert_eq!(neighbor.iri, format!("urn:symbol:{index}"));
+        }
+        assert_eq!(
+            serde_json::to_vec(&first).unwrap(),
+            serde_json::to_vec(&second).unwrap()
+        );
+    }
+
+    #[test]
+    fn indexed_graph_build_preserves_repeated_calls_and_ambiguous_targets() {
+        let root = tempfile::tempdir().unwrap();
+        let source = "def helper():\n    return 1\ndef caller():\n    helper()\n    helper()\n    ambiguous()\ndef ambiguous():\n    pass\ndef ambiguous():\n    pass\n";
+        fs::write(root.path().join("example.py"), source).unwrap();
+        let index = RepoIndex {
+            version: crate::indexer::index_version(),
+            root: root.path().display().to_string(),
+            indexed_at: "2026-09-30T00:00:00Z".to_owned(),
+            files: vec![crate::model::FileRecord {
+                path: "example.py".to_owned(),
+                language: SourceLanguage::Python,
+                bytes: source.len(),
+                modified_unix_ms: 0,
+                symbols: Vec::new(),
+                env_vars: Vec::new(),
+                redis_keys: Vec::new(),
+                subprocess_calls: Vec::new(),
+                http_calls: Vec::new(),
+                unresolved_edges: Vec::new(),
+            }],
+            deploy_targets: Vec::new(),
+            profiles: Vec::new(),
+            secret_sets: Vec::new(),
+            env_files: Vec::new(),
+            cross_language: Default::default(),
+            k8s_configmaps: Vec::new(),
+        };
+        let first = build_graph(&index, root.path(), "repo", "rev", "urn:graph").unwrap();
+        let second = build_graph(&index, root.path(), "repo", "rev", "urn:graph").unwrap();
+        assert_eq!(first.nquads, second.nquads);
+        assert_eq!(
+            serde_json::to_vec(&first.query_cache).unwrap(),
+            serde_json::to_vec(&second.query_cache).unwrap()
+        );
+        assert_eq!(first.symbol_count, 4);
+        assert_eq!(first.call_edge_count, 3);
+        assert_eq!(first.resolved_call_edge_count, 2);
+        let cache = first.query_cache;
+        let helper = &cache.symbol_lookup_name["helper"][0];
+        let caller = &cache.symbol_lookup_name["caller"][0];
+        let ambiguous = &cache.symbol_lookup_name["ambiguous"][0];
+        assert_eq!(cache.callers_by_symbol[helper].len(), 1);
+        assert_eq!(cache.callers_by_symbol[helper][0].iri, *caller);
+        assert_eq!(cache.callees_by_symbol[caller].len(), 1);
+        assert_eq!(cache.callees_by_symbol[caller][0].iri, *helper);
+        assert_eq!(cache.callsites_by_symbol[helper].len(), 1);
+        assert_eq!(cache.callsites_by_symbol[helper][0].expr, "helper");
+        assert!(!cache.callers_by_symbol.contains_key(ambiguous));
+        let file = &cache.file_lookup_path["example.py"][0];
+        assert_eq!(cache.file_symbols[file].len(), 4);
+        assert_eq!(
+            cache.file_symbols[file]
+                .iter()
+                .map(|symbol| symbol.line)
+                .collect::<Vec<_>>(),
+            [Some(1), Some(3), Some(7), Some(9)]
+        );
+    }
+
     #[test]
     fn stable_and_occurrence_iris_are_distinct() {
         let stable = mint_symbol_iri(
@@ -3909,5 +4307,35 @@ const bare = import("react");
             resolve_ts_import_specifier(&context, "example-ops/src/page.ts", "@jai/trpc/router");
 
         assert_eq!(resolved, vec!["packages/trpc/src/router.ts".to_string()]);
+    }
+
+    #[test]
+    fn incremental_code_graph_reuses_unchanged_files() {
+        let root = tempfile::tempdir().expect("tempdir");
+        fs::create_dir_all(root.path().join("src")).unwrap();
+        fs::write(
+            root.path().join("src/a.rs"),
+            "pub fn alpha() { beta(); }\n",
+        )
+        .unwrap();
+        fs::write(root.path().join("src/b.rs"), "pub fn beta() {}\n").unwrap();
+        let index_path = root.path().join(".leio-code/index.json");
+        let out_dir = default_code_graph_output_dir(root.path());
+
+        let index1 = crate::indexer::build_or_update_index(root.path(), &index_path, true).unwrap();
+        let env1 = export_code_graph(&index1, root.path(), &out_dir).unwrap();
+        assert_eq!(env1.entities[0]["reused_files"], 0);
+        assert_eq!(env1.entities[0]["reparsed_files"], 2);
+
+        // Modify only src/a.rs; src/b.rs must be served from parsed-files.json.
+        fs::write(
+            root.path().join("src/a.rs"),
+            "pub fn alpha() { beta(); }\npub fn gamma() {}\n",
+        )
+        .unwrap();
+        let index2 = crate::indexer::build_or_update_index(root.path(), &index_path, true).unwrap();
+        let env2 = export_code_graph(&index2, root.path(), &out_dir).unwrap();
+        assert_eq!(env2.entities[0]["reused_files"], 1);
+        assert_eq!(env2.entities[0]["reparsed_files"], 1);
     }
 }

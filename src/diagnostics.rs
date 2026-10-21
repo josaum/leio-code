@@ -224,6 +224,8 @@ impl SuggestConfidence {
 pub struct RuleDoc {
     /// Matches `EvidenceItem.kind` for the rule's violations.
     pub rule_id: &'static str,
+    /// Optional `<doctor>/<rule>` or legacy aliases accepted by `rule_doc()` and `matches_evidence()`.
+    pub aliases: &'static [&'static str],
     /// One-paragraph description of what this rule checks.
     pub description: &'static str,
     /// Conceptual fix advice. Markdown allowed; no actual code generation.
@@ -243,11 +245,20 @@ pub struct RuleDoc {
     pub suggest_fn: Option<fn(&crate::model::EvidenceItem) -> Option<String>>,
 }
 
-/// Look up a single rule's static documentation by `rule_id`. Returns `None`
-/// for unknown ids — the CLI maps that to a non-zero exit + a "try
+impl RuleDoc {
+    /// True when `ev.kind` matches this rule's primary `rule_id` or one of its `aliases`.
+    pub fn matches_evidence(&self, ev: &crate::model::EvidenceItem) -> bool {
+        ev.kind == self.rule_id || self.aliases.contains(&ev.kind.as_str())
+    }
+}
+
+/// Look up a single rule's static documentation by `rule_id` (or alias). Returns
+/// `None` for unknown ids — the CLI maps that to a non-zero exit + a "try
 /// `--explain list`" hint.
 pub fn rule_doc(rule_id: &str) -> Option<&'static RuleDoc> {
-    RULE_DOCS.iter().find(|d| d.rule_id == rule_id)
+    RULE_DOCS
+        .iter()
+        .find(|d| d.rule_id == rule_id || d.aliases.contains(&rule_id))
 }
 
 /// All registered rule docs, in stable declaration order. Used by
@@ -276,12 +287,55 @@ fn suggest_redis_no_prefix(_ev: &crate::model::EvidenceItem) -> Option<String> {
     )
 }
 
+fn suggest_env_undeclared_read(_ev: &crate::model::EvidenceItem) -> Option<String> {
+    Some(
+        "--- a/.env.example\n\
+         +++ b/.env.example\n\
+         @@ -1,2 +1,3 @@\n\
+          # Documented runtime configuration variables\n\
+         +<ENV_VAR_NAME>=<default-or-empty>\n\
+         --- a/.leio-code/config.toml\n\
+         +++ b/.leio-code/config.toml\n\
+         @@ -1,2 +1,5 @@\n\
+         +# Or exempt intentional ambient process variables:\n\
+         +[doctors.env_contract]\n\
+         +allow = [\"<ENV_VAR_NAME>\"]\n"
+            .to_string(),
+    )
+}
+
+fn suggest_tracked_noise(_ev: &crate::model::EvidenceItem) -> Option<String> {
+    Some(
+        "--- a/.gitignore\n\
+         +++ b/.gitignore\n\
+         @@ -1,2 +1,4 @@\n\
+          # Local build and editor artifacts\n\
+         +.DS_Store\n\
+         +*.pyc\n\
+         # Then untrack without deleting local state: git rm --cached <path>\n"
+            .to_string(),
+    )
+}
+
+fn suggest_rust_pin_drift(_ev: &crate::model::EvidenceItem) -> Option<String> {
+    Some(
+        "--- a/rust-toolchain.toml\n\
+         +++ b/rust-toolchain.toml\n\
+         @@ -1,2 +1,2 @@\n\
+          [toolchain]\n\
+         -channel = \"<drifted-version>\"\n\
+         +channel = \"<canonical-version>\"\n"
+            .to_string(),
+    )
+}
+
 /// Static registry. Each entry is hand-written prose — no code generation
 /// and no inference from doctor source. When a doctor's behavior changes the
 /// matching entry here must be updated by hand.
 static RULE_DOCS: &[RuleDoc] = &[
     RuleDoc {
         rule_id: "redis_no_prefix",
+        aliases: &["redis-key-hygiene/no-prefix", "redis-key-hygiene/wildcard-keys"],
         description: "Flags Redis keys built without a tenant or cartridge prefix. \
              Operational state may be sharded by tenant; an unprefixed \
              key collides across tenants and silently leaks one tenant's \
@@ -301,6 +355,7 @@ static RULE_DOCS: &[RuleDoc] = &[
     },
     RuleDoc {
         rule_id: "redis_no_ttl",
+        aliases: &["redis-key-hygiene/missing-ttl", "redis-key-hygiene/no-ttl"],
         description: "Flags `SET`/`HSET` call sites that write to Redis without setting \
              an explicit TTL on operational state. The repository treats Redis as the \
              hot store for routes, sessions, and leases — keys that live \
@@ -314,6 +369,231 @@ static RULE_DOCS: &[RuleDoc] = &[
         citation: "src/doctors/redis_key_hygiene.rs",
         doctor_name: "redis-key-hygiene",
         suggest_confidence: SuggestConfidence::Medium,
+        suggest_fn: None,
+    },
+    RuleDoc {
+        rule_id: "env_undeclared_read",
+        aliases: &["env-contract/undeclared-var", "env-contract/undeclared-read"],
+        description: "Flags environment variables read in source code that are not declared \
+             in any `.env*` file, `deploy/profiles/*`, `deploy/secret-sets/*`, Docker Compose \
+             manifest, Dockerfile `ENV`/`ARG`, or Kubernetes ConfigMap.",
+        fix_advice: "Declare the variable in `.env.example` (or the appropriate deploy profile / \
+             manifest) so operators know it exists, or add it to `[doctors.env_contract] allow` \
+             in `.leio-code/config.toml` if it is an ambient host variable.",
+        citation: "src/doctors/env_contract.rs",
+        doctor_name: "env-contract",
+        suggest_confidence: SuggestConfidence::High,
+        suggest_fn: Some(suggest_env_undeclared_read),
+    },
+    RuleDoc {
+        rule_id: "import_boundary_violation",
+        aliases: &["import-boundary/forbidden-import", "import-boundary/violation"],
+        description: "Flags imports that cross a forbidden architectural boundary declared under \
+             `[[doctors.import_boundary.rules]]` in `.leio-code/config.toml`.",
+        fix_advice: "Move the shared type or helper into an allowed lower-layer module, invert \
+             the dependency via a trait/interface, or adjust `[[doctors.import_boundary.rules]]` \
+             if the boundary definition is outdated.",
+        citation: "src/doctors/import_boundary.rs",
+        doctor_name: "import-boundary",
+        suggest_confidence: SuggestConfidence::Medium,
+        suggest_fn: None,
+    },
+    RuleDoc {
+        rule_id: "orphan_file",
+        aliases: &["orphan-files/unreferenced-file", "orphan-files/orphan-file"],
+        description: "Flags source files that have zero incoming resolved imports in the code graph \
+             and are not recognized entrypoints, tests, binaries, or configured `[doctors.orphan_files]` \
+             exemptions.",
+        fix_advice: "Delete the file if it is dead code, wire it into the module tree / router \
+             if it was meant to be active, or add its path to `[doctors.orphan_files] dynamic_entrypoints` \
+             in `.leio-code/config.toml` if it is invoked externally.",
+        citation: "src/doctors/orphan_files.rs",
+        doctor_name: "orphan-files",
+        suggest_confidence: SuggestConfidence::Medium,
+        suggest_fn: None,
+    },
+    RuleDoc {
+        rule_id: "conflict_leftover",
+        aliases: &["repo-hygiene/conflict-leftover"],
+        description: "Flags committed Git merge-conflict residue (`*.orig`, `*.rej`) or unresolved \
+             conflict markers tracked in repository files.",
+        fix_advice: "Delete the leftover `*.orig`/`*.rej` file or resolve the conflict and remove \
+             all residue before committing.",
+        citation: "src/doctors/repo_hygiene.rs",
+        doctor_name: "repo-hygiene",
+        suggest_confidence: SuggestConfidence::Medium,
+        suggest_fn: None,
+    },
+    RuleDoc {
+        rule_id: "tracked_noise",
+        aliases: &[
+            "repo-hygiene/tracked-noise",
+            "repo-hygiene/debug-artifact",
+            "repo-hygiene/secret-artifact",
+        ],
+        description: "Flags OS, editor, or build noise files (`.DS_Store`, `*.pyc`, `*.swp`, \
+             coverage data, notebook checkpoints, or scratch artifacts) that are tracked by Git.",
+        fix_advice: "Untrack the file with `git rm --cached <path>` and add its pattern to \
+             `.gitignore` so it cannot be re-added.",
+        citation: "src/doctors/repo_hygiene.rs",
+        doctor_name: "repo-hygiene",
+        suggest_confidence: SuggestConfidence::High,
+        suggest_fn: Some(suggest_tracked_noise),
+    },
+    RuleDoc {
+        rule_id: "duplicate_large_files",
+        aliases: &["repo-hygiene/duplicate-large-files", "repo-hygiene/large-binary"],
+        description: "Flags byte-identical large files (>5 MB) tracked at multiple paths in the repository.",
+        fix_advice: "Consolidate the duplicate copies into a single canonical path (or generate \
+             the mirror at release/build time instead of tracking duplicate blobs).",
+        citation: "src/doctors/repo_hygiene.rs",
+        doctor_name: "repo-hygiene",
+        suggest_confidence: SuggestConfidence::Medium,
+        suggest_fn: None,
+    },
+    RuleDoc {
+        rule_id: "rust_pin_drift",
+        aliases: &[
+            "rust-toolchain-pin-coherence/version-mismatch",
+            "rust-toolchain-pin-coherence/pin-drift",
+        ],
+        description: "Flags Rust toolchain version drift across `rust-toolchain.toml`, Dockerfiles \
+             (`FROM rust:…`, `cargo-chef`), inline `channel = \"…\"` pins, and configured build scripts.",
+        fix_advice: "Align every toolchain pin to the canonical `X.Y` minor declared in \
+             `rust-toolchain.toml` so CI, container builds, and local checkouts compile with the \
+             same Rust toolchain.",
+        citation: "src/doctors/rust_toolchain_pin_coherence.rs",
+        doctor_name: "rust-toolchain-pin-coherence",
+        suggest_confidence: SuggestConfidence::High,
+        suggest_fn: Some(suggest_rust_pin_drift),
+    },
+    RuleDoc {
+        rule_id: "rust_channel_floating",
+        aliases: &[
+            "rust-toolchain-pin-coherence/floating-channel",
+            "rust-toolchain-pin-coherence/channel-floating",
+        ],
+        description: "Flags `rust-toolchain.toml` when `channel` is set to a floating track \
+             (`stable`, `beta`, or bare `nightly`) instead of an explicit `X.Y.Z` release.",
+        fix_advice: "Replace the floating track in `rust-toolchain.toml` with an explicit \
+             `channel = \"X.Y.Z\"` version so every host and container builds with the same compiler.",
+        citation: "src/doctors/rust_toolchain_pin_coherence.rs",
+        doctor_name: "rust-toolchain-pin-coherence",
+        suggest_confidence: SuggestConfidence::High,
+        suggest_fn: Some(suggest_rust_pin_drift),
+    },
+    RuleDoc {
+        rule_id: "vendor_manifest_missing",
+        aliases: &["vendored-crate-provenance/manifest-missing"],
+        description: "Flags vendored crates under `vendor/` when `vendor/manifest.json` is missing \
+             or unreadable.",
+        fix_advice: "Create or restore `vendor/manifest.json` documenting the upstream repository, \
+             path, commit SHA, policy (`pinned-exact` or `pinned-divergent`), and `content_sha256` \
+             for every vendored crate.",
+        citation: "src/doctors/vendored_crate_provenance.rs",
+        doctor_name: "vendored-crate-provenance",
+        suggest_confidence: SuggestConfidence::Medium,
+        suggest_fn: None,
+    },
+    RuleDoc {
+        rule_id: "vendor_provenance_violation",
+        aliases: &["vendored-crate-provenance/provenance-violation"],
+        description: "Flags vendored crates whose `Cargo.toml` version or `content_sha256` tree hash \
+             violates the provenance record in `vendor/manifest.json`.",
+        fix_advice: "Update `vendor/manifest.json` with the new upstream commit/version and \
+             `content_sha256` (plus a `note` if `policy = \"pinned-divergent\"`), or revert \
+             unauthorized local edits inside `vendor/<crate>`.",
+        citation: "src/doctors/vendored_crate_provenance.rs",
+        doctor_name: "vendored-crate-provenance",
+        suggest_confidence: SuggestConfidence::Medium,
+        suggest_fn: None,
+    },
+    RuleDoc {
+        rule_id: "vendor_crate_unrecorded",
+        aliases: &["vendored-crate-provenance/untracked-vendor"],
+        description: "Flags directories under `vendor/` that contain a `Cargo.toml` but have no \
+             corresponding entry in `vendor/manifest.json`.",
+        fix_advice: "Add an entry for the vendored crate in `vendor/manifest.json` with its \
+             upstream repo/path/commit and `content_sha256`, or remove the unrecorded directory \
+             from `vendor/`.",
+        citation: "src/doctors/vendored_crate_provenance.rs",
+        doctor_name: "vendored-crate-provenance",
+        suggest_confidence: SuggestConfidence::Medium,
+        suggest_fn: None,
+    },
+    RuleDoc {
+        rule_id: "skill_contract_violation",
+        aliases: &["skill-contract/violation"],
+        description: "Flags skill registry (`skills/registry.toml`) or `SKILL.md` contract violations: \
+             unregistered skills, frontmatter schema/length errors, broken relative links or resources, \
+             forbidden resource extensions (`.pyc`, `.zip`), or unallowlisted credential patterns.",
+        fix_advice: "Register retained skills in `skills/registry.toml`, keep `SKILL.md` under 500 lines \
+             with valid `name` + `description` frontmatter (40–1024 chars), fix broken relative links, \
+             and remove forbidden artifacts or raw credentials.",
+        citation: "src/doctors/skill_contract.rs",
+        doctor_name: "skill-contract",
+        suggest_confidence: SuggestConfidence::Medium,
+        suggest_fn: None,
+    },
+    RuleDoc {
+        rule_id: "placeholder-url",
+        aliases: &["slop/placeholder-url"],
+        description: "Flags placeholder URLs and dummy strings (`via.placeholder`, `placehold.it`, \
+             `example.com/`, `lorem ipsum`, `unsplash.com/random`, bare `placeholder`) in `spine.json` \
+             or deck source files.",
+        fix_advice: "Replace placeholder URLs and dummy copy with real, verified asset paths and \
+             grounded domain text.",
+        citation: "src/doctors/slop_gate.rs",
+        doctor_name: "slop",
+        suggest_confidence: SuggestConfidence::Medium,
+        suggest_fn: None,
+    },
+    RuleDoc {
+        rule_id: "banned-phrases",
+        aliases: &["slop/banned-phrases"],
+        description: "Flags corporate filler and AI-slop clichés (EN + PT-BR, such as `leverage`, \
+             `synergy`, `best-in-class`, `cutting-edge`, `seamless`, `game-changer`, `alavancar`, \
+             `sinergias`, `estado da arte`) in `spine.json` or deck source files.",
+        fix_advice: "Rewrite the sentence using concrete facts, numbers, and domain-specific nouns/verbs \
+             instead of generic superlatives.",
+        citation: "src/doctors/slop_gate.rs",
+        doctor_name: "slop",
+        suggest_confidence: SuggestConfidence::Medium,
+        suggest_fn: None,
+    },
+    RuleDoc {
+        rule_id: "action-titles",
+        aliases: &["slop/action-titles"],
+        description: "Flags `spine.json` `story[]` node titles that are topic labels rather than \
+             assertions (missing a verb, digit/currency, and fewer than 5 words).",
+        fix_advice: "Rewrite each `story[].title` as a governing takeaway assertion containing an \
+             action verb or quantified metric.",
+        citation: "src/doctors/slop_gate.rs",
+        doctor_name: "slop",
+        suggest_confidence: SuggestConfidence::Medium,
+        suggest_fn: None,
+    },
+    RuleDoc {
+        rule_id: "source-required",
+        aliases: &["slop/source-required"],
+        description: "Flags `spine.json` `story[]` nodes whose `sources[]` array is missing or empty.",
+        fix_advice: "Populate `sources[]` on every `story[]` node with the backing document, table, \
+             or query provenance.",
+        citation: "src/doctors/slop_gate.rs",
+        doctor_name: "slop",
+        suggest_confidence: SuggestConfidence::Medium,
+        suggest_fn: None,
+    },
+    RuleDoc {
+        rule_id: "density",
+        aliases: &["slop/density"],
+        description: "Flags `spine.json` `story[]` nodes exceeding the 220-word soft density cap \
+             (emitted as advisory evidence without failing the gate).",
+        fix_advice: "Split dense story nodes across two slides or trim secondary prose so the slide \
+             stays scannable.",
+        citation: "src/doctors/slop_gate.rs",
+        doctor_name: "slop",
+        suggest_confidence: SuggestConfidence::Low,
         suggest_fn: None,
     },
 ];
@@ -340,6 +620,23 @@ fn render_sarif(diags: &[Diagnostic], meta: &RunMeta) -> String {
         })
         .collect();
 
+    let rules: Vec<serde_json::Value> = RULE_DOCS
+        .iter()
+        .map(|r| {
+            json!({
+                "id": r.rule_id,
+                "shortDescription": { "text": r.description },
+                "help": { "text": r.fix_advice },
+                "properties": {
+                    "doctor": r.doctor_name,
+                    "citation": r.citation,
+                    "suggest_confidence": r.suggest_confidence.as_str(),
+                    "aliases": r.aliases,
+                }
+            })
+        })
+        .collect();
+
     // `schema_version` is the leio-code output-contract version (see
     // `docs/output-schema.md` §7). It is *not* the SARIF format version,
     // which lives at top-level `"version": "2.1.0"`. Placed first at the
@@ -357,6 +654,7 @@ fn render_sarif(diags: &[Diagnostic], meta: &RunMeta) -> String {
                 "driver": {
                     "name": "leio-code",
                     "version": meta.tool_version,
+                    "rules": rules,
                 }
             },
             "invocations": [{

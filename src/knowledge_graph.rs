@@ -221,16 +221,20 @@ fn build_formal_store(repo_root: &Path) -> Result<FormalStore> {
 }
 
 fn discover_rdf_files(repo_root: &Path) -> Vec<PathBuf> {
+    let has_public_export_mirror = repo_root.join("public-export.json").is_file();
     let mut builder = WalkBuilder::new(repo_root);
     builder.hidden(true);
     builder.git_ignore(true);
     builder.git_global(true);
     builder.git_exclude(true);
-    builder.filter_entry(|entry| {
+    builder.filter_entry(move |entry| {
         let Some(name) = entry.file_name().to_str() else {
             return true;
         };
         if entry.path().is_dir() {
+            if has_public_export_mirror && entry.depth() == 1 && name == "public" {
+                return false;
+            }
             return !matches!(
                 name,
                 "target"

@@ -54,12 +54,13 @@ are loaded per-language but the cross-language linker is unclear).
 | Phase | Scope | Status |
 |---|---|---|
 | 0 | Design doc + ROADMAP marker | shipped (PR #159) |
-| 1 / 1b / 4 | JS `child_process`, Rust `std::process::Command`, Makefile + npm script detectors; `SourceLanguage::Make`/`NpmScript`; INDEX_VERSION → 7 | **shipped (this PR)** |
-| 2 | `binary` node set (Cargo `[[bin]]` + implicit `src/main.rs` + `src/bin/*.rs`, npm `bin`, pyproject `[project.scripts]`) + resolution pass | sequenced after 1/1b |
-| 3 | First-class `UnresolvedEdge` records (classified `reason`, grouped output) | sequenced after 2 |
-| 5 | HTTP routes (literal-only) — Flask/FastAPI/Express/axum + requests/httpx/fetch/axios/reqwest | sequenced after 2 |
-| 6 | HTTP route templates + confidence math | sequenced after 5 |
-| 7 | CLI polish: `find callers <route>/<binary>`, `explain <route>/<binary>`, grouped text rendering | **shipped (this PR)** |
+| 1 / 1b / 4 | JS `child_process`, Rust `std::process::Command`, Makefile + npm script detectors; `SourceLanguage::Make`/`NpmScript`; INDEX_VERSION → 7 | **shipped** |
+| 2 | `binary` node set (Cargo `[[bin]]` + implicit `src/main.rs` + `src/bin/*.rs`, npm `bin`, pyproject `[project.scripts]`) + resolution pass | **shipped** |
+| 3 | First-class `UnresolvedEdge` records (classified `reason`, grouped output) | **shipped** |
+| 5 | HTTP routes (literal-only) — Flask/FastAPI/Express/axum + requests/httpx/fetch/axios/reqwest | **shipped** |
+| 6 | HTTP route templates + confidence math | **shipped** |
+| 7 | CLI polish: `find callers <route>/<binary>`, `explain <route>/<binary>`, grouped text rendering | **shipped** |
+| 8 | Light intra-procedural dataflow for HTTP and subprocess targets | **shipped** |
 
 **Already shipped (PR #145):** Python `subprocess.{run,Popen,check_output,check_call,call}([literal, …])` narrow slice — line-anchored regex, literal first arg only. The phases above extend this.
 
@@ -201,10 +202,10 @@ its current value is. Users fall back to grepping `.env*` files.
   supported. Unterminated quotes are dropped (safer-skip) rather than
   consuming the rest of the file.
 
-**Still to do (follow-up PRs):**
-- Shell-environment and k8s-configmap provenance variants are reserved on
-  `BindingSource` but not populated yet. Add when the indexer learns to
-  read them (or when a runtime-bound resolver is added).
+- Shell-environment (`BindingSource::ShellEnv`, precedence `-1`) and
+  Kubernetes `ConfigMap` (`BindingSource::K8sConfigMap`, precedence `30`)
+  provenance variants are populated in `src/value_resolution.rs` and
+  indexed in `src/indexer.rs`.
 
 **Non-goals.** Editing values. Pulling from remote secret stores. History.
 
@@ -217,7 +218,7 @@ arXiv:2510.04618). Core insight: contexts that accumulate and refine
 across sessions outperform static one-shot bundles by +10-17%. The
 techniques below are structural — no LLM-in-the-loop for curation.
 
-### 5a. Evolving playbook for `leio_code_context`
+### 5a. Evolving playbook for `leio_code_context` — **SHIPPED** (`src/playbook.rs`)
 
 **Problem.** `leio_code_context` builds a ranked context bundle per query
 from the static index. Every session starts from zero — no memory of which
@@ -244,8 +245,8 @@ across sessions compounds accuracy.
   co-edit frequency; hot symbols float to the top.
 - The playbook is updated incrementally (delta merge, not full rewrite)
   and capped at 10K entries with LRU eviction.
-- `leio-code playbook stats` prints a summary (top co-edits, hottest
-  symbols, noisiest doctors).
+- `leio-code playbook stats` (and `leio-code playbook sync` / `leio-code playbook outcome --helpful ... --harmful ...`) prints a summary
+  (top co-edits, hottest symbols, noisiest doctors). `leio-code context` also auto-syncs git co-edits when `HEAD` advances and uses `doctor_triage_priority` to promote high-signal doctors and demote noisy doctors in `doctor_suggestions`.
 
 **Non-goals.** LLM-based curation (the Curator role from ACE). The
 playbook is maintained by deterministic counters and git history mining,
@@ -253,7 +254,7 @@ not by prompting a model. No network calls.
 
 ---
 
-### 5c. Doctor warning triage counters
+### 5c. Doctor warning triage counters — **SHIPPED** (`src/playbook.rs`)
 
 **Problem.** With 68 doctors and strict mode ON in CI, false positives
 block PRs. Today the `doctor-warning-ledger` is a static script that
@@ -282,7 +283,7 @@ humans decide whether to fix the doctor or adjust the rule.
 
 ## P2 — Improve the doctor surface without overreach
 
-### 6. `doctor --explain <rule>` and `doctor --suggest`
+### 6. `doctor --explain <rule>` and `doctor --suggest` — **SHIPPED** (`src/diagnostics.rs`)
 
 **Problem.** Doctors detect issues but don't say *how* to fix them. Full
 autofix on semantic rules (contract drift, route projection) is dangerous —
@@ -295,18 +296,16 @@ rules can offer.
   description. Static text per rule — no code generation. `--explain list`
   prints every documented rule id with a one-line summary. The rule
   registry lives in `src/diagnostics.rs` (`RuleDoc` / `rule_doc` /
-  `all_rule_docs`) and currently documents seven rules across the
-  redis-key-hygiene, semantic-wiring, model-cache-contract,
-  route-projection, tenant-identity, and deploy doctors.
-
-**Still to do.**
+  `all_rule_docs`) and documents all 19 rules across all 9 generic doctors
+  (`skill-contract`, `orphan-files`, `redis-key-hygiene`,
+  `rust-toolchain-pin-coherence`, `slop`, `env-contract`, `import-boundary`,
+  `repo-hygiene`, `vendored-crate-provenance`), including `<doctor>/<rule>`
+  aliases and SARIF `tool.driver.rules` descriptors.
 - `doctor --suggest <rule-id>` emits a unified diff to stdout as a *proposal*
   the user can inspect, edit, and apply with `git apply -`. Never writes to
-  the working tree. Deferred to a follow-up PR.
+  the working tree.
 - Each rule declares its `suggest_confidence`: `low | medium | high`. Only
-  rules where the fix is mechanical (e.g., adding a missing env var
-  declaration to a manifest) qualify for `--suggest`. Deferred with
-  `--suggest`.
+  rules where the fix is mechanical qualify for `--suggest`.
 
 **Non-goals.** `--fix` that writes to disk. Auto-applied PRs. AI-generated
 patches.

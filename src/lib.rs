@@ -79,6 +79,7 @@ pub mod node_rows;
 pub mod node_search;
 pub mod ontology;
 pub mod parser_support;
+pub mod playbook;
 pub mod query;
 pub mod search;
 pub mod sidecar;

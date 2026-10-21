@@ -110,6 +110,45 @@ export const LeioToolOutputSchema = z
   })
   .passthrough();
 
+const HarnessStageSchema = z.object({
+  status: z.enum(["passed", "failed", "timed_out", "canceled", "infra_error"]),
+  exitCode: z.number().int().nullable(),
+  stdoutPath: z.string(), stderrPath: z.string(),
+}).passthrough();
+const HarnessTaskSchema = z.object({
+  runId: z.string(), repoRoot: z.string(), task: z.string(), worker: z.string(),
+  state: z.enum(["queued", "running", "blocked", "failed", "cancelled", "succeeded"]),
+  phase: z.string(), supervisorPid: z.number().int().nullable(), workerPid: z.number().int().nullable(),
+  supervisorAlive: z.boolean(), elapsedMs: z.number(), silenceMs: z.number(),
+  sequence: z.number().int(), lastActivityAtMs: z.number(), lastOutputAtMs: z.number().nullable(),
+  lastActivity: z.string(), error: z.string().nullable(), runDir: z.string(),
+  workerResult: HarnessStageSchema.nullable(), verificationResult: HarnessStageSchema.nullable(),
+  changedPaths: z.array(z.string()), diffPath: z.string().nullable(), diffTruncated: z.boolean(),
+  untrackedArtifacts: z.array(z.string()), untrackedTruncated: z.boolean(),
+  eventsPath: z.string(), specPath: z.string(), supervisorLogPath: z.string(),
+  cancellationRequested: z.boolean().optional(),
+}).passthrough();
+const HarnessArtifactPreviewSchema = z.object({path:z.string().nullable(),text:z.string(),available:z.boolean(),truncated:z.boolean(),error:z.string().nullable()});
+export const LeioTaskToolOutputSchema = LeioToolOutputSchema.extend({
+  review_source: z.object({version:z.literal(1),source_repo:z.string(),repo_root:z.string(),captured_at:z.string(),files:z.array(z.object({path:z.string(),sha256:z.string(),bytes:z.number().int().nonnegative()})),scope:z.string()}).optional(),
+  review_runs: z.array(z.object({repo_root:z.string(),run_id:z.string(),captured_at:z.string(),source_files:z.number().int(),recovered:z.boolean().optional(),next_call:z.object({tool:z.literal('leio_code_task'),arguments:z.record(z.unknown()),reason:z.string()})})).optional(),
+  review_runs_truncated: z.boolean().optional(),
+  review_catalog_incomplete: z.boolean().optional(),
+  review_warnings: z.array(z.object({kind:z.string(),path:z.string(),message:z.string()})).optional(),
+  preparation: z.object({source_repo:z.string(),repo_root:z.string(),baseline_revision:z.string(),source_edits_excluded:z.boolean(),detached:z.literal(true),clean:z.boolean()}).optional(),
+  next_calls: z.array(z.object({tool:z.literal("leio_code_task"),arguments:z.record(z.unknown()),reason:z.string()})).optional(),
+  review: z.object({version:z.literal(1),outcome:z.string(),phase:z.string(),error:z.string().nullable(),next_action:z.enum(["observe_or_cancel","review_changes","review_findings","inspect_partial_changes","inspect_failure"]),
+    verification:z.object({status:z.string(),exit_code:z.number().nullable()}).nullable(),changed_files:z.array(z.string()),changed_files_truncated:z.boolean(),
+    artifacts:z.object({patch:HarnessArtifactPreviewSchema,worker_stdout:HarnessArtifactPreviewSchema,worker_stderr:HarnessArtifactPreviewSchema,verification_stdout:HarnessArtifactPreviewSchema,verification_stderr:HarnessArtifactPreviewSchema}),
+    new_files:z.array(z.object({file:z.string(),preview:HarnessArtifactPreviewSchema})),new_files_incomplete:z.boolean(),
+    artifact_capture_truncated:z.boolean(),assurance:z.string()}).optional(),
+  task: z.union([
+    HarnessTaskSchema,
+    z.object({repoRoot: z.string(), runs: z.array(HarnessTaskSchema)}),
+    z.object({runId: z.string(), events: z.array(z.object({seq:z.number().int(),timestampMs:z.number(),kind:z.string(),phase:z.string(),state:z.string(),workerPid:z.number().int().nullable(),detail:z.string()})),nextAfter:z.number().int(),hasMore:z.boolean()}),
+  ]).optional(),
+});
+
 export const LeioStatusToolOutputSchema = LeioToolOutputSchema.extend({
   doctor_summary: z.object({
     scope: z.literal("baseline"),

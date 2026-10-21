@@ -77,6 +77,7 @@ Unsure which family after the loop: `leio_code_guide`. CLI has no `guide` — th
 | One doctor family | `doctor` |
 | Composite pre-deploy rollup | `audit` (`strict=true` when gating) |
 | Fast health gate | `doctor baseline` (same checks as `status --strict`) |
+| Explicit worktree preparation, coding handoff, execution status, review, cancellation | `leio_code_task` (local stdio) / `leio-harness task` — see [task contract](../../docs/HARNESS-TASKS.md); use guide topic=tasks; worker=codex can omit argv, result includes bounded inline evidence; submit requires explicitly authorized work and verification |
 | PR-shaped gate | `doctor ci` |
 | Every registered doctor | `doctor all` or `verify` |
 | Formal context / code-graph / hypergraph | `export` |
@@ -150,3 +151,5 @@ walk to select its sole target. Ambiguous walks remain explicit listings. Keep
 the same root and session. After edits, inspect local source freshness; refresh
 the index for changed edges. Default context/graph/nav packets are compact;
 `full: true` restores diagnostics. See [the editing loop](../../docs/NAV-EDITING-LOOP.md).
+
+For an explicitly requested background review of current uncommitted work, local stdio `leio_code_task(action=review, repo_root=<source root>, sources=[<relative files>])` captures selected current files and runs read-only Codex with built-in snapshot integrity verification. No manual snapshot, worker argv or verify command is needed. Unselected context and dependencies are absent. Follow returned snapshot-root next_calls; source-root list returns durable review receipts. See docs/HARNESS-TASKS.md for isolation and bounds.

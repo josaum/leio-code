@@ -170,11 +170,18 @@ export function summarizeEnvelope(envelope) {
   }
 
   const metaSummary = summarizeEnvelopeMeta(envelope?.meta);
+  const rawSummary = envelope.summary;
+  const isAuditObject = Boolean(rawSummary && typeof rawSummary === "object" && !Array.isArray(rawSummary));
+  const summaryText = isAuditObject
+    ? typeof rawSummary.passed === "boolean" && Number.isFinite(rawSummary.doctor_count)
+      ? `Audit: ${rawSummary.passed ? "passed" : "failed"}; ${rawSummary.doctor_count} doctors, ${rawSummary.warning_count ?? 0} warnings (${rawSummary.workspace_profile ?? "unknown profile"})`
+      : JSON.stringify(rawSummary)
+    : (rawSummary ?? null);
 
   return {
     query_id: envelope.query_id ?? null,
-    kind: envelope.kind ?? null,
-    summary: envelope.summary ?? null,
+    kind: envelope.kind ?? (isAuditObject ? "audit" : null),
+    summary: summaryText,
     confidence:
       typeof envelope.confidence === "number" ? envelope.confidence : null,
     timing_ms:
@@ -183,10 +190,18 @@ export function summarizeEnvelope(envelope) {
     evidence_count: Array.isArray(envelope.evidence)
       ? envelope.evidence.length
       : 0,
-    warning_count: Array.isArray(envelope.warnings) ? envelope.warnings.length : 0,
+    warning_count: Array.isArray(envelope.warnings)
+      ? envelope.warnings.length
+      : isAuditObject && Number.isFinite(rawSummary.warning_count)
+        ? rawSummary.warning_count
+        : 0,
     backend: metaSummary?.backend ?? null,
     search_strategy: metaSummary?.search?.strategy ?? null,
-    workspace_profile: metaSummary?.workspace_profile ?? null,
+    workspace_profile:
+      metaSummary?.workspace_profile ??
+      (isAuditObject && typeof rawSummary.workspace_profile === "string"
+        ? rawSummary.workspace_profile
+        : null),
   };
 }
 

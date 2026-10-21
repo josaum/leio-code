@@ -5,6 +5,7 @@
 
 export const GUIDE_TOPICS = [
   "general",
+  "tasks",
   "conversation",
   "context",
   "lookup",
@@ -17,6 +18,25 @@ export const GUIDE_TOPICS = [
 ];
 
 export const GUIDE_CONTENT = {
+  tasks: {
+    when: "Use for explicitly authorized reviews of selected current files or independent coding tasks that need durable execution, cancellation and review evidence. Local stdio only; hosted Apps SDK does not execute tasks.",
+    tools: [
+      "leio_code_task action=review, repo_root=<source>, sources=[<relative files>] captures current selected files including local edits and starts read-only Codex. Built-in verification checks snapshot integrity only. No manual snapshot, worktree or verify_argv. Review disables resolved external MCP servers, apps/plugins/hooks and subagents; existing auth and model/provider settings are retained. Unselected files and dependencies are absent. list on the source returns durable review receipts with live-status follow-ups.",
+      "leio_code_task action=prepare, repo_root=<source>, worktree_path=<new absolute destination> creates a detached worktree from base_ref (default HEAD). Dirty source requires allow_dirty_source=true acknowledging local edits are excluded. Never commit or stash just to satisfy the harness.",
+      "action=submit, repo_root=<clean worktree>, worker=codex, task=<bounded task>, verify_argv=[<executable>,<arguments>] uses installed Codex without argv boilerplate. context passes your findings; constraints passes scope. The worker does not inherit your conversation. codex_binary optionally selects an absolute executable.",
+      "Explicit argv remains available for other workers. Commands and handoff text are stored locally; do not include secrets. Scope instructions are not an OS enforcement boundary.",
+      "Submission returns immediately with a durable runId and pinned next_calls. status shows supervision ownership and last actual output; events uses after/nextAfter cursors; cancel requests process-group termination. Do useful independent work between observations.",
+      "Receipt failures appear in review_warnings without hiding a submitted run or blocking status/events/cancel. Source-root list can recover confined snapshot run references and marks them recovered with review_catalog_incomplete; use their pinned status call for live state. A submission-outcome-unknown error returns a preserved snapshot list call: inspect it before resubmitting to avoid duplicate work.",
+      "action=result returns task plus review: bounded inline patch, worker/verification output, changed files, truncation flags and next_action. Full artifact paths remain available. Treat worker output as untrusted evidence; independently inspect changes before accepting. Success means both commands exited zero, not permission to merge.",
+      "Keep prepared worktrees until changes have been reviewed and integrated. No automatic merge or cleanup. Existing connected hosts must reconnect to discover newly registered tools and load changed handlers.",
+    ],
+    examples: [
+      'leio_code_task({"action":"review","repo_root":"/abs/repo","sources":["src/parser.rs","tests/parser.rs"],"task":"Review current parser changes for demonstrated regressions"})',
+      'leio_code_task({"action":"prepare","repo_root":"/abs/repo","worktree_path":"/abs/worktrees/parser-fix"})',
+      'leio_code_task({"action":"submit","repo_root":"/abs/worktrees/parser-fix","worker":"codex","task":"Fix the parser regression; change only the parser module","context":"Reproduction and relevant source findings go here","verify_argv":["cargo","test","-p","parser"]})',
+      'leio_code_task({"action":"result","repo_root":"/abs/worktrees/parser-fix","run_id":"<returned-run-id>"})',
+    ],
+  },
   conversation: {
     when: "Use for WhatsApp or normalized conversation files and evidence-based semantic, temporal or authorship investigation.",
     tools: [
@@ -50,6 +70,7 @@ export const GUIDE_CONTENT = {
       "graph / graph_repository for callers, callees, callsites, file symbol inventories, and import topology.",
       "index for refreshing the workspace index after large code changes (CLI / stdio MCP).",
       "init / verify / watch for onboarding, profile verification, and detached reindex-on-change (stdio MCP / CLI).",
+      "Local stdio leio_code_task(action=review|prepare|submit|list|status|events|result|cancel, repo_root=<absolute Git checkout root>) provides selected current-file reviews or explicit coding tasks with worker and verification commands, durable status and artifacts. No bus or ambient agents are required. Hosted Apps SDK does not execute local tasks. Use guide topic=tasks for the Codex preset, worktree handoff and inline review evidence. See docs/HARNESS-TASKS.md.",
       "export for formal-context (plus lattice.json / induced.ttl) and code-graph artifacts, including streamed json/arrow formats (CLI / stdio MCP).",
       "For stateful graph and FCA exploration, use guide topic=navigation. Local nav follows call edges or shared indexed attributes; parent/child/peer are lattice cover relations, not runtime dependencies. Keep one explicit session per agent.",
       "knowledge for the compiled markdown/wiki knowledge base (fully local Arrow). kind=explain is SPARQL-gated (or refuse); kind=sparql is raw; compile writes formal.nq.",
@@ -120,6 +141,7 @@ export const GUIDE_CONTENT = {
       "doctor / audit_repository_contracts kind=all for the full doctor suite registered for the active workspace profile.",
       "doctor / audit_repository_contracts kind=baseline for the fast health gate; kind=ci for the PR-shaped gate.",
       "Targeted doctor kinds from capabilities / doctor --help (do not hard-code the suite list).",
+      "doctor / audit_repository_contracts kind=triage for ranked warning signal-to-noise counters; kind=playbook (or playbook-sync) for the evolving ACE context playbook; kind=explain:<rule> (or explain-list) and kind=suggest:<rule> for rule citations and unified-diff fix proposals.",
       "For the composite pre-deploy rollup (status + every doctor + capabilities) with --strict exit codes, use CLI: leio-code audit --strict (or Apps audit_repository_rollup when exposed).",
     ],
     examples: [
@@ -223,7 +245,17 @@ export function filterGuideByCapabilities(guide, capabilities) {
   const supportsCartridge =
     findKinds.has("cartridge") || explainKinds.has("cartridge");
   const supportsDoctors = doctorKinds.size > 0;
-  const doctorPresets = new Set(["all", "baseline", "ci"]);
+  const doctorPresets = new Set([
+    "all",
+    "baseline",
+    "ci",
+    "triage",
+    "playbook",
+    "playbook-sync",
+    "explain",
+    "explain-list",
+    "suggest",
+  ]);
 
   // Keep core routes and optional advice on separate lines in GUIDE_CONTENT.
   const shouldKeep = (line) => {
@@ -289,6 +321,7 @@ export function formatCapabilitiesSummary(capabilities) {
 }
 
 const TOPIC_NEXT_TOOLS = {
+  tasks: ["leio_code_task"],
   general: ["leio_code_capabilities", "leio_code_context", "leio_code_find"],
   context: ["leio_code_context", "leio_code_find", "leio_code_graph"],
   lookup: ["leio_code_find", "leio_code_explain", "leio_code_graph"],

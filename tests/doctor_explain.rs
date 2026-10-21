@@ -13,7 +13,13 @@ use leio_code::diagnostics::{all_rule_docs, rule_doc};
 
 #[test]
 fn rule_doc_returns_some_for_known_rule() {
-    for id in ["redis_no_prefix", "redis_no_ttl"] {
+    for id in [
+        "redis_no_prefix",
+        "redis_no_ttl",
+        "skill_contract_violation",
+        "banned-phrases",
+        "rust_channel_floating",
+    ] {
         let doc = rule_doc(id).unwrap_or_else(|| panic!("rule `{id}` should be registered"));
         assert_eq!(doc.rule_id, id);
         assert!(
@@ -22,6 +28,28 @@ fn rule_doc_returns_some_for_known_rule() {
         );
         assert!(!doc.fix_advice.trim().is_empty(), "{id}: empty fix_advice");
         assert!(!doc.citation.trim().is_empty(), "{id}: empty citation");
+    }
+}
+
+#[test]
+fn rule_doc_resolves_hierarchical_aliases() {
+    let cases = [
+        ("env-contract/undeclared-var", "env_undeclared_read"),
+        ("repo-hygiene/tracked-noise", "tracked_noise"),
+        (
+            "import-boundary/forbidden-import",
+            "import_boundary_violation",
+        ),
+        ("skill-contract/violation", "skill_contract_violation"),
+        ("slop/banned-phrases", "banned-phrases"),
+        (
+            "vendored-crate-provenance/untracked-vendor",
+            "vendor_crate_unrecorded",
+        ),
+    ];
+    for (alias, expected_id) in cases {
+        let doc = rule_doc(alias).unwrap_or_else(|| panic!("alias `{alias}` should resolve"));
+        assert_eq!(doc.rule_id, expected_id);
     }
 }
 
@@ -35,17 +63,25 @@ fn rule_doc_returns_none_for_unknown() {
 fn all_rule_docs_is_non_empty_and_unique() {
     let docs = all_rule_docs();
     assert!(
-        docs.len() == 2,
-        "expected two reusable Redis rule docs, got {}",
+        docs.len() >= 19,
+        "expected at least 19 registered rule docs across all 9 generic doctors, got {}",
         docs.len()
     );
     let mut seen: HashSet<&str> = HashSet::new();
+    let mut doctors: HashSet<&str> = HashSet::new();
     for d in docs {
         assert!(
             seen.insert(d.rule_id),
             "duplicate rule_id `{}` in registry",
             d.rule_id
         );
+        for &alias in d.aliases {
+            assert!(
+                seen.insert(alias),
+                "duplicate alias `{alias}` in rule registry"
+            );
+        }
+        doctors.insert(d.doctor_name);
         assert!(
             !d.description.trim().is_empty(),
             "{}: empty description",
@@ -60,6 +96,22 @@ fn all_rule_docs_is_non_empty_and_unique() {
             !d.citation.trim().is_empty(),
             "{}: empty citation",
             d.rule_id
+        );
+    }
+    for expected_doctor in [
+        "skill-contract",
+        "orphan-files",
+        "redis-key-hygiene",
+        "rust-toolchain-pin-coherence",
+        "slop",
+        "env-contract",
+        "import-boundary",
+        "repo-hygiene",
+        "vendored-crate-provenance",
+    ] {
+        assert!(
+            doctors.contains(expected_doctor),
+            "generic doctor `{expected_doctor}` missing from RULE_DOCS"
         );
     }
 }
@@ -174,4 +226,30 @@ fn cli_explain_known_rule_prints_static_text() {
         stdout.contains("Violations"),
         "missing violations section: {stdout}"
     );
+}
+
+#[test]
+fn cli_doctor_explain_shorthand_emits_json_envelope() {
+    let repo = empty_repo_dir();
+    let output = Command::new(bin())
+        .args([
+            "--repo",
+            repo.to_str().unwrap(),
+            "--json",
+            "doctor",
+            "explain:repo-hygiene/tracked-noise",
+        ])
+        .output()
+        .expect("spawn leio-code");
+    assert!(
+        output.status.success(),
+        "json explain shorthand should exit 0 on empty repo; got {:?}\nstderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let env: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("valid QueryEnvelope JSON");
+    assert_eq!(env["kind"], "doctor_explain");
+    assert_eq!(env["entities"][0]["rule_id"], "tracked_noise");
+    assert_eq!(env["entities"][0]["doctor"], "repo-hygiene");
 }

@@ -38,7 +38,7 @@ test("guide recommendations match the topic and advertised stdio tools", () => {
     doctor: "leio_code_doctor", graph: "leio_code_graph",
     navigation: "leio_code_nav",
     export: "leio_code_export", knowledge: "leio_code_knowledge",
-    conversation: "leio_code_conversation",
+    conversation: "leio_code_conversation", tasks: "leio_code_task",
   };
   for (const [topic, first] of Object.entries(firstTools)) {
     const built = buildGuideStructuredContent(topic, { capabilities: leioCapabilities });

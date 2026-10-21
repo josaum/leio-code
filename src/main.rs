@@ -371,6 +371,32 @@ enum Command {
         #[command(subcommand)]
         action: KbCommand,
     },
+    /// Inspect or synchronize the ACE evolving context playbook (`.leio-code/playbook.json`).
+    Playbook {
+        #[command(subcommand)]
+        action: PlaybookCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum PlaybookCommand {
+    /// Print co-edit frequency, hottest queried symbols, and doctor triage stats.
+    Stats {
+        /// Sync co-edit history from `git log` before printing stats.
+        #[arg(long)]
+        sync: bool,
+    },
+    /// Synchronize co-edit frequency from `git log` into `.leio-code/playbook.json`.
+    Sync,
+    /// Record helpful or harmful session outcome signals for context files.
+    Outcome {
+        /// Repo-relative file path(s) that were helpful in the session.
+        #[arg(long)]
+        helpful: Vec<String>,
+        /// Repo-relative file path(s) whose edits were reverted or harmful.
+        #[arg(long)]
+        harmful: Vec<String>,
+    },
 }
 
 fn print_json(value: &serde_json::Value) -> Result<()> {
@@ -1112,6 +1138,9 @@ fn main() -> Result<()> {
                 anyhow::bail!("--method is only valid with `find route`");
             }
             let needle_owned = needle.unwrap_or_default();
+            if !needle_owned.is_empty() {
+                leio_code::playbook::record_query_best_effort(&repo, &needle_owned);
+            }
             let index = load_or_build_index(&repo, &index_path).with_context(|| {
                 format!(
                     "failed to build or update index at {}",
@@ -1384,11 +1413,40 @@ fn main() -> Result<()> {
             println!("Trusted repository doctor pack for {}", repo.display());
         }
         Command::Doctor {
-            kind,
+            mut kind,
             format,
-            explain,
-            suggest,
+            mut explain,
+            mut suggest,
         } => {
+            if explain.is_none() && suggest.is_none() {
+                if kind == "explain-list" {
+                    explain = Some("list".to_string());
+                    kind = "all".to_string();
+                } else if let Some(rule_id) = kind.strip_prefix("explain:").map(str::to_owned) {
+                    explain = Some(rule_id);
+                    kind = "all".to_string();
+                } else if let Some(rule_id) = kind.strip_prefix("suggest:").map(str::to_owned) {
+                    suggest = Some(rule_id);
+                    kind = "all".to_string();
+                }
+            }
+            // Short-circuit `doctor triage` and `doctor playbook[-sync]` before
+            // building the index: reads `.leio-code/playbook.json` directly.
+            if explain.is_none() && suggest.is_none() {
+                if kind == "triage" {
+                    let envelope = leio_code::playbook::doctor_triage_envelope(&repo);
+                    print_and_maybe_fail(&envelope, cli.json, false)?;
+                    return Ok(());
+                }
+                if kind == "playbook" || kind == "playbook-sync" {
+                    let envelope = leio_code::playbook::playbook_stats_envelope(
+                        &repo,
+                        kind == "playbook-sync",
+                    )?;
+                    print_and_maybe_fail(&envelope, cli.json, false)?;
+                    return Ok(());
+                }
+            }
             // Short-circuit `--suggest <rule-id>` before building the index:
             // the output is static text / template diff and needs no index.
             if let Some(rule_id) = suggest.as_deref() {
@@ -1401,7 +1459,12 @@ fn main() -> Result<()> {
                         std::process::exit(1);
                     }
                     Some(rule) => {
-                        print_suggest_rule(rule);
+                        if cli.json {
+                            let envelope = build_suggest_rule_envelope(rule);
+                            print_and_maybe_fail(&envelope, true, false)?;
+                        } else {
+                            print_suggest_rule(rule);
+                        }
                         return Ok(());
                     }
                 }
@@ -1410,7 +1473,12 @@ fn main() -> Result<()> {
             // pure static text and we want it to work against any directory.
             if let Some(rule_id) = explain.as_deref() {
                 if rule_id == "list" {
-                    print_explain_list();
+                    if cli.json {
+                        let envelope = build_explain_list_envelope();
+                        print_and_maybe_fail(&envelope, true, false)?;
+                    } else {
+                        print_explain_list();
+                    }
                     return Ok(());
                 }
                 // Reject unknown rule ids before doing any index work, so the
@@ -1447,10 +1515,15 @@ fn main() -> Result<()> {
                 })?,
             };
             if let Some(rule) = explain_rule {
-                // --explain always emits the static block + filtered
-                // violations. --format is intentionally ignored — the output
-                // is shaped for pasting into a PR comment.
-                print_explain_rule(rule, &envelope);
+                if cli.json {
+                    let explain_env = build_explain_rule_envelope(rule, &envelope);
+                    print_and_maybe_fail(&explain_env, true, false)?;
+                } else {
+                    // --explain always emits the static block + filtered
+                    // violations. --format is intentionally ignored — the output
+                    // is shaped for pasting into a PR comment.
+                    print_explain_rule(rule, &envelope);
+                }
             } else {
                 let diag_format: DiagFormat = format.into();
                 // Aggregate suite runs (`all` / `baseline` / `ci`) honor the
@@ -1695,6 +1768,25 @@ fn main() -> Result<()> {
                 print_json(&json!({ "ok": true, "removed": removed }))?;
             }
         },
+        Command::Playbook { action } => {
+            let envelope = match action {
+                PlaybookCommand::Stats { sync } => {
+                    leio_code::playbook::playbook_stats_envelope(&repo, sync)?
+                }
+                PlaybookCommand::Sync => leio_code::playbook::playbook_stats_envelope(&repo, true)?,
+                PlaybookCommand::Outcome { helpful, harmful } => {
+                    if helpful.is_empty() && harmful.is_empty() {
+                        anyhow::bail!(
+                            "playbook outcome requires at least one --helpful <path> or --harmful <path>"
+                        );
+                    }
+                    leio_code::playbook::record_session_outcomes_envelope(
+                        &repo, &helpful, &harmful,
+                    )?
+                }
+            };
+            print_and_maybe_fail(&envelope, cli.json, false)?;
+        }
     }
 
     Ok(())
@@ -1933,7 +2025,7 @@ fn print_explain_rule(rule: &leio_code::diagnostics::RuleDoc, envelope: &QueryEn
     let matches: Vec<_> = envelope
         .evidence
         .iter()
-        .filter(|ev| ev.kind == rule.rule_id)
+        .filter(|ev| rule.matches_evidence(ev))
         .collect();
     println!("Violations ({}):", matches.len());
     for ev in matches {
@@ -1941,6 +2033,136 @@ fn print_explain_rule(rule: &leio_code::diagnostics::RuleDoc, envelope: &QueryEn
             Some(line) => println!("  {}:{}  {}", ev.path, line, ev.detail),
             None => println!("  {}  {}", ev.path, ev.detail),
         }
+    }
+}
+
+fn build_explain_list_envelope() -> QueryEnvelope {
+    let docs = leio_code::diagnostics::all_rule_docs();
+    QueryEnvelope {
+        schema_version: leio_code::model::SCHEMA_VERSION.to_string(),
+        query_id: format!(
+            "doctor_explain_list-{}",
+            time::OffsetDateTime::now_utc().unix_timestamp_nanos()
+        ),
+        kind: "doctor_explain_list".to_string(),
+        summary: format!("{} documented doctor rule(s)", docs.len()),
+        confidence: 1.0,
+        entities: docs
+            .iter()
+            .map(|d| {
+                json!({
+                    "rule_id": d.rule_id,
+                    "aliases": d.aliases,
+                    "doctor": d.doctor_name,
+                    "citation": d.citation,
+                    "suggest_confidence": d.suggest_confidence.as_str(),
+                    "description": d.description,
+                })
+            })
+            .collect(),
+        evidence: Vec::new(),
+        warnings: Vec::new(),
+        meta: Some(json!({ "rule_count": docs.len() })),
+        timing_ms: 0,
+    }
+}
+
+fn build_explain_rule_envelope(
+    rule: &leio_code::diagnostics::RuleDoc,
+    envelope: &QueryEnvelope,
+) -> QueryEnvelope {
+    let matches: Vec<leio_code::model::EvidenceItem> = envelope
+        .evidence
+        .iter()
+        .filter(|ev| rule.matches_evidence(ev))
+        .cloned()
+        .collect();
+    QueryEnvelope {
+        schema_version: leio_code::model::SCHEMA_VERSION.to_string(),
+        query_id: format!(
+            "doctor_explain-{}",
+            time::OffsetDateTime::now_utc().unix_timestamp_nanos()
+        ),
+        kind: "doctor_explain".to_string(),
+        summary: format!(
+            "rule `{}` ({}): {} violation(s)",
+            rule.rule_id,
+            rule.doctor_name,
+            matches.len()
+        ),
+        confidence: 1.0,
+        entities: vec![json!({
+            "rule_id": rule.rule_id,
+            "aliases": rule.aliases,
+            "doctor": rule.doctor_name,
+            "citation": rule.citation,
+            "description": rule.description,
+            "fix_advice": rule.fix_advice,
+            "suggest_confidence": rule.suggest_confidence.as_str(),
+            "violation_count": matches.len(),
+        })],
+        evidence: matches,
+        warnings: Vec::new(),
+        meta: Some(json!({
+            "rule_id": rule.rule_id,
+            "doctor": rule.doctor_name,
+        })),
+        timing_ms: envelope.timing_ms,
+    }
+}
+
+fn build_suggest_rule_envelope(rule: &leio_code::diagnostics::RuleDoc) -> QueryEnvelope {
+    use leio_code::diagnostics::SuggestConfidence;
+    use leio_code::model::EvidenceItem;
+
+    let diff = match (rule.suggest_confidence, rule.suggest_fn) {
+        (SuggestConfidence::High, Some(f)) => {
+            let dummy = EvidenceItem {
+                kind: rule.rule_id.to_string(),
+                path: String::new(),
+                line: None,
+                detail: String::new(),
+            };
+            f(&dummy)
+        }
+        _ => None,
+    };
+    QueryEnvelope {
+        schema_version: leio_code::model::SCHEMA_VERSION.to_string(),
+        query_id: format!(
+            "doctor_suggest-{}",
+            time::OffsetDateTime::now_utc().unix_timestamp_nanos()
+        ),
+        kind: "doctor_suggest".to_string(),
+        summary: match &diff {
+            Some(_) => format!(
+                "suggest `{}` (confidence: {}): template diff available",
+                rule.rule_id,
+                rule.suggest_confidence.as_str()
+            ),
+            None => format!(
+                "suggest `{}` (confidence: {}): no mechanical fix available",
+                rule.rule_id,
+                rule.suggest_confidence.as_str()
+            ),
+        },
+        confidence: 1.0,
+        entities: vec![json!({
+            "rule_id": rule.rule_id,
+            "aliases": rule.aliases,
+            "doctor": rule.doctor_name,
+            "suggest_confidence": rule.suggest_confidence.as_str(),
+            "has_mechanical_fix": diff.is_some(),
+            "diff": diff,
+            "fix_advice": rule.fix_advice,
+        })],
+        evidence: Vec::new(),
+        warnings: Vec::new(),
+        meta: Some(json!({
+            "rule_id": rule.rule_id,
+            "suggest_confidence": rule.suggest_confidence.as_str(),
+        })),
+        timing_ms: 0,
     }
 }
 

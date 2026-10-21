@@ -57,7 +57,9 @@ import {
   executionErrorResult,
   finalizeCallToolResult,
   installModernProtocol,
+  isStatelessHttpRequest,
   protocolMeta,
+  validateHttpProtocolRequest,
   wrapToolHandler,
 } from "../mcp/mcp-spec-2025-11-25.js";
 import { buildTenantScopeEnv } from "./tenant-scope.mjs";
@@ -163,7 +165,10 @@ function applyMcpCorsHeaders(req, res) {
       "mcp-protocol-version",
     ].join(", "),
   );
-  res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
+  res.setHeader(
+    "Access-Control-Expose-Headers",
+    "Mcp-Session-Id, MCP-Protocol-Version",
+  );
   res.setHeader("Access-Control-Max-Age", "86400");
 }
 const checkoutRoot = path.resolve(
@@ -2894,9 +2899,26 @@ app.post("/mcp", async (req, res) => {
     if (!ok) {
       return;
     }
+    const protocolError = validateHttpProtocolRequest({
+      headers: req.headers,
+      body: req.body,
+    });
+    if (protocolError) {
+      res.status(protocolError.status).json(protocolError.body);
+      return;
+    }
     let transport;
     if (sessionId && transports[sessionId]) {
       transport = transports[sessionId];
+    } else if (isStatelessHttpRequest({ headers: req.headers, body: req.body })) {
+      transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: undefined,
+      });
+      if (transport._webStandardTransport) {
+        transport._webStandardTransport.validateProtocolVersion = () => undefined;
+      }
+      const server = getServer();
+      await server.connect(transport);
     } else {
       transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
@@ -2904,6 +2926,9 @@ app.post("/mcp", async (req, res) => {
           transports[nextSessionId] = transport;
         },
       });
+      if (transport._webStandardTransport) {
+        transport._webStandardTransport.validateProtocolVersion = () => undefined;
+      }
 
       transport.onclose = () => {
         const sid = transport.sessionId;
@@ -2939,6 +2964,11 @@ app.get("/mcp", async (req, res) => {
   if (!ok) {
     return;
   }
+  const protocolError = validateHttpProtocolRequest({ headers: req.headers });
+  if (protocolError) {
+    res.status(protocolError.status).json(protocolError.body);
+    return;
+  }
   if (!sessionId || !transports[sessionId]) {
     res.status(400).send("Invalid or missing session ID");
     return;
@@ -2958,6 +2988,11 @@ app.delete("/mcp", async (req, res) => {
   const sessionId = req.headers["mcp-session-id"];
   const ok = await auth.maybeAttachAuthInfo(req, res);
   if (!ok) {
+    return;
+  }
+  const protocolError = validateHttpProtocolRequest({ headers: req.headers });
+  if (protocolError) {
+    res.status(protocolError.status).json(protocolError.body);
     return;
   }
   if (!sessionId || !transports[sessionId]) {

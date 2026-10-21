@@ -36,6 +36,7 @@ Wire-level contract (initialize, tools, `isError` vs protocol errors):
 | `leio_code_init` | `leio-code init` |
 | `leio_code_verify` | `leio-code verify` |
 | `leio_code_watch` | `leio-code watch` start/stop/status (not a stream) |
+| `leio_code_task` | `leio-harness task submit/list/status/events/result/cancel`; MCP also offers explicit worktree preparation, a Codex preset and bounded inline review (local execution; [contract](HARNESS-TASKS.md)) |
 
 The Apps SDK **remaps** this surface rather than copying it. The contract lives in
 [`apps-sdk/tool-name-map.js`](../apps-sdk/tool-name-map.js) and is asserted against both committed
@@ -59,7 +60,7 @@ Hosted-only tools (no stdio counterpart): `search_repository_memory`,
 Local-only tools (no hosted counterpart — they need files, a cursor or artifacts on the
 caller's machine): `leio_code_conversation`, `leio_code_export` (writes or streams
 artifacts), `leio_code_index`, `leio_code_init`, `leio_code_kb`, `leio_code_knowledge`,
-`leio_code_nav`, `leio_code_verify`, `leio_code_watch`.
+`leio_code_nav`, `leio_code_verify`, `leio_code_watch`, `leio_code_task`.
 
 Remapped tools keep the stdio parameter set and its enum values. The hosted surface drops
 only `index_path` and `timeout_ms` (the hosting server owns the checkout, the index and the
@@ -78,7 +79,7 @@ Domain tool `consult_carlos_motta_specialist` registers only when `LEIO_VIGOROS_
 | `leio-code audit` / `audit --strict` | **stdio MCP:** `leio_code_audit` (pass `strict=true`). **Apps SDK:** `audit_repository_rollup`. Do not confuse with `leio_code_doctor` / `audit_repository_contracts` (doctor-only). | Prefer MCP audit tools; shell still fine for CI `--out` files |
 | `leio-code watch` | Long-running; not a streaming subscription. stdio MCP `leio_code_watch` is start/stop/status via pid file | MCP control, or shell |
 | `export formal-context --format=arrow` / streamed `--format=json` | stdio MCP `leio_code_export` now accepts `format` / `out` / `object_kind`. Large Arrow streams still write a file | Prefer MCP; shell when piping |
-| `doctor --format=sarif` / `--suggest` / `--explain <rule>` | Advanced doctor UX may be incomplete on MCP | Prefer CLI when you need SARIF, rule explain, or suggest diffs |
+| `doctor --format=sarif` / `--suggest` / `--explain <rule>` | `leio_code_doctor` supports `kind="explain:<rule>"`, `kind="explain-list"`, `kind="suggest:<rule>"`, `kind="triage"`, and `kind="playbook"` (`playbook-sync`) as JSON envelopes; raw SARIF 2.1.0 file emission remains CLI-only | Prefer `leio_code_doctor` for JSON rule explain/suggest/triage/playbook; shell out for `--format=sarif` or piping unified diffs into `git apply -` |
 | `find` / `explain` with `--format=jsonld` / `--where` | JSON-LD filter loop is CLI-oriented | Shell when chaining `find → jq → explain --stdin` |
 | Make / FCA induction (`leio-code-induct-formal-context`, wheel build) | Outside binary MCP surface | `make leio-code-…` |
 | Reference-docs KB (`make reference-docs-query`) | Separate corpora, not LEIO Code MCP | Make targets — not a LEIO Code surface |
@@ -143,3 +144,5 @@ filtered for that profile while keeping core lookup and context guidance.
 1. Overlap exists → **MCP first** (warm index).
 2. Row in the CLI-only table → **shell out** without apology.
 3. Unsure → `leio_code_guide` or [skills/leio-code/SKILL.md](../skills/leio-code/SKILL.md).
+
+Local stdio task action `review` automatically captures explicit selected current files, including uncommitted changes, into an isolated read-only Codex review. Built-in verification checks captured hashes, and source-root `list` exposes durable review receipts. This convenience action is MCP-only; the underlying CLI still owns submit/list/status/events/result/cancel. See HARNESS-TASKS.md for scope and bounds.

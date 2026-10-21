@@ -215,7 +215,7 @@ fn load_fresh_index(root: &Path, index_path: &Path) -> Option<RepoIndex> {
         return None;
     }
     let index = load_index(index_path).ok()?;
-    if index.version != INDEX_VERSION {
+    if index.version != INDEX_VERSION || index.root != root.display().to_string() {
         return None;
     }
     if is_index_stale_against_disk(root, &index, modified) {
@@ -234,24 +234,39 @@ fn is_index_stale_against_disk(root: &Path, index: &RepoIndex, index_modified: S
         return true;
     }
 
-    // Check up to 256 indexed files for newer mtime or deletion
-    for file in index.files.iter().take(256) {
-        let path = root.join(&file.path);
-        match fs::metadata(&path) {
-            Ok(meta) => {
-                if let Ok(m) = meta.modified()
-                    && m > index_modified
-                {
-                    return true;
-                }
-            }
-            Err(_) => {
-                // File in index was removed from disk
-                return true;
-            }
+    let Ok(discovered) = discover_source_files(root) else {
+        return true;
+    };
+    let mut indexed_files: HashMap<&str, &FileRecord> = index
+        .files
+        .iter()
+        .map(|file| (file.path.as_str(), file))
+        .collect();
+    if indexed_files.len() != index.files.len() {
+        return true;
+    }
+    for path in discovered.paths {
+        let Ok(metadata) = fs::metadata(&path) else {
+            return true;
+        };
+        if should_skip_large_file(&path, metadata.len()) {
+            continue;
+        }
+        let relative = relative_path(root, &path);
+        let Some(indexed) = indexed_files.remove(relative.as_str()) else {
+            return true;
+        };
+        let Ok(modified) = metadata.modified() else {
+            return true;
+        };
+        if !metadata.is_file()
+            || metadata.len() != indexed.bytes as u64
+            || system_time_to_unix_ms(Some(modified)) != indexed.modified_unix_ms
+        {
+            return true;
         }
     }
-    false
+    !indexed_files.is_empty()
 }
 
 fn index_ttl_secs() -> u64 {
@@ -267,30 +282,28 @@ fn index_ttl_secs() -> u64 {
         })
 }
 
-/// Build or refresh the JSON index. Honors `LEIO_REUSE_INDEX=1` (or `true`): if an on-disk
-/// index exists with matching `root` and `version`, returns it without walking the tree
-/// (for CI cache restore). Otherwise reuses unchanged file records by mtime+size.
-///
 /// When `quiet` is true, skips stderr progress lines (used by `watch --quiet`).
 pub fn build_or_update_index(root: &Path, index_path: &Path, quiet: bool) -> Result<RepoIndex> {
     let _lock = crate::sidecar::acquire_lock(root, "index")?;
+    let requested_root = root.display().to_string();
     if std::env::var("LEIO_REUSE_INDEX")
         .ok()
         .as_deref()
         .is_some_and(|value| value == "1" || value.eq_ignore_ascii_case("true"))
         && let Ok(index) = load_index(index_path)
         && index.version == INDEX_VERSION
+        && index.root == requested_root
+        && let Ok(metadata) = fs::metadata(index_path)
+        && let Ok(modified) = metadata.modified()
+        && !is_index_stale_against_disk(root, &index, modified)
     {
-        let root_str = root.display().to_string();
-        if index.root == root_str {
-            return Ok(index);
-        }
+        return Ok(index);
     }
 
     let started = Instant::now();
     let previous = load_index(index_path)
         .ok()
-        .filter(|index| index.version == INDEX_VERSION);
+        .filter(|index| index.version == INDEX_VERSION && index.root == requested_root);
     let mut previous_files = HashMap::new();
     if let Some(index) = &previous {
         for file in &index.files {
@@ -539,6 +552,7 @@ struct DiscoveredSources {
 fn discover_source_files(root: &Path) -> Result<DiscoveredSources> {
     let config = load_repo_config(root).unwrap_or_default();
     let filter_config = config.clone();
+    let has_public_export_mirror = root.join("public-export.json").is_file();
     let include_roots = config
         .include_roots
         .as_ref()
@@ -562,6 +576,9 @@ fn discover_source_files(root: &Path) -> Result<DiscoveredSources> {
         };
         if entry.path().is_dir() {
             if is_excluded_dir(name, &filter_config) {
+                return false;
+            }
+            if has_public_export_mirror && entry.depth() == 1 && name == "public" {
                 return false;
             }
             // Agent harnesses nest linked git worktrees inside the repo
@@ -1948,6 +1965,146 @@ pub fn detect_k8s_configmap(path: &str, content: &str) -> Option<K8sConfigMapRec
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn metadata_freshness_fixture(file_count: usize) -> (tempfile::TempDir, RepoIndex, PathBuf) {
+        let root = tempfile::tempdir().expect("temporary repository");
+        for number in 0..file_count {
+            fs::write(
+                root.path().join(format!("source_{number:04}.py")),
+                format!("def original_{number:04}():\n    return 1\n"),
+            )
+            .expect("write indexed source");
+        }
+        let index_path = default_index_path(root.path());
+        let index = build_or_update_index(root.path(), &index_path, true).expect("build index");
+        assert_eq!(index.files.len(), file_count);
+        assert!(load_fresh_index(root.path(), &index_path).is_some());
+        (root, index, index_path)
+    }
+
+    #[test]
+    fn metadata_freshness_retains_unchanged_index_beyond_256_files() {
+        let (root, indexed, index_path) = metadata_freshness_fixture(300);
+        let loaded = load_fresh_index(root.path(), &index_path).expect("unchanged fresh index");
+        assert_eq!(loaded.indexed_at, indexed.indexed_at);
+        assert_eq!(loaded.files.len(), 300);
+    }
+
+    #[test]
+    fn metadata_freshness_detects_edit_beyond_256_files() {
+        let (root, indexed, index_path) = metadata_freshness_fixture(300);
+        let target = root.path().join(&indexed.files[299].path);
+        fs::write(
+            &target,
+            "def changed_after_sample_limit():\n    return 42\n",
+        )
+        .expect("edit unsampled source");
+        assert!(load_fresh_index(root.path(), &index_path).is_none());
+    }
+
+    #[test]
+    fn metadata_freshness_detects_deletion_beyond_256_files() {
+        let (root, indexed, index_path) = metadata_freshness_fixture(300);
+        fs::remove_file(root.path().join(&indexed.files[299].path))
+            .expect("delete unsampled source");
+        assert!(load_fresh_index(root.path(), &index_path).is_none());
+    }
+
+    #[test]
+    fn metadata_freshness_detects_new_source_within_ttl() {
+        let (root, _, index_path) = metadata_freshness_fixture(300);
+        fs::write(root.path().join("added.py"), "def added():\n    return 7\n")
+            .expect("add source");
+        assert!(load_fresh_index(root.path(), &index_path).is_none());
+    }
+
+    #[test]
+    fn metadata_freshness_detects_size_change_with_preserved_timestamp() {
+        let (root, indexed, index_path) = metadata_freshness_fixture(1);
+        let target = root.path().join(&indexed.files[0].path);
+        let modified = fs::metadata(&target)
+            .expect("source metadata")
+            .modified()
+            .unwrap();
+        fs::write(
+            &target,
+            "def longer_replacement_name():\n    return 1234567\n",
+        )
+        .expect("replace source");
+        fs::File::options()
+            .write(true)
+            .open(&target)
+            .expect("open source")
+            .set_times(fs::FileTimes::new().set_modified(modified))
+            .expect("restore timestamp");
+        assert_ne!(
+            fs::metadata(&target).unwrap().len(),
+            indexed.files[0].bytes as u64
+        );
+        assert!(load_fresh_index(root.path(), &index_path).is_none());
+    }
+
+    #[test]
+    fn metadata_freshness_detects_same_size_with_backdated_timestamp() {
+        let (root, indexed, index_path) = metadata_freshness_fixture(1);
+        let target = root.path().join(&indexed.files[0].path);
+        let content = fs::read_to_string(&target).expect("source text");
+        fs::write(&target, content.replace("original", "modified")).expect("replace source");
+        fs::File::options()
+            .write(true)
+            .open(&target)
+            .expect("open source")
+            .set_times(
+                fs::FileTimes::new().set_modified(UNIX_EPOCH + std::time::Duration::from_secs(1)),
+            )
+            .expect("backdate timestamp");
+        assert_eq!(
+            fs::metadata(&target).unwrap().len(),
+            indexed.files[0].bytes as u64
+        );
+        assert!(load_fresh_index(root.path(), &index_path).is_none());
+    }
+
+    #[test]
+    fn metadata_freshness_is_not_a_content_digest() {
+        let (root, indexed, index_path) = metadata_freshness_fixture(1);
+        let target = root.path().join(&indexed.files[0].path);
+        let modified = fs::metadata(&target)
+            .expect("source metadata")
+            .modified()
+            .unwrap();
+        let content = fs::read_to_string(&target).expect("source text");
+        fs::write(&target, content.replace("original", "modified")).expect("replace source");
+        fs::File::options()
+            .write(true)
+            .open(&target)
+            .expect("open source")
+            .set_times(fs::FileTimes::new().set_modified(modified))
+            .expect("restore timestamp");
+        assert_eq!(
+            fs::metadata(&target).unwrap().len(),
+            indexed.files[0].bytes as u64
+        );
+        let loaded = load_fresh_index(root.path(), &index_path).expect("matching metadata");
+        assert_eq!(loaded.files[0].symbols[0].name, "original_0000");
+    }
+
+    #[test]
+    fn metadata_freshness_ignores_sources_above_existing_size_limit() {
+        let (root, _, index_path) = metadata_freshness_fixture(1);
+        fs::write(root.path().join("large.json"), vec![b' '; 512 * 1024 + 1])
+            .expect("write oversized source");
+        assert!(load_fresh_index(root.path(), &index_path).is_some());
+    }
+
+    #[test]
+    fn metadata_freshness_rejects_index_for_another_repository() {
+        let (root, mut indexed, index_path) = metadata_freshness_fixture(1);
+        let foreign = tempfile::tempdir().expect("foreign repository");
+        indexed.root = foreign.path().display().to_string();
+        save_index(&index_path, &indexed).expect("save foreign-root index");
+        assert!(load_fresh_index(root.path(), &index_path).is_none());
+    }
 
     #[test]
     fn dedupe_symbols_uses_struct_identity() {

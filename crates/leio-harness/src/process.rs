@@ -29,6 +29,19 @@ pub(crate) fn unique_id() -> String {
 }
 
 pub fn run(spec: RunSpec) -> Result<RunResult> {
+    run_observed(spec, None)
+}
+
+/// Hooks for a durable task host. Output means observed process bytes, never
+/// inferred model reasoning or tool activity. Cancellation is cooperative with
+/// the supervisor, which alone owns and signals the worker process group.
+pub trait RunObserver: Send + Sync {
+    fn spawned(&self, pid: u32) -> Result<()>;
+    fn output(&self, stream: &str, bytes: usize) -> Result<()>;
+    fn canceled(&self) -> bool;
+}
+
+pub fn run_observed(spec: RunSpec, observer: Option<Arc<dyn RunObserver>>) -> Result<RunResult> {
     validate_spec(&spec)?;
     if let Some(required) = &spec.required_approval_token
         && spec.approval_token.as_ref() != Some(required)
@@ -103,6 +116,9 @@ pub fn run(spec: RunSpec) -> Result<RunResult> {
             .spawn()
             .with_context(|| format!("spawn {}", spec.argv[0]))?,
     );
+    if let Some(observer) = &observer {
+        observer.spawned(child.id())?;
+    }
     let stdout = child.stdout.take().context("missing stdout")?;
     let stderr = child.stderr.take().context("missing stderr")?;
     let seq = Arc::new(AtomicU64::new(1));
@@ -124,6 +140,7 @@ pub fn run(spec: RunSpec) -> Result<RunResult> {
         StreamFlags {
             truncated: stdout_truncated.clone(),
             finished: finished.clone(),
+            observer: observer.clone(),
         },
     );
     let stderr_reader = read_stream(
@@ -136,10 +153,23 @@ pub fn run(spec: RunSpec) -> Result<RunResult> {
         StreamFlags {
             truncated: stderr_truncated.clone(),
             finished: finished.clone(),
+            observer: observer.clone(),
         },
     );
     let deadline = started + Duration::from_millis(spec.timeout_ms);
     let (status, exit_code, error) = loop {
+        if observer
+            .as_ref()
+            .is_some_and(|observer| observer.canceled())
+        {
+            terminate_group(child.id(), spec.kill_grace_ms)?;
+            let exit = child.wait()?;
+            break (
+                RunStatus::Canceled,
+                exit.code(),
+                Some("cancellation requested".to_owned()),
+            );
+        }
         if let Some(exit) = child.try_wait()? {
             break (
                 if exit.success() {
@@ -221,6 +251,7 @@ type StreamReaderHandle = thread::JoinHandle<Result<()>>;
 struct StreamFlags {
     truncated: Arc<AtomicBool>,
     finished: Arc<AtomicBool>,
+    observer: Option<Arc<dyn RunObserver>>,
 }
 
 fn read_stream<R: Read + AsRawFd + Send + 'static>(
@@ -236,6 +267,7 @@ fn read_stream<R: Read + AsRawFd + Send + 'static>(
         let StreamFlags {
             truncated: truncated_flag,
             finished,
+            observer,
         } = flags;
         let fd = reader.as_raw_fd();
         // SAFETY: fd is borrowed from the owned pipe reader, valid for this
@@ -279,6 +311,9 @@ fn read_stream<R: Read + AsRawFd + Send + 'static>(
                 let kept = buffer.len().min(remaining);
                 log.write_all(&buffer[..kept])?;
                 captured += kept;
+                if let Some(observer) = &observer {
+                    observer.output(stream, kept)?;
+                }
             }
             if read > remaining {
                 truncated_flag.store(true, Ordering::Relaxed);

@@ -27,6 +27,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Explicit coding tasks with durable status, events, verification and cancellation. No bus required.
+    Task {
+        #[command(subcommand)]
+        command: TaskCommand,
+    },
     /// Stage, serve, verify and roll back immutable local static-site releases.
     Delivery {
         #[arg(long)]
@@ -196,6 +201,67 @@ enum Command {
 }
 
 #[derive(Subcommand)]
+enum TaskCommand {
+    /// Submit an explicitly authorized worker and mandatory verification command.
+    Submit {
+        #[arg(long)]
+        repo: PathBuf,
+        #[arg(long)]
+        task: String,
+        #[arg(long)]
+        worker: String,
+        /// JSON string array; passed directly, without shell interpolation.
+        #[arg(long)]
+        argv: String,
+        #[arg(long)]
+        verify_argv: String,
+        #[arg(long)]
+        constraint: Vec<String>,
+        #[arg(long, default_value_t = 600_000)]
+        timeout_ms: u64,
+    },
+    List {
+        #[arg(long)]
+        repo: PathBuf,
+    },
+    Status {
+        #[arg(long)]
+        repo: PathBuf,
+        #[arg(long)]
+        run_id: String,
+    },
+    Result {
+        #[arg(long)]
+        repo: PathBuf,
+        #[arg(long)]
+        run_id: String,
+    },
+    Events {
+        #[arg(long)]
+        repo: PathBuf,
+        #[arg(long)]
+        run_id: String,
+        #[arg(long, default_value_t = 0)]
+        after: u64,
+        #[arg(long, default_value_t = 50)]
+        limit: usize,
+    },
+    Cancel {
+        #[arg(long)]
+        repo: PathBuf,
+        #[arg(long)]
+        run_id: String,
+    },
+    #[command(hide = true)]
+    Execute {
+        #[arg(long)]
+        repo: PathBuf,
+        #[arg(long)]
+        run_id: String,
+    },
+}
+
+#[derive(Subcommand)]
 enum SigregCommand {
     /// Sliced Epps-Pulley isotropy score of a JSON array of {vector:[...]}.
     Isotropy {
@@ -255,11 +321,18 @@ enum GepaCommand {
         seed: u64,
     },
     /// Semantic-anchor drift penalty: R_adj = R - beta * (1 - cos).
+    ///
+    /// `--anchor` is the reference vector to measure drift against, not a
+    /// random seed: `mutate --seed` takes a `u64` while this one takes a path.
+    /// The old name collided with that, and both rendered as `--seed <SEED>` in
+    /// help despite the incompatible types. `--seed` is kept as a hidden alias
+    /// so existing scripts do not break.
     Anchor {
         #[arg(long)]
         vector: PathBuf,
-        #[arg(long)]
-        seed: PathBuf,
+        /// Reference vector to compare against (path to a JSON vector).
+        #[arg(long, alias = "seed")]
+        anchor: PathBuf,
         #[arg(long, default_value_t = 0.1)]
         beta: f32,
     },
@@ -423,6 +496,44 @@ fn main() {
 
 fn execute(cli: Cli) -> Result<()> {
     match cli.command {
+        Command::Task { command } => {
+            use leio_harness::task;
+            let value = match command {
+                TaskCommand::Submit {
+                    repo,
+                    task: text,
+                    worker,
+                    argv,
+                    verify_argv,
+                    constraint,
+                    timeout_ms,
+                } => task::submit(
+                    &repo,
+                    text,
+                    worker,
+                    serde_json::from_str(&argv)?,
+                    serde_json::from_str(&verify_argv)?,
+                    constraint,
+                    timeout_ms,
+                )?,
+                TaskCommand::List { repo } => task::list(&repo)?,
+                TaskCommand::Status { repo, run_id } | TaskCommand::Result { repo, run_id } => {
+                    task::inspect(&repo, &run_id)?
+                }
+                TaskCommand::Events {
+                    repo,
+                    run_id,
+                    after,
+                    limit,
+                } => task::events(&repo, &run_id, after, limit)?,
+                TaskCommand::Cancel { repo, run_id } => task::cancel(&repo, &run_id)?,
+                TaskCommand::Execute { repo, run_id } => {
+                    task::execute(&repo, &run_id)?;
+                    return Ok(());
+                }
+            };
+            print_json(&value)?;
+        }
         Command::Delivery {
             dir,
             action,
@@ -1052,12 +1163,17 @@ fn execute(cli: Cli) -> Result<()> {
                         "best_aggregate": frontier.select_best_aggregate().map(|c| &c.id),
                     }))?;
                 }
-                GepaCommand::Anchor { vector, seed, beta } => {
+                GepaCommand::Anchor {
+                    vector,
+                    anchor,
+                    beta,
+                } => {
                     let vector: serde_json::Value =
                         serde_json::from_slice(&std::fs::read(&vector)?)?;
-                    let seed: serde_json::Value = serde_json::from_slice(&std::fs::read(&seed)?)?;
+                    let anchor: serde_json::Value =
+                        serde_json::from_slice(&std::fs::read(&anchor)?)?;
                     let penalty =
-                        gepa::anchor_penalty(&json_vector(&vector)?, &json_vector(&seed)?, beta);
+                        gepa::anchor_penalty(&json_vector(&vector)?, &json_vector(&anchor)?, beta);
                     print_json(&serde_json::json!({ "anchor_penalty": penalty }))?;
                 }
             }

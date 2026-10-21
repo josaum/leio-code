@@ -192,14 +192,55 @@ pub fn build_context_bundle(
     } else {
         None
     };
+    let playbook = crate::playbook::load_or_auto_sync(root);
+    let mut playbook_boost_count = 0usize;
+    if let Some(ref pb) = playbook {
+        let seed_paths: Vec<String> = files.iter().take(3).map(|f| f.path.clone()).collect();
+        let mut boosted = false;
+        for file in &mut files {
+            let (delta, reason) = crate::playbook::file_playbook_boost(pb, &file.path, &seed_paths);
+            if delta != 0 {
+                file.score += delta;
+                if let Some(r) = reason {
+                    file.reasons.insert(r);
+                }
+                playbook_boost_count += 1;
+                boosted = true;
+            }
+        }
+        if boosted {
+            files.sort_by(|left, right| {
+                right
+                    .score
+                    .cmp(&left.score)
+                    .then_with(|| right.graph_proximity.cmp(&left.graph_proximity))
+                    .then_with(|| right.modified_unix_ms.cmp(&left.modified_unix_ms))
+                    .then_with(|| left.path.cmp(&right.path))
+            });
+        }
+    }
     files.truncate(limit);
-    let symbols = rank_symbols(index, &task_tokens, limit, &idf);
+    let mut symbols = rank_symbols(index, &task_tokens, limit, &idf);
+    if let Some(ref pb) = playbook
+        && !pb.query_counts.is_empty()
+    {
+        for sym in &mut symbols {
+            if let Some(name) = sym.value.get("name").and_then(Value::as_str)
+                && let Some(count) = pb.query_counts.get(name).copied()
+                && count > 0
+            {
+                sym.score += i64::from(count.min(5)) * 5;
+            }
+        }
+        symbols.sort_by_key(|a| std::cmp::Reverse(a.score));
+    }
     let env_vars = rank_env_vars(index, &task_tokens, limit, &idf);
     let redis_keys = rank_redis_keys(index, &task_tokens, limit, &idf);
     let deploy_targets = rank_deploy_targets(index, &task_tokens, limit, &idf);
     let tests_to_run = tests_to_run(&files, &task_tokens);
     let graph_queries = graph_queries(&files, &symbols, limit);
-    let doctor_suggestions = doctor_suggestions(&capabilities.doctor_kinds, &task_tokens);
+    let doctor_suggestions =
+        doctor_suggestions(&capabilities.doctor_kinds, &task_tokens, playbook.as_ref());
     let risk_notes = risk_notes(&files, &env_vars, &redis_keys, &deploy_targets);
     let agent_instructions = discover_agent_instructions(root, &files, limit);
     let memory_banks = discover_memory_banks(root, &task_tokens, limit);
@@ -295,6 +336,8 @@ pub fn build_context_bundle(
             intents,
             identifier_needles.len(),
             graph_cache.is_some(),
+            playbook.is_some(),
+            playbook_boost_count,
         ),
         "context_zones": context_zones,
         "instruction_sources": &agent_instructions,
@@ -592,19 +635,27 @@ fn intent_route_labels(intents: IntentHints) -> Vec<&'static str> {
     routes
 }
 
-fn retrieval_signals(intents: IntentHints, needle_count: usize, graph_cache_loaded: bool) -> Value {
+fn retrieval_signals(
+    intents: IntentHints,
+    needle_count: usize,
+    graph_cache_loaded: bool,
+    playbook_loaded: bool,
+    playbook_co_edit_boosts: usize,
+) -> Value {
     json!({
         "sparse_idf_weighting": true,
         "intent_routes_considered": intent_route_labels(intents),
         "identifier_needles_extracted": needle_count,
         "graph_cache_loaded": graph_cache_loaded,
+        "playbook_loaded": playbook_loaded,
+        "playbook_co_edit_boosts": playbook_co_edit_boosts,
         "code_graph_refresh_hint": if graph_cache_loaded {
             json!(null)
         } else {
             json!("Run `leio-code export code-graph` from the repo root (after `leio-code index`) to populate `.leio-code/exports/code-graph-v1/query-cache.json` and let import + call-chain proximity order otherwise-tied context candidates.")
         },
         "reading_order": "Prefer files_to_read from the top down; truncate from the bottom if you must save tokens—later rows are weaker priors (mitigates lost-in-the-middle when consumers clip context).",
-        "signal_stack": "lexical_sparse_idf · identifier_needles · intent_path_routes · path_segment_stem · rrf_path_symbol_config_layers · graph_import_proximity · graph_callchain_proximity_optional · mtime_tiebreak",
+        "signal_stack": "lexical_sparse_idf · identifier_needles · intent_path_routes · path_segment_stem · rrf_path_symbol_config_layers · graph_import_proximity · graph_callchain_proximity_optional · ace_playbook_co_edits · mtime_tiebreak",
     })
 }
 
@@ -1308,19 +1359,49 @@ fn tests_to_run(files: &[ScoredFile], task_tokens: &[String]) -> Vec<Value> {
         .collect()
 }
 
-fn doctor_suggestions(available: &[String], task_tokens: &[String]) -> Vec<Value> {
+fn doctor_suggestions(
+    available: &[String],
+    task_tokens: &[String],
+    playbook: Option<&crate::playbook::Playbook>,
+) -> Vec<Value> {
     // Names come from the selected repository's catalog. The engine does not
     // own mappings from product symptoms to product-specific doctor policy.
     let tokens: HashSet<_> = task_tokens.iter().map(String::as_str).collect();
-    let mut suggestions: Vec<Value> = available
+    let mut matched: Vec<(usize, &String, i32, Option<&'static str>)> = available
         .iter()
-        .filter(|name| name.split('-').any(|part| tokens.contains(part)))
+        .enumerate()
+        .filter(|(_, name)| name.split('-').any(|part| tokens.contains(part)))
+        .map(|(idx, name)| {
+            let (priority, status) = playbook
+                .map(|pb| crate::playbook::doctor_triage_priority(pb, name))
+                .unwrap_or((0, None));
+            (idx, name, priority, status)
+        })
+        .collect();
+    matched.sort_by(|a, b| b.2.cmp(&a.2).then_with(|| a.0.cmp(&b.0)));
+
+    let mut suggestions: Vec<Value> = matched
+        .into_iter()
         .take(3)
-        .map(|name| {
-            json!({
-                "tool":"leio_code_doctor", "kind":name,
-                "reason":"task matches a doctor advertised by the selected repository"
-            })
+        .map(|(_, name, _, status)| {
+            let reason = match status {
+                Some("high_signal") => {
+                    "task matches a high-signal doctor (resolved/fired > 0.9 in playbook)"
+                }
+                Some("candidate_for_demotion") => {
+                    "task matches a doctor advertised by the selected repository (demoted: ignored/fired > 0.8 in playbook)"
+                }
+                _ => "task matches a doctor advertised by the selected repository",
+            };
+            let mut obj = json!({
+                "tool": "leio_code_doctor",
+                "kind": name,
+                "reason": reason,
+            });
+            if let Some(st) = status {
+                obj["triage_status"] = json!(st);
+            }
+            obj
         })
         .collect();
     if !available.is_empty() && suggestions.is_empty() {
