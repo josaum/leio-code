@@ -26,8 +26,14 @@ SRC_DIR="${LEIO_CODE_ROOT}/mcp"
 DST_DIR="${CLAUDE_PLUGIN_DATA}/mcp"
 mkdir -p "${DST_DIR}"
 
-cp "${SRC_DIR}/index.js" "${DST_DIR}/index.js"
-cp "${SRC_DIR}/envelope.js" "${DST_DIR}/envelope.js"
+cp "${SRC_DIR}"/*.js "${DST_DIR}/"
+for mjs in "${SRC_DIR}"/*.mjs; do
+  [[ -f "${mjs}" ]] && cp "${mjs}" "${DST_DIR}/"
+done
+if [[ -d "${SRC_DIR}/contracts" ]]; then
+  mkdir -p "${DST_DIR}/contracts"
+  cp -R "${SRC_DIR}/contracts/." "${DST_DIR}/contracts/"
+fi
 
 if [[ -f "${SRC_DIR}/package-lock.json" ]]; then
   cp "${SRC_DIR}/package-lock.json" "${DST_DIR}/package-lock.json"

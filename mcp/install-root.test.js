@@ -37,6 +37,10 @@ test("a plugin metadata directory searches the parent checkout", () => {
   ]);
   const found = resolveLeioCheckout("/work/.cursor-plugin", (candidate) => candidate === "/work");
   assert.equal(found, "/work");
+  assert.equal(
+    resolveLeioCheckout("/work/.cursor-plugin", () => false),
+    "/work/.cursor-plugin",
+  );
 });
 
 test("a direct checkout does not search sibling directories", () => {

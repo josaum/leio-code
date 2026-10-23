@@ -6,10 +6,15 @@ import { fileURLToPath } from "node:url";
 
 import {
   IMPLEMENTATION_APPS_SDK,
+  MCP_ERROR_HEADER_MISMATCH,
+  MCP_ERROR_UNSUPPORTED_PROTOCOL_VERSION,
   PROTOCOL_VERSION,
   SUPPORTED_PROTOCOL_VERSIONS,
   TOOL_EXECUTION_FORBIDDEN,
   appsSdkServerOptions,
+  decorateCacheableResult,
+  isStatelessHttpRequest,
+  validateHttpProtocolRequest,
 } from "../mcp/mcp-spec-2025-11-25.js";
 import {
   readOnlyAnnotations,
@@ -57,4 +62,39 @@ test("hosted ToolAnnotations stay on the MCP hint set", () => {
   }
   assert.equal(readOnlyAnnotations.readOnlyHint, false);
   assert.equal(specialistAnnotations.openWorldHint, true);
+});
+
+test("Apps SDK cacheable results and HTTP 2026-07-28 header validation use IMPLEMENTATION_APPS_SDK", () => {
+  const decorated = decorateCacheableResult(
+    { resources: [] },
+    { implementation: IMPLEMENTATION_APPS_SDK },
+  );
+  assert.equal(decorated.resultType, "complete");
+  assert.equal(
+    decorated._meta["io.modelcontextprotocol/serverInfo"].name,
+    "leio-code-apps-sdk",
+  );
+  assert.equal(MCP_ERROR_HEADER_MISMATCH, -32020);
+  assert.equal(MCP_ERROR_UNSUPPORTED_PROTOCOL_VERSION, -32022);
+  assert.equal(
+    isStatelessHttpRequest({
+      headers: { "mcp-protocol-version": "2026-07-28" },
+      body: { jsonrpc: "2.0", id: 1, method: "server/discover" },
+    }),
+    true,
+  );
+  const bad = validateHttpProtocolRequest({
+    headers: { "mcp-protocol-version": "2026-07-28" },
+    body: {
+      jsonrpc: "2.0",
+      id: 2,
+      method: "resources/read",
+      params: {
+        uri: "ui://widget/leio-code.html",
+        _meta: { "io.modelcontextprotocol/protocolVersion": "2025-11-25" },
+      },
+    },
+  });
+  assert.equal(bad?.status, 400);
+  assert.equal(bad?.body?.error?.code, -32020);
 });

@@ -5,6 +5,7 @@ import {
   buildDesiredAppsClientConfig,
   deriveWebOrigins,
   normalizeRedirectUris,
+  parseList,
   updateEnvFileContent,
 } from "./chatgpt-client-config.mjs";
 
@@ -78,4 +79,19 @@ test("updateEnvFileContent replaces tracked keys and appends missing ones", () =
       "",
     ].join("\n"),
   );
+  assert.deepEqual(parseList(null), []);
+  assert.deepEqual(parseList("a, b\nc"), ["a", "b", "c"]);
+  assert.deepEqual(deriveWebOrigins({ redirectUris: ["not a url"] }), []);
+  assert.equal(updateEnvFileContent("", {}), "");
+  assert.equal(updateEnvFileContent("# comment\nFOO=1", { FOO: "2" }), "# comment\nFOO=2");
+  assert.deepEqual(buildDesiredAppsClientConfig(), {
+    redirectUris: [
+      "https://chatgpt.com/connector/oauth/*",
+      "https://chatgpt.com/connector_platform_oauth_redirect",
+      "https://platform.openai.com/apps-manage/oauth",
+    ],
+    webOrigins: ["https://chatgpt.com", "https://platform.openai.com"],
+    rootUrl: undefined,
+    baseUrl: undefined,
+  });
 });

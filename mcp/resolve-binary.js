@@ -117,6 +117,7 @@ export function findInstalledBinary(
     homeDir = os.homedir(),
     cargoTargetDir = process.env.CARGO_TARGET_DIR ?? "",
     exists = fs.existsSync,
+    accept = () => true,
   } = {},
 ) {
   const candidates = [];
@@ -141,7 +142,7 @@ export function findInstalledBinary(
     if (isCargoTargetBinary(candidate, { cargoTargetDir })) {
       continue;
     }
-    if (exists(candidate)) {
+    if (exists(candidate) && accept(candidate)) {
       return candidate;
     }
   }

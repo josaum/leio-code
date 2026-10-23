@@ -236,4 +236,70 @@ test("buildActionPalette hides doctors for generic repositories", () => {
   assert.ok(palette.query_starters.includes("Build context for <task>"));
   assert.ok(palette.query_starters.includes("Find deploy-target <name>") === false);
   assert.ok(!palette.query_starters.includes("Run doctor all"));
+
+  assert.equal(summarizeEnvelopeMeta(null), null);
+  assert.equal(summarizeEnvelopeMeta([]), null);
+  assert.equal(summarizeEnvelope(null), null);
+  assert.equal(buildWorkspaceCapabilityHints(null), null);
+  assert.equal(buildActionPalette(null), null);
+
+  const customAudit = summarizeEnvelope({ summary: { custom_audit: true } });
+  assert.equal(customAudit.kind, "audit");
+  assert.equal(customAudit.summary, JSON.stringify({ custom_audit: true }));
+
+  const richHints = buildWorkspaceCapabilityHints({
+    workspace_profile: "leio-code",
+    workspace_facets: {
+      deploy_targets: 1,
+      profiles: 1,
+      secret_sets: 1,
+      cartridges: 1,
+      has_deploy_topology: true,
+      has_profile_envs: true,
+      has_secret_sets: true,
+      has_cartridges: true,
+    },
+    find_kinds: ["symbol", "deploy-target", "cartridge"],
+    explain_kinds: ["deploy-target"],
+    doctor_kinds: ["self-contract"],
+    graph_kinds: ["callers-of"],
+    export_kinds: ["formal-context"],
+    notes: [],
+  });
+  const richPalette = buildActionPalette(richHints);
+  assert.ok(richPalette.show_tools.includes("leio_code_doctor"));
+  assert.ok(richPalette.query_starters.includes("Find deploy-target <name>"));
+  assert.ok(richPalette.query_starters.includes("Find cartridge <name>"));
+  assert.ok(richPalette.query_starters.includes("Run doctor all"));
+
+  const warningText = formatTextResult(
+    { command: "leio-code", args: ["audit"] },
+    { code: 0, stdout: "", stderr: "" },
+    {
+      summary: { custom_audit: true },
+      warnings: ["plain-warning", { custom: "obj" }],
+      evidence: [{ path: "src/main.rs", line: 10, kind: "symbol_definition", detail: "fn run" }],
+      entities: [
+        {
+          path: "src/main.rs",
+          line: 10,
+          end_line: 15,
+          name: "run",
+          source_excerpt: "10: fn run() {}",
+          callers: [{ path: "src/lib.rs", line: 4, name: "caller_fn" }],
+          callees: [{ path: "src/util.rs", line: 8, name: "callee_fn" }],
+          co_edited_files: [{ path: "tests/main.rs", co_edit_count: 3 }],
+        },
+      ],
+      meta: { workspace_profile: "leio-code" },
+    },
+  );
+  assert.match(warningText, /plain-warning/);
+  assert.match(warningText, /"custom":"obj"/);
+  assert.match(warningText, /profile: leio-code/);
+  assert.match(warningText, /src\/main\.rs:10 \[symbol_definition\] fn run/);
+  assert.match(warningText, /10: fn run\(\) \{\}/);
+  assert.match(warningText, /callers: src\/lib\.rs:4/);
+  assert.match(warningText, /callees: src\/util\.rs:8/);
+  assert.match(warningText, /co_edited_files: tests\/main\.rs \(3x\)/);
 });

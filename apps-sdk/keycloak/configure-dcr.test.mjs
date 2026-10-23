@@ -6,9 +6,9 @@ import { fileURLToPath } from "node:url";
 
 const scriptPath = fileURLToPath(new URL("./configure-dcr.mjs", import.meta.url));
 
-function runConfigureDcr(env) {
+function runConfigureDcr(env, args = ["--json"]) {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [scriptPath, "--json"], {
+    const child = spawn(process.execPath, [scriptPath, ...args], {
       env: { ...process.env, ...env },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -117,4 +117,127 @@ test("configure-dcr adds audience and tenant mappers to repo.read", async (t) =>
   assert.equal(tenantMapper.config?.["user.attribute"], "tenant_id");
   assert.equal(tenantMapper.config?.["claim.name"], "tenant_id");
   assert.equal(tenantMapper.config?.["access.token.claim"], "true");
+});
+
+test("configure-dcr deletes anonymous policies, creates openid scope, adds optional scopes, and prints text summary", async (t) => {
+  const deletedComponents = [];
+  const addedOptionalScopes = [];
+  let openidCreated = false;
+  const repoReadWithMappers = {
+    id: "repo-read-id",
+    name: "repo.read",
+    protocolMappers: [
+      {
+        protocolMapper: "oidc-audience-mapper",
+        config: {
+          "included.client.audience": "leio-code-apps-sdk",
+          "access.token.claim": "true",
+        },
+      },
+      {
+        protocolMapper: "oidc-usermodel-attribute-mapper",
+        config: {
+          "user.attribute": "tenant_id",
+          "claim.name": "tenant_id",
+          "access.token.claim": "true",
+        },
+      },
+    ],
+  };
+
+  const server = createServer(async (request, response) => {
+    const url = new URL(request.url, "http://127.0.0.1");
+    const sendJson = (status, payload) => {
+      response.writeHead(status, { "content-type": "application/json" });
+      response.end(JSON.stringify(payload));
+    };
+
+    if (
+      request.method === "POST" &&
+      url.pathname === "/realms/master/protocol/openid-connect/token"
+    ) {
+      sendJson(200, { access_token: "tok" });
+      return;
+    }
+    if (request.method === "GET" && url.pathname === "/admin/realms/leio/components") {
+      sendJson(200, [
+        {
+          id: "pol-1",
+          name: "Trusted Hosts",
+          providerType:
+            "org.keycloak.services.clientregistration.policy.ClientRegistrationPolicy",
+          subType: "anonymous",
+          providerId: "trusted-hosts",
+        },
+        {
+          id: "pol-2",
+          name: "Allowed Templates",
+          providerType:
+            "org.keycloak.services.clientregistration.policy.ClientRegistrationPolicy",
+          subType: "anonymous",
+          providerId: "allowed-client-templates",
+        },
+      ]);
+      return;
+    }
+    if (
+      request.method === "DELETE" &&
+      url.pathname.startsWith("/admin/realms/leio/components/")
+    ) {
+      deletedComponents.push(url.pathname.split("/").pop());
+      response.writeHead(204);
+      response.end();
+      return;
+    }
+    if (request.method === "GET" && url.pathname === "/admin/realms/leio/client-scopes") {
+      sendJson(
+        200,
+        openidCreated
+          ? [repoReadWithMappers, { id: "openid-id", name: "openid" }]
+          : [repoReadWithMappers],
+      );
+      return;
+    }
+    if (request.method === "POST" && url.pathname === "/admin/realms/leio/client-scopes") {
+      openidCreated = true;
+      response.writeHead(201);
+      response.end();
+      return;
+    }
+    if (
+      request.method === "GET" &&
+      url.pathname === "/admin/realms/leio/default-optional-client-scopes"
+    ) {
+      sendJson(200, []);
+      return;
+    }
+    if (
+      request.method === "PUT" &&
+      url.pathname.startsWith("/admin/realms/leio/default-optional-client-scopes/")
+    ) {
+      addedOptionalScopes.push(url.pathname.split("/").pop());
+      response.writeHead(204);
+      response.end();
+      return;
+    }
+    sendJson(404, { error: "not found" });
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => server.close());
+
+  const address = server.address();
+  const result = await runConfigureDcr({}, [
+    "--base-url",
+    `http://127.0.0.1:${address.port}`,
+    "--realm",
+    "leio",
+    "--admin-username",
+    "admin",
+    "--admin-password",
+    "pw",
+  ]);
+  assert.equal(result.code, 0, result.stderr);
+  assert.deepEqual(deletedComponents, ["pol-1", "pol-2"]);
+  assert.deepEqual(addedOptionalScopes, ["repo-read-id", "openid-id"]);
+  assert.match(result.stdout, /configured DCR for realm leio/);
 });

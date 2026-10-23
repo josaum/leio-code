@@ -297,4 +297,38 @@ test("isTrustedEnvBinary rejects directories and wrong basenames", () => {
     }),
     false,
   );
+  assert.equal(isTrustedEnvBinary("   "), false);
+  assert.equal(
+    isTrustedEnvBinary("/opt/explicit/leio-code", {
+      exists: () => true,
+      stat: () => ({ isFile: () => false }),
+    }),
+    false,
+  );
+  assert.equal(isTrustedEnvBinary("/nonexistent/path/leio-code"), false);
+  assert.equal(
+    isCargoTargetBinary("/tmp/leio-out", { cargoTargetDir: "/tmp/leio-out" }),
+    false,
+  );
+  assert.equal(
+    findInstalledBinary("leio-code", {
+      cargoHome: "",
+      homeDir: "",
+      pathValue: "",
+      exists: () => false,
+    }),
+    null,
+  );
+  assert.equal(resolveBinaryPath({ binaryName: "", envPath: "" }), null);
+  assert.equal(
+    resolveBinaryPath({
+      binaryName: "leio-code",
+      startDir: "",
+      envPath: "",
+      homeDir: "",
+      pathValue: "",
+      exists: () => false,
+    }),
+    null,
+  );
 });

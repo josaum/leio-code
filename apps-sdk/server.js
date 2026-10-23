@@ -57,7 +57,9 @@ import {
   executionErrorResult,
   finalizeCallToolResult,
   installModernProtocol,
+  isStatelessHttpRequest,
   protocolMeta,
+  validateHttpProtocolRequest,
   wrapToolHandler,
 } from "../mcp/mcp-spec-2025-11-25.js";
 import { buildTenantScopeEnv } from "./tenant-scope.mjs";
@@ -163,7 +165,10 @@ function applyMcpCorsHeaders(req, res) {
       "mcp-protocol-version",
     ].join(", "),
   );
-  res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
+  res.setHeader(
+    "Access-Control-Expose-Headers",
+    "Mcp-Session-Id, MCP-Protocol-Version",
+  );
   res.setHeader("Access-Control-Max-Age", "86400");
 }
 const checkoutRoot = path.resolve(
@@ -2001,7 +2006,14 @@ function getServer() {
         task: z
           .string()
           .min(1)
-          .describe("Natural-language task, symbol, path, env var, Redis key, or feature area to prepare context for."),
+          .describe("Natural-language task, symbol, path, env var, Redis key, or feature area to prepare context for. Optional when diff=true.")
+          .optional(),
+        diff: z
+          .boolean()
+          .optional()
+          .describe(
+            "Seed context from uncommitted/staged git changes (--diff), boosting modified files, 1-hop importers, and missing co-edit partners.",
+          ),
         limit: z
           .number()
           .int()
@@ -2025,12 +2037,22 @@ function getServer() {
         auth.getSecuritySchemes("prepare_repository_context"),
       ),
     },
-    async ({ repo_root, repo_url, git_ref, task, limit, full }, extra) => {
+    async ({ repo_root, repo_url, git_ref, task, diff, limit, full }, extra) => {
       const authError = auth.ensureToolAccess("prepare_repository_context", extra);
       if (authError) {
         return authError;
       }
-      const contextArgs = ["context", task, "--limit", String(limit ?? 8)];
+      if (!diff && !task) {
+        return toolError("task is required for prepare_repository_context unless diff=true");
+      }
+      const contextArgs = ["context"];
+      if (task) {
+        contextArgs.push(task);
+      }
+      if (diff) {
+        contextArgs.push("--diff");
+      }
+      contextArgs.push("--limit", String(limit ?? 8));
       if (full) {
         contextArgs.push("--full");
       }
@@ -2115,7 +2137,7 @@ function getServer() {
     {
       title: "Search repository",
       description:
-        "Search indexed repository entities such as symbols, env vars, Redis keys, routes, services, and optional deploy topology when present. Provide repo_url to analyze an allowlisted HTTPS Git repository URL or GitHub owner/repo shorthand.",
+        "Search indexed repository entities such as symbols, env vars, Redis keys, routes, services, binaries, and optional deploy topology when present. Supports format=jsonld and where=<jq-subset> filtering. Provide repo_url to analyze an allowlisted HTTPS Git repository URL or GitHub owner/repo shorthand.",
       inputSchema: {
         repo_root: z
           .string()
@@ -2130,7 +2152,31 @@ function getServer() {
           .describe("Optional branch, tag, or commit to checkout when repo_url is used.")
           .optional(),
         kind: z.enum(findKinds),
-        needle: z.string().min(1),
+        needle: z
+          .string()
+          .min(1)
+          .describe(
+            "Search needle. Required for all find kinds except binary and route (where omitting needle returns the full registry).",
+          )
+          .optional(),
+        method: z
+          .string()
+          .min(1)
+          .describe("Optional HTTP method filter (e.g. POST) when kind=route.")
+          .optional(),
+        format: z
+          .enum(["json", "jsonld"])
+          .describe(
+            "Output format: json (default envelope) or jsonld (@context/@id/@type for filtering and SPARQL ingest).",
+          )
+          .optional(),
+        where: z
+          .string()
+          .min(1)
+          .describe(
+            "Optional jq-subset filter applied to JSON-LD output (implies format=jsonld unless format is set explicitly).",
+          )
+          .optional(),
       },
       securitySchemes: auth.getSecuritySchemes("search_repository"),
       annotations: readOnlyAnnotations,
@@ -2141,12 +2187,28 @@ function getServer() {
         auth.getSecuritySchemes("search_repository"),
       ),
     },
-    async ({ repo_root, repo_url, git_ref, kind, needle }, extra) => {
+    async ({ repo_root, repo_url, git_ref, kind, needle, method, format, where }, extra) => {
       const authError = auth.ensureToolAccess("search_repository", extra);
       if (authError) {
         return authError;
       }
-      return invokeLeioTool(["find", kind, needle], {
+      if (kind !== "binary" && kind !== "route" && !needle) {
+        throw new Error(`needle is required for find kind "${kind}"`);
+      }
+      const args = ["find", kind];
+      if (needle) {
+        args.push(needle);
+      }
+      if (method) {
+        args.push("--method", method);
+      }
+      if (format) {
+        args.push("--format", format);
+      }
+      if (where) {
+        args.push("--where", where);
+      }
+      return invokeLeioTool(args, {
         repoRoot: repo_root,
         repoUrl: repo_url,
         gitRef: git_ref,
@@ -2221,7 +2283,7 @@ function getServer() {
     {
       title: "Explain repository entity",
       description:
-        "Explain runtime lineage or operational meaning for env vars, Redis keys, and optional deploy or cartridge topology. Provide repo_url to analyze an allowlisted HTTPS Git repository URL or GitHub owner/repo shorthand.",
+        "Explain runtime lineage or operational meaning for env vars, Redis keys, binaries, routes, and optional deploy or cartridge topology. Supports format=jsonld and where=<jq-subset> filtering. Provide repo_url to analyze an allowlisted HTTPS Git repository URL or GitHub owner/repo shorthand.",
       inputSchema: {
         repo_root: z
           .string()
@@ -2237,6 +2299,19 @@ function getServer() {
           .optional(),
         kind: z.enum(explainKinds),
         needle: z.string().optional(),
+        format: z
+          .enum(["json", "jsonld"])
+          .describe(
+            "Output format: json (default envelope) or jsonld (@context/@id/@type for filtering and SPARQL ingest).",
+          )
+          .optional(),
+        where: z
+          .string()
+          .min(1)
+          .describe(
+            "Optional jq-subset filter applied to JSON-LD output (implies format=jsonld unless format is set explicitly).",
+          )
+          .optional(),
       },
       securitySchemes: auth.getSecuritySchemes("explain_repository"),
       annotations: readOnlyAnnotations,
@@ -2247,7 +2322,7 @@ function getServer() {
         auth.getSecuritySchemes("explain_repository"),
       ),
     },
-    async ({ repo_root, repo_url, git_ref, kind, needle }, extra) => {
+    async ({ repo_root, repo_url, git_ref, kind, needle, format, where }, extra) => {
       const authError = auth.ensureToolAccess("explain_repository", extra);
       if (authError) {
         return authError;
@@ -2258,6 +2333,12 @@ function getServer() {
       const args = ["explain", kind];
       if (needle) {
         args.push(needle);
+      }
+      if (format) {
+        args.push("--format", format);
+      }
+      if (where) {
+        args.push("--where", where);
       }
       return invokeLeioTool(args, {
         repoRoot: repo_root,
@@ -2274,7 +2355,7 @@ function getServer() {
     {
       title: "Audit repository contracts",
       description:
-        "Run LEIO Code doctors (CLI `leio-code doctor`) when the repository profile exposes them. Use `all` for a full sweep or a targeted doctor kind. This is NOT the composite CLI `leio-code audit --strict` — use `audit_repository_rollup` for that. Provide repo_url to analyze an allowlisted HTTPS Git repository URL or GitHub owner/repo shorthand.",
+        "Run LEIO Code doctors (CLI `leio-code doctor`) when the repository profile exposes them. Use `all` for a full sweep, a targeted doctor kind, or explain:<rule>/explain-list/suggest:<rule>/triage/playbook/playbook-sync. Pass format=sarif for SARIF 2.1.0 output. This is NOT the composite CLI `leio-code audit --strict` — use `audit_repository_rollup` for that. Provide repo_url to analyze an allowlisted HTTPS Git repository URL or GitHub owner/repo shorthand.",
       inputSchema: {
         repo_root: z
           .string()
@@ -2288,7 +2369,13 @@ function getServer() {
           .string()
           .describe("Optional branch, tag, or commit to checkout when repo_url is used.")
           .optional(),
-        kind: z.string().regex(/^[a-z0-9][a-z0-9-]{0,99}$/).default("all"),
+        kind: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9:_-]{0,99}$/).default("all"),
+        format: z
+          .enum(["json", "sarif"])
+          .describe(
+            "Diagnostic output format: json (default QueryEnvelope) or sarif (SARIF 2.1.0 machine report).",
+          )
+          .optional(),
       },
       securitySchemes: auth.getSecuritySchemes("audit_repository_contracts"),
       annotations: readOnlyAnnotations,
@@ -2299,7 +2386,7 @@ function getServer() {
         auth.getSecuritySchemes("audit_repository_contracts"),
       ),
     },
-    async ({ repo_root, repo_url, git_ref, kind }, extra) => {
+    async ({ repo_root, repo_url, git_ref, kind, format }, extra) => {
       const authError = auth.ensureToolAccess(
         "audit_repository_contracts",
         extra,
@@ -2307,7 +2394,11 @@ function getServer() {
       if (authError) {
         return authError;
       }
-      return invokeLeioTool(["doctor", kind], {
+      const args = ["doctor", kind];
+      if (format === "sarif") {
+        args.push("--format", "sarif");
+      }
+      return invokeLeioTool(args, {
         repoRoot: repo_root,
         repoUrl: repo_url,
         gitRef: git_ref,
@@ -2894,9 +2985,26 @@ app.post("/mcp", async (req, res) => {
     if (!ok) {
       return;
     }
+    const protocolError = validateHttpProtocolRequest({
+      headers: req.headers,
+      body: req.body,
+    });
+    if (protocolError) {
+      res.status(protocolError.status).json(protocolError.body);
+      return;
+    }
     let transport;
     if (sessionId && transports[sessionId]) {
       transport = transports[sessionId];
+    } else if (isStatelessHttpRequest({ headers: req.headers, body: req.body })) {
+      transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: undefined,
+      });
+      if (transport._webStandardTransport) {
+        transport._webStandardTransport.validateProtocolVersion = () => undefined;
+      }
+      const server = getServer();
+      await server.connect(transport);
     } else {
       transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
@@ -2904,6 +3012,9 @@ app.post("/mcp", async (req, res) => {
           transports[nextSessionId] = transport;
         },
       });
+      if (transport._webStandardTransport) {
+        transport._webStandardTransport.validateProtocolVersion = () => undefined;
+      }
 
       transport.onclose = () => {
         const sid = transport.sessionId;
@@ -2939,6 +3050,11 @@ app.get("/mcp", async (req, res) => {
   if (!ok) {
     return;
   }
+  const protocolError = validateHttpProtocolRequest({ headers: req.headers });
+  if (protocolError) {
+    res.status(protocolError.status).json(protocolError.body);
+    return;
+  }
   if (!sessionId || !transports[sessionId]) {
     res.status(400).send("Invalid or missing session ID");
     return;
@@ -2958,6 +3074,11 @@ app.delete("/mcp", async (req, res) => {
   const sessionId = req.headers["mcp-session-id"];
   const ok = await auth.maybeAttachAuthInfo(req, res);
   if (!ok) {
+    return;
+  }
+  const protocolError = validateHttpProtocolRequest({ headers: req.headers });
+  if (protocolError) {
+    res.status(protocolError.status).json(protocolError.body);
     return;
   }
   if (!sessionId || !transports[sessionId]) {

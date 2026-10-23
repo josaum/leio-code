@@ -7,6 +7,7 @@ import {
   buildPkceAuthorizationUrl,
   buildTokenEndpoint,
   createPkcePair,
+  exchangeAuthorizationCode,
 } from "./pkce.mjs";
 
 test("base64url encoding matches RFC 7636 example inputs", () => {
@@ -31,7 +32,7 @@ test("buildAuthorizationEndpoint and buildTokenEndpoint derive Keycloak paths", 
   );
 });
 
-test("buildPkceAuthorizationUrl includes scopes, resource, and PKCE params", () => {
+test("buildPkceAuthorizationUrl includes scopes, resource, and PKCE params", async () => {
   const result = buildPkceAuthorizationUrl({
     issuerUrl: "http://localhost:8080/realms/leio-code",
     clientId: "leio-code-apps-sdk",
@@ -54,4 +55,48 @@ test("buildPkceAuthorizationUrl includes scopes, resource, and PKCE params", () 
   assert.equal(url.searchParams.get("nonce"), "nonce-123");
   assert.equal(url.searchParams.get("code_challenge_method"), "S256");
   assert.equal(typeof result.code_verifier, "string");
+
+  assert.throws(() => createPkcePair({ verifierBytes: 16 }), /verifierBytes/);
+  assert.equal(base64UrlEncode("hello"), "aGVsbG8");
+
+  const preChallenge = buildPkceAuthorizationUrl({
+    issuerUrl: "http://localhost:8080/realms/leio-code",
+    clientId: "leio-code-apps-sdk",
+    redirectUri: "http://127.0.0.1:3333/callback",
+    codeChallenge: "custom-challenge",
+    prompt: "",
+  });
+  assert.equal(preChallenge.code_verifier, null);
+  assert.equal(preChallenge.code_challenge, "custom-challenge");
+
+  const origFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () =>
+      new Response(JSON.stringify({ access_token: "tok-1" }), { status: 200 });
+    const okRes = await exchangeAuthorizationCode({
+      issuerUrl: "http://localhost:8080/realms/leio-code",
+      clientId: "client-1",
+      clientSecret: "sec-1",
+      redirectUri: "http://127.0.0.1:3333/callback",
+      code: "code-1",
+      codeVerifier: "ver-1",
+    });
+    assert.equal(okRes.access_token, "tok-1");
+
+    globalThis.fetch = async () =>
+      new Response("bad code", { status: 400, statusText: "Bad Request" });
+    await assert.rejects(
+      () =>
+        exchangeAuthorizationCode({
+          issuerUrl: "http://localhost:8080/realms/leio-code",
+          clientId: "client-1",
+          redirectUri: "http://127.0.0.1:3333/callback",
+          code: "code-1",
+          codeVerifier: "ver-1",
+        }),
+      /Token exchange failed/,
+    );
+  } finally {
+    globalThis.fetch = origFetch;
+  }
 });

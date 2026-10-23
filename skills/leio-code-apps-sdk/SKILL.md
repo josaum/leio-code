@@ -1,6 +1,11 @@
 ---
 name: leio-code-apps-sdk
 description: This skill should be used when the host is "ChatGPT Developer Mode" or https://leio-code.getjai.com/mcp — "select_repository_target", "repo_url", "search_repository_memory", OAuth, DCR, or Apps SDK health. Do not use for local stdio MCP or leio_code_* tools (use leio-code).
+license: MIT OR Apache-2.0
+compatibility: Requires ChatGPT Developer Mode or remote HTTP MCP connection to the LEIO Code Apps SDK server.
+metadata:
+  author: leio-code
+  version: "2.6.5"
 ---
 
 # LEIO Code — Apps SDK (ChatGPT)

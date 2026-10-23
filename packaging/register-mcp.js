@@ -1,7 +1,17 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
+const SKILL_NAME = "leio-code";
+const SKILL_HOSTS = [
+  { detectDir: ".agents", targetSubdir: path.join(".agents", "skills") },
+  { detectDir: ".gemini", targetSubdir: path.join(".gemini", "config", "skills") },
+  { detectDir: ".claude", targetSubdir: path.join(".claude", "skills") },
+  { detectDir: ".codex", targetSubdir: path.join(".codex", "skills") },
+  { detectDir: ".cursor", targetSubdir: path.join(".cursor", "skills") },
+];
 
 // Harnesses that already have a config directory get a stdio entry.
 // The same command/args record is what any other MCP host can launch.
@@ -11,6 +21,7 @@ const HOSTS = [
   { dir: ".claude", file: "mcp.json", kind: "mcpServers" },
   { dir: ".vscode", file: "mcp.json", kind: "servers" },
   { dir: ".gemini", file: "settings.json", kind: "mcpServers" },
+  { dir: ".gemini/antigravity", file: "mcp_config.json", kind: "mcpServers" },
   { dir: ".continue", file: "config.json", kind: "mcpServers" },
   { dir: ".codeium/windsurf", file: "mcp_config.json", kind: "mcpServers" },
   { dir: "Library/Application Support/Claude", file: "claude_desktop_config.json", kind: "mcpServers" },
@@ -23,7 +34,58 @@ export function serverSpec(command, args) {
   return { command, args };
 }
 
-export function applyRegistration(home, spec) {
+export function resolveDefaultSkillSource(explicitDir) {
+  const candidates =
+    explicitDir !== undefined
+      ? [explicitDir].filter(Boolean)
+      : [
+          path.join(MODULE_DIR, "skills", SKILL_NAME),
+          path.resolve(MODULE_DIR, "..", "skills", SKILL_NAME),
+        ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(path.join(candidate, "SKILL.md"))) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function syncSkillTree(srcDir, destDir, written) {
+  fs.mkdirSync(destDir, { recursive: true });
+  for (const entry of fs.readdirSync(srcDir, { withFileTypes: true })) {
+    if (entry.name.startsWith(".")) continue;
+    const srcPath = path.join(srcDir, entry.name);
+    const destPath = path.join(destDir, entry.name);
+    if (entry.isDirectory()) {
+      syncSkillTree(srcPath, destPath, written);
+      continue;
+    }
+    if (!entry.isFile()) continue;
+    const nextBytes = fs.readFileSync(srcPath);
+    if (!fs.existsSync(destPath) || !fs.readFileSync(destPath).equals(nextBytes)) {
+      fs.writeFileSync(destPath, nextBytes);
+      written.push(destPath);
+    }
+  }
+}
+
+export function installDefaultSkill(home, explicitSourceDir) {
+  const written = [];
+  const sourceDir = resolveDefaultSkillSource(explicitSourceDir);
+  if (!sourceDir) return written;
+
+  const canonicalSkillDir = path.join(home, ".leio-code", "skills", SKILL_NAME);
+  syncSkillTree(sourceDir, canonicalSkillDir, written);
+
+  for (const host of SKILL_HOSTS) {
+    if (!fs.existsSync(path.join(home, host.detectDir))) continue;
+    const hostSkillDir = path.join(home, host.targetSubdir, SKILL_NAME);
+    syncSkillTree(sourceDir, hostSkillDir, written);
+  }
+  return written;
+}
+
+export function applyRegistration(home, spec, options = {}) {
   const written = [];
   const canonicalDir = path.join(home, ".leio-code");
   fs.mkdirSync(canonicalDir, { recursive: true });
@@ -57,6 +119,10 @@ export function applyRegistration(home, spec) {
     }
     if (mergeJson(file, spec, host.kind)) written.push(file);
   }
+
+  if (options.installSkill !== false) {
+    written.push(...installDefaultSkill(home, options.skillSourceDir));
+  }
   return written;
 }
 
@@ -87,6 +153,7 @@ export function mergeJson(file, spec, preferredKind) {
 
 function sameSpec(entry, spec) {
   return Boolean(entry)
+    && entry.disabled !== true
     && entry.command === spec.command
     && JSON.stringify(entry.args) === JSON.stringify(spec.args)
     && (spec.type === undefined || entry.type === spec.type);

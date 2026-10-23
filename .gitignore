@@ -16,8 +16,10 @@
 **/.leio-code/exports/
 **/.leio-code/bin/
 **/.leio-code/nav-session.json
+**/.leio-code/playbook.json
 **/.leio-code/events/
 **/.leio-code/sessions/
+**/.leio-code/harness/
 **/.leio-code/search.duckdb
 **/.leio-code/search.duckdb.wal
 **/.leio-code/search.arrow

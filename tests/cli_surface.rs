@@ -770,4 +770,58 @@ fn kind_catalog_exposes_doctor_presets() {
             "missing {preset}"
         );
     }
+    assert!(
+        catalog["find_kinds"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|v| v == "text"),
+        "missing text in find_kinds"
+    );
+    assert!(
+        catalog["explain_kinds"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|v| v == "symbol"),
+        "missing symbol in explain_kinds"
+    );
+}
+
+#[test]
+fn explain_symbol_find_text_and_context_diff_work_end_to_end() {
+    let tmp = stage_repo();
+    let _ = envelope(tmp.path(), &["index"]);
+
+    let explained = envelope(tmp.path(), &["explain", "symbol", "encode_payload"]);
+    assert_eq!(explained["kind"], "explain");
+    let sym = &explained["entities"][0];
+    assert_eq!(sym["name"], "encode_payload");
+    assert!(
+        sym["source_excerpt"]
+            .as_str()
+            .unwrap_or("")
+            .contains("encode_payload"),
+        "{explained}"
+    );
+    assert!(sym["callers"].is_array(), "{explained}");
+
+    let text_hits = envelope(tmp.path(), &["find", "text", "encode_payload"]);
+    assert_eq!(text_hits["kind"], "find");
+    assert!(
+        !text_hits["entities"].as_array().unwrap().is_empty(),
+        "{text_hits}"
+    );
+    assert!(
+        text_hits["entities"][0]["enclosing_symbol"].is_string()
+            || text_hits["entities"][0]["snippet"].is_string(),
+        "{text_hits}"
+    );
+
+    let diff_ctx = envelope(tmp.path(), &["context", "--diff"]);
+    assert_eq!(diff_ctx["kind"], "context");
+    assert!(
+        diff_ctx["entities"][0]["diff_summary"].is_object(),
+        "{diff_ctx}"
+    );
 }

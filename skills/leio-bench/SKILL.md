@@ -1,6 +1,11 @@
 ---
 name: leio-bench
 description: Model-swept LEIO benchmark — run the golden context tasks across multiple OpenRouter-routed models through leio-harness day, and grade which model uses LEIO evidence best. Triggers on "model sweep", "benchmark models", "jai-bench", "golden tasks sweep", "compare models on leio". Dry-run by default; --execute spends model tokens.
+license: MIT OR Apache-2.0
+compatibility: Requires python3, leio-harness, and a clean git checkout.
+metadata:
+  author: leio-code
+  version: "2.6.5"
 ---
 
 # LEIO Bench — model-swept golden tasks

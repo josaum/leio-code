@@ -162,4 +162,101 @@ test("context follow-ups are bounded, deduplicated and pinned to the invoking tr
   assert.equal(new Set(calls.map((call) => call.arguments.needle)).size, 4);
   for (const call of calls) assert.equal(call.arguments.repo_root, "/selected-tree");
   assert.deepEqual(contextNextCalls(null, { repoRoot: "/selected-tree" }), []);
+
+  const directDoctors = summarizeBaseline(
+    { code: 0 },
+    { summary: "baseline", doctors: [{ name: "self-contract", warning_count: 0 }] },
+  );
+  assert.equal(directDoctors.status, "passed");
+  assert.equal(directDoctors.doctor_count, 1);
+
+  const fileContextCalls = contextNextCalls(
+    {
+      entities: [
+        {
+          files_to_read: [
+            { path: "src/a.rs", symbols: [{ name: "run", kind: "function", line: 10 }] },
+            { path: "src/a.rs", symbols: [{ name: "dup", kind: "function", line: 20 }] },
+            { path: "src/b.rs", symbols: [] },
+            { path: "src/c.rs", symbols: [{ name: "CONST", kind: "const", line: 5 }] },
+            { path: "src/d.rs", symbols: [] },
+          ],
+        },
+      ],
+    },
+    { repoRoot: "/selected-tree", indexPath: "/selected-index.json", session: "agent-a", graphKinds: ["symbols-in"] },
+  );
+  assert.equal(fileContextCalls.length, 3);
+  assert.equal(fileContextCalls[0].tool, "leio_code_nav");
+  assert.equal(fileContextCalls[1].tool, "leio_code_graph");
+  assert.equal(fileContextCalls[1].arguments.kind, "symbols-in");
+  assert.equal(fileContextCalls[2].tool, "leio_code_nav");
+
+  const importsGraphCalls = graphNextCalls(
+    {
+      entities: [
+        {
+          resolved_file: { path: "src/main.rs" },
+          candidate_paths: ["src/dep_a.rs", "src/dep_b.rs"],
+        },
+      ],
+    },
+    { ...navigationScope, kind: "imports-in" },
+  );
+  assert.ok(importsGraphCalls.some((c) => c.arguments.kind === "symbols-in" && c.arguments.needle === "src/main.rs"));
+  assert.ok(importsGraphCalls.some((c) => c.arguments.kind === "resolved-importers-of"));
+  assert.ok(importsGraphCalls.some((c) => c.arguments.needle === "src/dep_a.rs"));
+
+  const fallbackGraphCalls = graphNextCalls(
+    {
+      entities: [
+        { file: "urn:leio:file:1", path: "src/one.rs" },
+        { path: "src/two.rs" },
+      ],
+    },
+    { ...navigationScope, kind: "importers-of" },
+  );
+  assert.equal(fallbackGraphCalls[0].arguments.needle, "urn:leio:file:1");
+  assert.equal(fallbackGraphCalls[1].arguments.kind, "symbols-in");
+  assert.equal(fallbackGraphCalls[1].arguments.needle, "src/two.rs");
+
+  assert.deepEqual(navNextCalls({ kind: "find", entities: [] }, navigationScope), []);
+  const emptyNav = navNextCalls({ kind: "nav", entities: [], meta: {} }, navigationScope);
+  assert.equal(emptyNav[0].tool, "leio_code_guide");
+
+  const fileNav = navNextCalls(
+    {
+      kind: "nav",
+      entities: [
+        {
+          role: "current",
+          kind: "file",
+          path: "src/lib.rs",
+          concept: "fca:mod",
+          source: { offset: 0, next_offset: 100 },
+        },
+        {
+          role: "result",
+          index: 0,
+          graph_symbol: "urn:leio:symbol:1",
+          symbol: "fn_one",
+          path: "src/lib.rs",
+        },
+      ],
+      meta: {
+        action: "goto",
+        result_page: {
+          offset: 0,
+          limit: 10,
+          has_more: true,
+          next_offset: 10,
+          query: { kind: "goto", needle: "src/lib.rs" },
+        },
+      },
+    },
+    navigationScope,
+  );
+  assert.ok(fileNav.some((c) => c.arguments.kind === "goto" && c.arguments.needle === "urn:leio:symbol:1"));
+  assert.ok(fileNav.some((c) => c.arguments.kind === "goto" && c.arguments.offset === 10));
+  assert.ok(fileNav.some((c) => c.arguments.kind === "here" && c.arguments.source_offset === 100));
 });

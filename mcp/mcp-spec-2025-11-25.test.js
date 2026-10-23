@@ -10,6 +10,9 @@ import {
   IMPLEMENTATION_STDIO,
   INSTRUCTIONS_APPS_SDK,
   INSTRUCTIONS_STDIO,
+  MCP_ERROR_HEADER_MISMATCH,
+  MCP_ERROR_MISSING_REQUIRED_CLIENT_CAPABILITY,
+  MCP_ERROR_UNSUPPORTED_PROTOCOL_VERSION,
   PACKAGE_VERSION,
   LEGACY_PROTOCOL_VERSION,
   PROTOCOL_VERSION,
@@ -18,15 +21,18 @@ import {
   STDIO_TOOL_CATALOG,
   TOOL_EXECUTION_FORBIDDEN,
   appsSdkServerOptions,
+  assertSupportedRequestProtocolVersion,
   buildDiscoverResult,
   decorateCacheableResult,
   assertToolName,
   executionErrorResult,
   finalizeCallToolResult,
+  isStatelessHttpRequest,
   protocolMeta,
   stdioServerOptions,
   toolAnnotations,
   toolRegistrationConfig,
+  validateHttpProtocolRequest,
   wrapToolHandler,
 } from "./mcp-spec-2025-11-25.js";
 import { LeioToolOutputSchema } from "./output-schemas.js";
@@ -177,7 +183,83 @@ test("protocolMeta is a Result._meta object", () => {
   assert.equal(meta["io.leio/mcpProtocolVersion"], PROTOCOL_VERSION);
   assert.equal(meta["io.modelcontextprotocol/protocolVersion"], PROTOCOL_VERSION);
   assert.equal(meta["io.modelcontextprotocol/serverInfo"].name, "leio-code");
+  assert.equal(
+    meta["io.modelcontextprotocol/serverInfo"].websiteUrl,
+    IMPLEMENTATION_STDIO.websiteUrl,
+  );
+  assert.ok(Array.isArray(meta["io.modelcontextprotocol/serverInfo"].icons));
   assert.equal(meta.tool, "leio_code_find");
+});
+
+test("2026-07-28 error codes and per-request version validation", () => {
+  assert.equal(MCP_ERROR_HEADER_MISMATCH, -32020);
+  assert.equal(MCP_ERROR_MISSING_REQUIRED_CLIENT_CAPABILITY, -32021);
+  assert.equal(MCP_ERROR_UNSUPPORTED_PROTOCOL_VERSION, -32022);
+
+  assert.equal(assertSupportedRequestProtocolVersion({}), "2026-07-28");
+  assert.equal(
+    assertSupportedRequestProtocolVersion({
+      params: { _meta: { "io.modelcontextprotocol/protocolVersion": "2025-11-25" } },
+    }),
+    "2025-11-25",
+  );
+  assert.throws(
+    () =>
+      assertSupportedRequestProtocolVersion({
+        params: { _meta: { "io.modelcontextprotocol/protocolVersion": "1999-01-01" } },
+      }),
+    (err) =>
+      err.code === -32022 &&
+      err.data?.requested === "1999-01-01" &&
+      Array.isArray(err.data?.supported) &&
+      err.data.supported.includes("2026-07-28"),
+  );
+
+  const mismatch = validateHttpProtocolRequest({
+    headers: { "mcp-protocol-version": "2026-07-28" },
+    body: {
+      jsonrpc: "2.0",
+      id: 7,
+      method: "tools/list",
+      params: { _meta: { "io.modelcontextprotocol/protocolVersion": "2025-11-25" } },
+    },
+  });
+  assert.equal(mismatch?.status, 400);
+  assert.equal(mismatch?.body?.error?.code, -32020);
+  assert.equal(mismatch?.body?.id, 7);
+
+  const unsupportedHeader = validateHttpProtocolRequest({
+    headers: { "mcp-protocol-version": "2020-01-01" },
+    body: { jsonrpc: "2.0", id: 8, method: "tools/list" },
+  });
+  assert.equal(unsupportedHeader?.status, 400);
+  assert.equal(unsupportedHeader?.body?.error?.code, -32022);
+  assert.deepEqual(unsupportedHeader?.body?.error?.data, {
+    supported: ["2026-07-28", "2025-11-25"],
+    requested: "2020-01-01",
+  });
+
+  assert.equal(
+    isStatelessHttpRequest({
+      headers: {},
+      body: { jsonrpc: "2.0", id: 1, method: "server/discover" },
+    }),
+    true,
+  );
+  assert.equal(
+    isStatelessHttpRequest({
+      headers: {},
+      body: { jsonrpc: "2.0", id: 1, method: "initialize" },
+    }),
+    false,
+  );
+  assert.equal(
+    isStatelessHttpRequest({
+      headers: { "mcp-session-id": "sess-1" },
+      body: { jsonrpc: "2.0", id: 1, method: "tools/list" },
+    }),
+    false,
+  );
 });
 
 test("discover result lists both protocol eras", () => {
@@ -234,6 +316,7 @@ test("stdio initialize still works for legacy clients and discover is registered
   });
 
   assert.equal(client.getServerCapabilities()?.tools !== undefined, true);
+  assert.equal(client.getServerCapabilities()?.tools?.listChanged, undefined);
   const info = client.getServerVersion();
   assert.equal(info.name, "leio-code");
   assert.equal(info.version, PACKAGE_VERSION);
@@ -330,4 +413,181 @@ test("server/discover answers before initialize (2026-07-28 probe)", async () =>
     SUPPORTED_PROTOCOL_VERSIONS,
   );
   assert.ok(message.result.capabilities.tools);
+});
+
+test("protocol edge cases: headers, errors, resources, and lazy tool access", async () => {
+  const { ErrorCode, McpError } = await import("@modelcontextprotocol/sdk/types.js");
+  const { installLazyToolAccess, installModernProtocol } = await import(
+    "./mcp-spec-2025-11-25.js"
+  );
+
+  // Header extraction: null headers, Map/Headers.get, array values
+  assert.equal(isStatelessHttpRequest({ headers: null, body: null }), false);
+  const mapHeaders = new Map([["mcp-protocol-version", "2026-07-28"]]);
+  assert.equal(
+    validateHttpProtocolRequest({
+      headers: mapHeaders,
+      body: [{ jsonrpc: "2.0", id: 1, method: "tools/list" }],
+    }),
+    null,
+  );
+  assert.equal(
+    validateHttpProtocolRequest({
+      headers: { "MCP-Protocol-Version": ["2026-07-28"] },
+      body: [{ jsonrpc: "2.0", id: 1, method: "tools/list" }],
+    }),
+    null,
+  );
+
+  // Body meta unsupported version (non-discover/initialize)
+  const badMeta = validateHttpProtocolRequest({
+    headers: {},
+    body: [
+      null,
+      {
+        jsonrpc: "2.0",
+        id: 9,
+        method: "tools/list",
+        params: { _meta: { "io.modelcontextprotocol/protocolVersion": "1999-01-01" } },
+      },
+    ],
+  });
+  assert.equal(badMeta?.status, 400);
+  assert.equal(badMeta?.body?.error?.code, MCP_ERROR_UNSUPPORTED_PROTOCOL_VERSION);
+
+  // server/discover with unsupported header version is allowed
+  assert.equal(
+    validateHttpProtocolRequest({
+      headers: { "mcp-protocol-version": "2099-01-01" },
+      body: { jsonrpc: "2.0", id: 1, method: "server/discover" },
+    }),
+    null,
+  );
+
+  // errorMessage & finalizeCallToolResult edge cases
+  assert.equal(executionErrorResult("string failure").structuredContent.error, "string failure");
+  assert.equal(executionErrorResult(null).structuredContent.error, "Tool execution failed");
+  assert.equal(finalizeCallToolResult(null).isError, true);
+  assert.equal(
+    finalizeCallToolResult({ isError: false }).content[0].text,
+    "Tool completed without content",
+  );
+  assert.equal(
+    finalizeCallToolResult({ isError: true }).content[0].text,
+    "Tool execution failed",
+  );
+  const circular = { ok: true };
+  circular.self = circular;
+  assert.equal(
+    finalizeCallToolResult({ structuredContent: circular }).content[0].type,
+    "text",
+  );
+
+  // installModernProtocol with initialize echo & resource handlers
+  const handlers = new Map([
+    [
+      "initialize",
+      async () => ({
+        protocolVersion: "2025-11-25",
+        capabilities: { tools: {} },
+        serverInfo: IMPLEMENTATION_STDIO,
+      }),
+    ],
+    ["tools/list", async () => ({ tools: [] })],
+    ["tools/call", async () => ({ content: [{ type: "text", text: "ok" }] })],
+    ["resources/list", async () => ({ resources: [] })],
+    ["resources/templates/list", async () => ({ resourceTemplates: [] })],
+    [
+      "resources/read",
+      async (req) => {
+        if (req.params?.uri === "test://invalid") {
+          throw new McpError(ErrorCode.InvalidParams, "bad uri", { detail: 1 });
+        }
+        if (req.params?.uri === "test://internal") {
+          throw new McpError(ErrorCode.InternalError, "boom");
+        }
+        if (req.params?.uri === "test://missing") {
+          throw new Error("missing");
+        }
+        return { contents: [{ uri: req.params?.uri, text: "data" }] };
+      },
+    ],
+  ]);
+  const fakeMcpServer = {
+    server: {
+      _capabilities: {
+        tools: { listChanged: true },
+        resources: { listChanged: true },
+      },
+      _requestHandlers: handlers,
+      setRequestHandler(schema, fn) {
+        const method =
+          schema?.shape?.method?._def?.value ?? "initialize";
+        handlers.set(method, fn);
+      },
+    },
+  };
+
+  installModernProtocol(fakeMcpServer, {
+    implementation: IMPLEMENTATION_APPS_SDK,
+    capabilities: { tools: {}, resources: {} },
+  });
+  fakeMcpServer.sendToolListChanged();
+  fakeMcpServer.sendResourceListChanged();
+  assert.equal(fakeMcpServer.server._capabilities.tools.listChanged, undefined);
+  assert.equal(fakeMcpServer.server._capabilities.resources.listChanged, undefined);
+
+  const initRes = await handlers.get("initialize")(
+    { params: { protocolVersion: "2026-07-28" } },
+    {},
+  );
+  assert.equal(initRes.protocolVersion, "2026-07-28");
+
+  const resList = await handlers.get("resources/list")({}, {});
+  assert.equal(resList.resultType, "complete");
+
+  const tplList = await handlers.get("resources/templates/list")({}, {});
+  assert.equal(tplList.resultType, "complete");
+
+  const readOk = await handlers.get("resources/read")(
+    { params: { uri: "test://ok" } },
+    {},
+  );
+  assert.equal(readOk.resultType, "complete");
+
+  await assert.rejects(
+    () => handlers.get("resources/read")({ params: { uri: "test://invalid" } }, {}),
+    (err) => err.code === ErrorCode.InvalidParams && err.data?.uri === "test://invalid" && err.data?.detail === 1,
+  );
+  await assert.rejects(
+    () => handlers.get("resources/read")({ params: { uri: "test://internal" } }, {}),
+    (err) => err.code === ErrorCode.InternalError,
+  );
+  await assert.rejects(
+    () => handlers.get("resources/read")({ params: { uri: "test://missing" } }, {}),
+    (err) => err.code === ErrorCode.InvalidParams && err.data?.uri === "test://missing",
+  );
+
+  // installLazyToolAccess error & retry branches
+  assert.throws(
+    () => installLazyToolAccess({ server: {} }, () => {}),
+    /_requestHandlers map/,
+  );
+  assert.throws(
+    () => installLazyToolAccess({ server: { _requestHandlers: new Map() } }, () => {}),
+    /registered before connecting/,
+  );
+
+  let attempts = 0;
+  installLazyToolAccess(fakeMcpServer, async () => {
+    attempts += 1;
+    if (attempts === 1) {
+      throw new Error("transient prepare error");
+    }
+  });
+  await assert.rejects(() => handlers.get("tools/list")({}, {}), /transient prepare error/);
+  const afterRetry = await handlers.get("tools/list")({}, {});
+  assert.equal(afterRetry.resultType, "complete");
+  const callRes = await handlers.get("tools/call")({}, {});
+  assert.equal(callRes.resultType, "complete");
 });

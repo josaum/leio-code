@@ -179,6 +179,12 @@ pub fn doctor_rust_toolchain_pin_coherence(root: &Path) -> QueryEnvelope {
                  version (`channel = \"X.Y.Z\"`)."
             );
             warnings.push(message.clone());
+            evidence.push(EvidenceItem {
+                kind: "rust_channel_floating".to_string(),
+                path: "rust-toolchain.toml".to_string(),
+                line: Some(1),
+                detail: format!("channel = \"{track}\" floats; pin an exact X.Y.Z release"),
+            });
             return QueryEnvelope {
                 schema_version: crate::model::SCHEMA_VERSION.to_string(),
                 query_id: query_id("doctor_rust_toolchain_pin_coherence"),

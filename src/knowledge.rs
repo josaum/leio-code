@@ -412,7 +412,7 @@ pub fn status_local(repo_root: &Path) -> Option<QueryEnvelope> {
     if !path.is_file() {
         return None;
     }
-    let index = open_sidecar(&path).ok()?;
+    let index = open_or_compile(repo_root).ok()?;
     let articles: Vec<Article<'_>> = (0..index.len()).filter_map(|i| index.article(i)).collect();
     let formal = crate::knowledge_graph::formal_graph_status(repo_root);
     let triples = formal
@@ -504,6 +504,11 @@ fn open_or_compile(repo_root: &Path) -> Result<WikiIndex> {
             && index.max_source_mtime == identity.max_mtime
             && (index.n == 0 || index.source_count > 0);
         if identity_ok {
+            let formal_fresh = crate::knowledge_graph::read_formal_stats(repo_root)
+                .is_some_and(|stats| crate::knowledge_graph::formal_cache_fresh(repo_root, &stats));
+            if !formal_fresh {
+                let _ = crate::knowledge_graph::compile_formal_graph(repo_root);
+            }
             return Ok(index);
         }
     }
@@ -616,16 +621,20 @@ fn source_identity(repo_root: &Path) -> SourceIdentity {
 }
 
 fn knowledge_walker(repo_root: &Path) -> WalkBuilder {
+    let has_public_export_mirror = repo_root.join("public-export.json").is_file();
     let mut builder = WalkBuilder::new(repo_root);
     builder.hidden(true);
     builder.git_ignore(true);
     builder.git_global(true);
     builder.git_exclude(true);
-    builder.filter_entry(|entry| {
+    builder.filter_entry(move |entry| {
         let Some(name) = entry.file_name().to_str() else {
             return true;
         };
         if entry.path().is_dir() {
+            if has_public_export_mirror && entry.depth() == 1 && name == "public" {
+                return false;
+            }
             return !matches!(
                 name,
                 "target"

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Run LEIO Bench"
+  short_description: "Run repo-local LEIO model sweeps"
+  default_prompt: "Use $run-leio-bench to run the repo-local LEIO golden task benchmark sweep."

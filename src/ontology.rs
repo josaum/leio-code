@@ -7,10 +7,11 @@
 //! in the SPARQL formal store, not the symbol index.
 // Rust guideline compliant 2026-02-21
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::io::Cursor;
 use std::path::Path;
 
+use aho_corasick::{AhoCorasick, AhoCorasickBuilder, AhoCorasickKind};
 use oxigraph::io::{JsonLdProfileSet, RdfFormat, RdfParser};
 use oxigraph::model::{NamedOrBlankNode, Term};
 
@@ -159,13 +160,29 @@ pub fn extract_ontology(path: &str, source: &str) -> OntologyExtract {
         kinds.entry(iri).or_insert(SymbolKind::Property);
     }
 
+    let lines = FirstSourceLines::new(
+        source,
+        kinds
+            .keys()
+            .chain(import_iris.iter())
+            .flat_map(|iri| [iri.clone(), local_name(iri)])
+            .chain(
+                labels
+                    .iter()
+                    .filter(|(iri, _)| kinds.contains_key(*iri))
+                    .flat_map(|(_, names)| names.iter().cloned()),
+            ),
+    );
+
     let mut symbols = Vec::new();
-    for (iri, kind) in &kinds {
+    let mut subjects: Vec<_> = kinds.iter().collect();
+    subjects.sort_unstable_by_key(|(iri, _)| *iri);
+    for (iri, kind) in subjects {
         let local = local_name(iri);
         if local.is_empty() {
             continue;
         }
-        let line = line_of(source, &[&local, iri]);
+        let line = lines.line_of(&[&local, iri]);
         symbols.push(SymbolOccurrence {
             name: local.clone(),
             kind: *kind,
@@ -179,7 +196,7 @@ pub fn extract_ontology(path: &str, source: &str) -> OntologyExtract {
                 if label == &local {
                     continue;
                 }
-                let label_line = line_of(source, &[label, &local, iri]);
+                let label_line = lines.line_of(&[label, &local, iri]);
                 symbols.push(SymbolOccurrence {
                     name: label.clone(),
                     kind: *kind,
@@ -195,7 +212,7 @@ pub fn extract_ontology(path: &str, source: &str) -> OntologyExtract {
     let imports = import_iris
         .into_iter()
         .map(|iri| {
-            let line = line_of(source, &[&iri, &local_name(&iri)]);
+            let line = lines.line_of(&[&iri, &local_name(&iri)]);
             OntologyImport { iri, line }
         })
         .collect();
@@ -291,20 +308,380 @@ fn local_name(iri: &str) -> String {
     iri.to_string()
 }
 
-fn line_of(source: &str, needles: &[&str]) -> usize {
-    for (idx, line) in source.lines().enumerate() {
-        for needle in needles {
-            if !needle.is_empty() && line.contains(needle) {
-                return idx + 1;
+struct FirstSourceLines {
+    lines: HashMap<String, usize>,
+}
+
+impl FirstSourceLines {
+    fn new(source: &str, needles: impl IntoIterator<Item = String>) -> Self {
+        Self::from_lines(source.lines(), needles)
+    }
+
+    fn from_lines<'a>(
+        lines: impl Iterator<Item = &'a str>,
+        needles: impl IntoIterator<Item = String>,
+    ) -> Self {
+        let patterns: Vec<_> = needles
+            .into_iter()
+            .filter(|needle| !needle.is_empty() && !needle.contains('\n'))
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        if patterns.is_empty() {
+            return Self {
+                lines: HashMap::new(),
+            };
+        }
+        let matcher = AhoCorasickBuilder::new()
+            .kind(Some(AhoCorasickKind::NoncontiguousNFA))
+            .build(&patterns)
+            .ok();
+        Self::scan(lines, patterns, matcher.as_ref())
+    }
+
+    fn scan<'a>(
+        lines: impl Iterator<Item = &'a str>,
+        patterns: Vec<String>,
+        matcher: Option<&AhoCorasick>,
+    ) -> Self {
+        let mut first_lines = vec![None; patterns.len()];
+        let mut remaining = patterns.len();
+        for (line_index, line) in lines.enumerate() {
+            if let Some(matcher) = matcher {
+                for matched in matcher.find_overlapping_iter(line) {
+                    let first = &mut first_lines[matched.pattern().as_usize()];
+                    if first.is_none() {
+                        *first = Some(line_index + 1);
+                        remaining -= 1;
+                    }
+                }
+            } else {
+                for (pattern, first) in patterns.iter().zip(&mut first_lines) {
+                    if first.is_none() && line.contains(pattern) {
+                        *first = Some(line_index + 1);
+                        remaining -= 1;
+                    }
+                }
+            }
+            if remaining == 0 {
+                break;
             }
         }
+        Self {
+            lines: patterns
+                .into_iter()
+                .zip(first_lines)
+                .filter_map(|(pattern, line)| line.map(|line| (pattern, line)))
+                .collect(),
+        }
     }
-    1
+
+    fn line_of(&self, needles: &[&str]) -> usize {
+        needles
+            .iter()
+            .filter_map(|needle| self.lines.get(*needle).copied())
+            .min()
+            .unwrap_or(1)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::Cell;
+    use std::time::Instant;
+
+    fn legacy_line_of(source: &str, needles: &[&str]) -> usize {
+        for (index, line) in source.lines().enumerate() {
+            for needle in needles {
+                if !needle.is_empty() && line.contains(needle) {
+                    return index + 1;
+                }
+            }
+        }
+        1
+    }
+
+    #[test]
+    fn first_lines_preserve_literal_first_match_semantics() {
+        let sources = [
+            "",
+            "\n\n",
+            "missing\nClaim suffix\nClaim\n",
+            "\r\nalpha\r\nβeta\r\n終末\r\n",
+            "alpha\rbeta\n",
+            "long Claim label\nClaim\nhttp://example.org/Claim\n",
+            "She hers\nhe\nhers\n",
+            "\nCafé Cafe\u{301}\nCAFÉ\n",
+            "before\nsecond\n",
+            "aba\nbab\nabab\n",
+            "left\nright",
+        ];
+        let groups: &[&[&str]] = &[
+            &[""],
+            &["missing", "Claim"],
+            &["absent", "Claim"],
+            &["Claim", "long Claim label", "http://example.org/Claim"],
+            &["he"],
+            &["hers", "She"],
+            &["α", "βeta", "終末"],
+            &["Café"],
+            &["Cafe\u{301}", "CAFÉ"],
+            &["\r"],
+            &["alpha\r"],
+            &["\n"],
+            &["left\nright"],
+            &["aba", "bab", "abab"],
+            &["Claim", "Claim", ""],
+            &["before", "second"],
+            &["second", "before"],
+            &[],
+        ];
+        for source in sources {
+            let lines = FirstSourceLines::new(
+                source,
+                groups
+                    .iter()
+                    .flat_map(|group| group.iter().map(|needle| needle.to_string())),
+            );
+            for group in groups {
+                assert_eq!(
+                    lines.line_of(group),
+                    legacy_line_of(source, group),
+                    "{source:?} {group:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn first_lines_match_generated_unicode_and_overlap_queries() {
+        let alphabet = ['a', 'b', '\r', '\n', 'é', '終'];
+        for seed in 0..128 {
+            let mut state = seed + 1;
+            let mut source = String::new();
+            for _ in 0..96 {
+                state = (state * 17 + 13) % 997;
+                source.push(alphabet[state % alphabet.len()]);
+            }
+            let chars: Vec<_> = source.chars().collect();
+            let mut needles = vec![String::new(), "absent".to_string()];
+            for start in 0..chars.len() {
+                for width in 1..=4 {
+                    if start + width <= chars.len() {
+                        needles.push(chars[start..start + width].iter().collect());
+                    }
+                }
+            }
+            let lines = FirstSourceLines::new(&source, needles.clone());
+            for (index, needle) in needles.iter().enumerate() {
+                let group = [
+                    needle.as_str(),
+                    needles[(index + 7) % needles.len()].as_str(),
+                ];
+                assert_eq!(lines.line_of(&group), legacy_line_of(&source, &group));
+            }
+        }
+    }
+
+    #[test]
+    fn attribution_reads_each_source_line_once_independent_of_query_count() {
+        let source = (0..2048)
+            .map(|index| format!("item-{index:04}#\n"))
+            .collect::<String>();
+        let needles: Vec<_> = (0..2048)
+            .map(|index| format!("item-{index:04}#"))
+            .chain(["absent".to_string()])
+            .collect();
+        let reads = Cell::new(0);
+        let lines = FirstSourceLines::from_lines(
+            source.lines().inspect(|_| reads.set(reads.get() + 1)),
+            needles.clone(),
+        );
+        assert_eq!(reads.get(), 2048);
+        for (index, needle) in needles[..2048].iter().enumerate() {
+            assert_eq!(lines.line_of(&[needle]), index + 1);
+        }
+        assert_eq!(lines.line_of(&["absent"]), 1);
+        assert_eq!(reads.get(), 2048);
+    }
+
+    #[test]
+    fn attribution_stops_when_all_patterns_have_first_lines() {
+        let reads = Cell::new(0);
+        let source = "\npattern\nnever needed\n";
+        let lines = FirstSourceLines::from_lines(
+            source.lines().inspect(|_| reads.set(reads.get() + 1)),
+            ["pattern".to_string(), "pattern".to_string(), String::new()],
+        );
+        assert_eq!(reads.get(), 2);
+        assert_eq!(lines.line_of(&["pattern"]), 2);
+        let empty = FirstSourceLines::from_lines(
+            source.lines().inspect(|_| reads.set(reads.get() + 1)),
+            [String::new(), "\n".to_string()],
+        );
+        assert_eq!(reads.get(), 2);
+        assert_eq!(empty.line_of(&[""]), 1);
+    }
+
+    #[test]
+    fn unavailable_matcher_falls_back_without_losing_first_matches() {
+        let source = "\r\nhers Claim\nCafé\nClaim\n";
+        let patterns = ["hers", "he", "Claim", "Café", "absent"];
+        let lines = FirstSourceLines::scan(
+            source.lines(),
+            patterns.iter().map(|needle| needle.to_string()).collect(),
+            None,
+        );
+        for needle in patterns {
+            assert_eq!(lines.line_of(&[needle]), legacy_line_of(source, &[needle]));
+        }
+    }
+
+    #[test]
+    fn extraction_keeps_legacy_symbol_label_and_import_lines() {
+        for (path, source) in [
+            ("ont/claim.ttl", TURTLE),
+            ("ont/invoice.jsonld", JSONLD),
+            ("ont/policy.owl", OWL_XML),
+        ] {
+            let extracted = extract_ontology(path, source);
+            for symbol in &extracted.symbols {
+                let iri = symbol.qual_name.as_deref().unwrap();
+                assert_eq!(
+                    symbol.line,
+                    legacy_line_of(source, &[&symbol.name, &local_name(iri), iri])
+                );
+            }
+            for imported in &extracted.imports {
+                assert_eq!(
+                    imported.line,
+                    legacy_line_of(source, &[&imported.iri, &local_name(&imported.iri)])
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn generated_ontology_preserves_all_attributed_rows() {
+        let mut source = String::from(
+            "@prefix owl: <http://www.w3.org/2002/07/owl#> .\r\n@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\r\n@prefix ex: <http://example.org/test#> .\r\n",
+        );
+        for index in 0..256 {
+            source.push_str(&format!(
+                "ex:Class{index:04} a owl:Class ; rdfs:label \"Café 終 {index:04}\" .\r\n"
+            ));
+        }
+        let extracted = extract_ontology("ont/generated.ttl", &source);
+        assert_eq!(extracted.symbols.len(), 512);
+        for symbol in extracted.symbols {
+            let iri = symbol.qual_name.as_deref().unwrap();
+            assert_eq!(symbol.kind, SymbolKind::Class);
+            assert_eq!(symbol.language, SourceLanguage::Rdf);
+            assert_eq!(symbol.path, "ont/generated.ttl");
+            assert_eq!(
+                symbol.line,
+                legacy_line_of(&source, &[&symbol.name, &local_name(iri), iri])
+            );
+        }
+    }
+
+    #[test]
+    fn ontology_symbols_use_full_iri_order_without_reordering_aliases() {
+        let prefixes = "@prefix owl: <http://www.w3.org/2002/07/owl#> .\n@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n";
+        let alpha =
+            "<http://z.example/Alpha> a owl:Class ; rdfs:label \"Alias B\", \"Alias A\" .\n";
+        let zulu = "<http://a.example/Zulu> a owl:Class ; rdfs:label \"Zulu\", \"Zulu Alias\" .\n";
+        let expected = [
+            ("Zulu", "http://a.example/Zulu"),
+            ("Zulu Alias", "http://a.example/Zulu"),
+            ("Alpha", "http://z.example/Alpha"),
+            ("Alias B", "http://z.example/Alpha"),
+            ("Alias A", "http://z.example/Alpha"),
+        ];
+        for declarations in [[alpha, zulu], [zulu, alpha]] {
+            let source = format!("{prefixes}{}{}", declarations[0], declarations[1]);
+            for _ in 0..16 {
+                let extracted = extract_ontology("ont/ordered.ttl", &source);
+                let identities: Vec<_> = extracted
+                    .symbols
+                    .iter()
+                    .map(|symbol| (symbol.name.as_str(), symbol.qual_name.as_deref().unwrap()))
+                    .collect();
+                assert_eq!(identities, expected);
+                for symbol in &extracted.symbols {
+                    let iri = symbol.qual_name.as_deref().unwrap();
+                    assert_eq!(symbol.kind, SymbolKind::Class);
+                    assert_eq!(symbol.language, SourceLanguage::Rdf);
+                    assert_eq!(symbol.path, "ont/ordered.ttl");
+                    assert_eq!(
+                        symbol.line,
+                        legacy_line_of(&source, &[&symbol.name, &local_name(iri), iri])
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn measured_line_attribution_matches_the_reference() {
+        let source = match std::env::var_os("LEIO_ONTOLOGY_PARITY_SOURCE") {
+            Some(path) => std::fs::read_to_string(path).unwrap(),
+            None => (0..1000)
+                .map(|index| format!("item-{index:04}#\n"))
+                .collect(),
+        };
+        let extracted = extract_ontology("ont/measured.ttl", &source);
+        let groups: Vec<Vec<String>> = if extracted.symbols.is_empty() {
+            (0..1000)
+                .map(|index| vec![format!("item-{index:04}#")])
+                .collect()
+        } else {
+            extracted
+                .symbols
+                .iter()
+                .map(|symbol| {
+                    let iri = symbol.qual_name.as_deref().unwrap();
+                    vec![symbol.name.clone(), local_name(iri), iri.to_string()]
+                })
+                .chain(
+                    extracted
+                        .imports
+                        .iter()
+                        .map(|imported| vec![imported.iri.clone(), local_name(&imported.iri)]),
+                )
+                .collect()
+        };
+        let started = Instant::now();
+        let lines = FirstSourceLines::new(&source, groups.iter().flatten().cloned());
+        let actual: Vec<_> = groups
+            .iter()
+            .map(|group| lines.line_of(&group.iter().map(String::as_str).collect::<Vec<_>>()))
+            .collect();
+        let batched = started.elapsed();
+        let started = Instant::now();
+        let expected: Vec<_> = groups
+            .iter()
+            .map(|group| {
+                legacy_line_of(
+                    &source,
+                    &group.iter().map(String::as_str).collect::<Vec<_>>(),
+                )
+            })
+            .collect();
+        let legacy = started.elapsed();
+        assert_eq!(actual, expected);
+        println!(
+            "ontology-line-parity bytes={} lines={} symbols={} imports={} queries={} batched_ms={} legacy_ms={}",
+            source.len(),
+            source.lines().count(),
+            extracted.symbols.len(),
+            extracted.imports.len(),
+            groups.len(),
+            batched.as_millis(),
+            legacy.as_millis()
+        );
+    }
 
     const TURTLE: &str = r#"@prefix owl: <http://www.w3.org/2002/07/owl#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .

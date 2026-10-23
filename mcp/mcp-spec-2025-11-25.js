@@ -16,7 +16,11 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { z } from "zod";
-import { InitializeRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import {
+  ErrorCode,
+  InitializeRequestSchema,
+  McpError,
+} from "@modelcontextprotocol/sdk/types.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(here, "package.json"), "utf8"));
@@ -31,6 +35,14 @@ export const SUPPORTED_PROTOCOL_VERSIONS = Object.freeze([
   PROTOCOL_VERSION,
   LEGACY_PROTOCOL_VERSION,
 ]);
+
+/**
+ * MCP 2026-07-28 reserved JSON-RPC error codes (-32020 to -32099).
+ * See https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning
+ */
+export const MCP_ERROR_HEADER_MISMATCH = -32020;
+export const MCP_ERROR_MISSING_REQUIRED_CLIENT_CAPABILITY = -32021;
+export const MCP_ERROR_UNSUPPORTED_PROTOCOL_VERSION = -32022;
 
 export const SPEC_URL =
   "https://modelcontextprotocol.io/specification/2026-07-28";
@@ -96,6 +108,7 @@ export const INSTRUCTIONS_STDIO = [
   "Prefer those tools over Grep/Glob for symbols, env vars, routes, callers, and deploy wiring.",
   "leio_code_knowledge kind=explain answers only through SPARQL or refuses. kind=sparql is raw SPARQL. kind=compile rebuilds the wiki and formal.nq.",
   "leio_code_nav walks headings and the lattice; nav explain uses the same SPARQL proof and pins current_iri.",
+  "For explicitly authorized selected-file reviews of current uncommitted work, use leio_code_task action=review with explicit sources; capture and integrity verification are automatic. Source-root list returns review receipts; follow snapshot-root calls for live status. For independent coding work, use leio_code_task: prepare an explicit clean worktree, submit worker=codex with task and verify_argv (no argv boilerplate), then status/events/result/cancel. Result includes bounded inline review evidence. Guide topic=tasks explains the handoff. Local stdio only; no automatic delegation, commits or merges.",
   "Pin repo_root. Set LEIO_SESSION when two agents share a tree so nav cursors stay isolated.",
   "Tool execution failures (CLI non-zero, validation, timeouts) return CallToolResult.isError=true with actionable text. Retry with adjusted arguments. Unknown tools and malformed JSON-RPC stay protocol errors.",
   `Contract: MCP ${PROTOCOL_VERSION} dual-era with ${LEGACY_PROTOCOL_VERSION} (${SPEC_URL}).`,
@@ -227,6 +240,10 @@ export const ANNOTATION_PRESETS = Object.freeze({
  * `name` MUST match schema tool-name rules (1–128, [A-Za-z0-9._-]).
  */
 export const STDIO_TOOL_CATALOG = Object.freeze({
+  leio_code_task: {
+    title: "Run and inspect explicit coding tasks",
+    annotations: openWorldWriteAnnotations,
+  },
   leio_code_conversation: {
     title: "Prepare local conversation review",
     annotations: readOnlyAnnotations,
@@ -311,20 +328,186 @@ export function assertToolName(name) {
 }
 
 /** Result `_meta` noting the negotiated contract (schema.ts Result._meta). */
-export function protocolMeta(extra = {}, implementation = IMPLEMENTATION_STDIO) {
+export function protocolMeta(
+  extra = {},
+  implementation = IMPLEMENTATION_STDIO,
+  negotiatedVersion = PROTOCOL_VERSION,
+) {
   const extraMeta =
     extra && typeof extra === "object" && !Array.isArray(extra) ? extra : {};
+  const effectiveVersion = SUPPORTED_PROTOCOL_VERSIONS.includes(negotiatedVersion)
+    ? negotiatedVersion
+    : PROTOCOL_VERSION;
+  const serverInfo = {
+    name: implementation.name,
+    title: implementation.title,
+    version: implementation.version,
+    ...(implementation.description ? { description: implementation.description } : {}),
+    ...(implementation.websiteUrl ? { websiteUrl: implementation.websiteUrl } : {}),
+    ...(Array.isArray(implementation.icons) ? { icons: implementation.icons } : {}),
+  };
   return {
-    "io.modelcontextprotocol/protocolVersion": PROTOCOL_VERSION,
-    "io.modelcontextprotocol/serverInfo": {
-      name: implementation.name,
-      title: implementation.title,
-      version: implementation.version,
-    },
-    "io.leio/mcpProtocolVersion": PROTOCOL_VERSION,
+    "io.modelcontextprotocol/protocolVersion": effectiveVersion,
+    "io.modelcontextprotocol/serverInfo": serverInfo,
+    "io.leio/mcpProtocolVersion": effectiveVersion,
     "io.leio/mcpSpec": SPEC_URL,
     ...extraMeta,
   };
+}
+
+/**
+ * Extract the per-request protocol version from `params._meta["io.modelcontextprotocol/protocolVersion"]`
+ * when present.
+ */
+export function extractRequestProtocolVersion(request) {
+  const raw = request?.params?._meta?.["io.modelcontextprotocol/protocolVersion"];
+  return typeof raw === "string" && raw.trim() ? raw.trim() : null;
+}
+
+/**
+ * Enforce MCP 2026-07-28 per-request protocol version negotiation.
+ * Requests without an explicit `_meta["io.modelcontextprotocol/protocolVersion"]`
+ * are accepted (dual-era 2025-11-25 compatibility). When an explicit version is
+ * provided and is not in `SUPPORTED_PROTOCOL_VERSIONS`, throw JSON-RPC `-32022`
+ * (`UnsupportedProtocolVersionError`) with `{ supported, requested }`.
+ */
+export function assertSupportedRequestProtocolVersion(request) {
+  const requested = extractRequestProtocolVersion(request);
+  if (requested && !SUPPORTED_PROTOCOL_VERSIONS.includes(requested)) {
+    throw new McpError(
+      MCP_ERROR_UNSUPPORTED_PROTOCOL_VERSION,
+      "Unsupported protocol version",
+      {
+        supported: [...SUPPORTED_PROTOCOL_VERSIONS],
+        requested,
+      },
+    );
+  }
+  return requested ?? PROTOCOL_VERSION;
+}
+
+function getHeaderValue(headers, name) {
+  if (!headers || typeof headers !== "object") {
+    return null;
+  }
+  if (typeof headers.get === "function") {
+    const val = headers.get(name);
+    return typeof val === "string" && val.trim() ? val.trim() : null;
+  }
+  const lower = name.toLowerCase();
+  for (const [k, v] of Object.entries(headers)) {
+    if (k.toLowerCase() === lower) {
+      if (Array.isArray(v)) {
+        return typeof v[0] === "string" && v[0].trim() ? v[0].trim() : null;
+      }
+      return typeof v === "string" && v.trim() ? v.trim() : null;
+    }
+  }
+  return null;
+}
+
+/**
+ * True when an incoming HTTP POST payload is a stateless 2026-07-28 request
+ * (no `Mcp-Session-Id` header and no legacy `initialize` handshake message).
+ */
+export function isStatelessHttpRequest({ headers, body } = {}) {
+  const sessionId = getHeaderValue(headers, "mcp-session-id");
+  if (sessionId) {
+    return false;
+  }
+  const messages = Array.isArray(body) ? body : body ? [body] : [];
+  if (messages.length === 0) {
+    return false;
+  }
+  return !messages.some(
+    (msg) => msg && typeof msg === "object" && msg.method === "initialize",
+  );
+}
+
+/**
+ * Validate Streamable HTTP protocol headers against request body `_meta` per
+ * MCP 2026-07-28 (`-32020` HeaderMismatch and `-32022` UnsupportedProtocolVersion).
+ * Returns `null` when valid, or `{ status: 400, body: <JSON-RPC error> }`.
+ */
+export function validateHttpProtocolRequest({ headers, body } = {}) {
+  const headerVersion = getHeaderValue(headers, "mcp-protocol-version");
+  const messages = Array.isArray(body) ? body : body && typeof body === "object" ? [body] : [];
+  const firstId =
+    messages.find((msg) => msg && typeof msg === "object" && "id" in msg)?.id ??
+    null;
+
+  for (const msg of messages) {
+    if (!msg || typeof msg !== "object") continue;
+    const metaVersion = extractRequestProtocolVersion(msg);
+    if (headerVersion && metaVersion && headerVersion !== metaVersion) {
+      return {
+        status: 400,
+        body: {
+          jsonrpc: "2.0",
+          id: msg.id ?? firstId,
+          error: {
+            code: MCP_ERROR_HEADER_MISMATCH,
+            message:
+              "HeaderMismatch: MCP-Protocol-Version header does not match _meta['io.modelcontextprotocol/protocolVersion']",
+            data: {
+              header: headerVersion,
+              meta: metaVersion,
+            },
+          },
+        },
+      };
+    }
+    if (
+      metaVersion &&
+      msg.method !== "server/discover" &&
+      msg.method !== "initialize" &&
+      !SUPPORTED_PROTOCOL_VERSIONS.includes(metaVersion)
+    ) {
+      return {
+        status: 400,
+        body: {
+          jsonrpc: "2.0",
+          id: msg.id ?? firstId,
+          error: {
+            code: MCP_ERROR_UNSUPPORTED_PROTOCOL_VERSION,
+            message: "Unsupported protocol version",
+            data: {
+              supported: [...SUPPORTED_PROTOCOL_VERSIONS],
+              requested: metaVersion,
+            },
+          },
+        },
+      };
+    }
+  }
+
+  const isDiscoverOnly =
+    messages.length > 0 &&
+    messages.every((msg) => msg && typeof msg === "object" && msg.method === "server/discover");
+
+  if (
+    headerVersion &&
+    !isDiscoverOnly &&
+    !SUPPORTED_PROTOCOL_VERSIONS.includes(headerVersion)
+  ) {
+    return {
+      status: 400,
+      body: {
+        jsonrpc: "2.0",
+        id: firstId,
+        error: {
+          code: MCP_ERROR_UNSUPPORTED_PROTOCOL_VERSION,
+          message: "Unsupported protocol version",
+          data: {
+            supported: [...SUPPORTED_PROTOCOL_VERSIONS],
+            requested: headerVersion,
+          },
+        },
+      },
+    };
+  }
+
+  return null;
 }
 
 function errorMessage(error) {
@@ -380,7 +563,12 @@ function serializeStructuredContent(structuredContent) {
  *   handler did not already provide text (spec SHOULD dual-write)
  * - CLI / business failures set `isError: true` (not a JSON-RPC error)
  */
-export function finalizeCallToolResult(result, extraMeta = {}) {
+export function finalizeCallToolResult(
+  result,
+  extraMeta = {},
+  implementation = IMPLEMENTATION_STDIO,
+  negotiatedVersion = PROTOCOL_VERSION,
+) {
   if (!result || typeof result !== "object" || Array.isArray(result)) {
     return executionErrorResult("Tool handler returned a non-object result");
   }
@@ -423,7 +611,7 @@ export function finalizeCallToolResult(result, extraMeta = {}) {
     ...(structured !== undefined ? { structuredContent: structured } : {}),
     isError: failed,
     _meta: {
-      ...protocolMeta(extraMeta),
+      ...protocolMeta(extraMeta, implementation, negotiatedVersion),
       ...(result._meta && typeof result._meta === "object" ? result._meta : {}),
     },
   };
@@ -433,13 +621,17 @@ export function finalizeCallToolResult(result, extraMeta = {}) {
  * Wrap a tools/call handler so thrown Errors become execution errors
  * (isError:true) instead of JSON-RPC INTERNAL_ERROR.
  */
-export function wrapToolHandler(handler) {
+export function wrapToolHandler(handler, implementation = IMPLEMENTATION_STDIO) {
   return async (...args) => {
     try {
       const result = await handler(...args);
-      return finalizeCallToolResult(result);
+      return finalizeCallToolResult(result, {}, implementation);
     } catch (error) {
-      return executionErrorResult(error);
+      return finalizeCallToolResult(
+        executionErrorResult(error),
+        {},
+        implementation,
+      );
     }
   };
 }
@@ -485,7 +677,15 @@ export function appsSdkServerOptions() {
   };
 }
 
-export function decorateCacheableResult(result, { ttlMs = TOOLS_LIST_TTL_MS, cacheScope = "public" } = {}) {
+export function decorateCacheableResult(
+  result,
+  {
+    ttlMs = TOOLS_LIST_TTL_MS,
+    cacheScope = "public",
+    implementation = IMPLEMENTATION_STDIO,
+    negotiatedVersion = PROTOCOL_VERSION,
+  } = {},
+) {
   const base = result && typeof result === "object" ? result : {};
   return {
     ...base,
@@ -493,7 +693,7 @@ export function decorateCacheableResult(result, { ttlMs = TOOLS_LIST_TTL_MS, cac
     ttlMs: Number.isFinite(base.ttlMs) ? base.ttlMs : ttlMs,
     cacheScope: base.cacheScope ?? cacheScope,
     _meta: {
-      ...protocolMeta(),
+      ...protocolMeta({}, implementation, negotiatedVersion),
       ...(base._meta && typeof base._meta === "object" ? base._meta : {}),
     },
   };
@@ -512,7 +712,7 @@ export function buildDiscoverResult({
       instructions,
       _meta: protocolMeta({}, implementation),
     },
-    { ttlMs: 3_600_000, cacheScope: "public" },
+    { ttlMs: 3_600_000, cacheScope: "public", implementation },
   );
 }
 
@@ -528,10 +728,31 @@ const DiscoverRequestSchema = z.object({
 
 /**
  * Dual-era install: keep SDK initialize for 2025-11-25 hosts, and add
- * 2026-07-28 `server/discover` plus cache hints on tools/list.
+ * 2026-07-28 `server/discover`, per-request protocolVersion negotiation
+ * (`-32022`), `resultType: "complete"`, cache hints on list endpoints,
+ * and SEP-2164 `-32602` (`data.uri`) on missing resources.
  */
 export function installModernProtocol(mcpServer, options = {}) {
   const proto = mcpServer.server;
+  const implementation = options.implementation ?? IMPLEMENTATION_STDIO;
+  const declaredCapabilities = options.capabilities ?? { tools: TOOLS_CAPABILITY };
+
+  // Keep initialize capabilities identical to server/discover (no unsolicited
+  // listChanged notifications during lazy schema hydration).
+  mcpServer.sendToolListChanged = () => {};
+  mcpServer.sendResourceListChanged = () => {};
+  if (proto._capabilities && typeof proto._capabilities === "object") {
+    if (proto._capabilities.tools && !declaredCapabilities.tools?.listChanged) {
+      delete proto._capabilities.tools.listChanged;
+    }
+    if (
+      proto._capabilities.resources &&
+      !declaredCapabilities.resources?.listChanged
+    ) {
+      delete proto._capabilities.resources.listChanged;
+    }
+  }
+
   proto.setRequestHandler(DiscoverRequestSchema, async () =>
     buildDiscoverResult(options),
   );
@@ -548,8 +769,10 @@ export function installModernProtocol(mcpServer, options = {}) {
   if (typeof originalInitialize === "function") {
     proto.setRequestHandler(InitializeRequestSchema, async (request, extra) => {
       const result = await originalInitialize(request, extra);
-      if (request.params?.protocolVersion === PROTOCOL_VERSION
-          && result.protocolVersion !== PROTOCOL_VERSION) {
+      if (
+        request.params?.protocolVersion === PROTOCOL_VERSION &&
+        result.protocolVersion !== PROTOCOL_VERSION
+      ) {
         result.protocolVersion = PROTOCOL_VERSION;
       }
       return result;
@@ -559,16 +782,93 @@ export function installModernProtocol(mcpServer, options = {}) {
   const originalList = proto._requestHandlers?.get?.("tools/list");
   if (typeof originalList === "function") {
     proto._requestHandlers.set("tools/list", async (request, extra) => {
+      const negotiatedVersion = assertSupportedRequestProtocolVersion(request);
       const listed = await originalList(request, extra);
-      return decorateCacheableResult(listed);
+      return decorateCacheableResult(listed, {
+        implementation,
+        negotiatedVersion,
+      });
+    });
+  }
+
+  const originalCall = proto._requestHandlers?.get?.("tools/call");
+  if (typeof originalCall === "function") {
+    proto._requestHandlers.set("tools/call", async (request, extra) => {
+      const negotiatedVersion = assertSupportedRequestProtocolVersion(request);
+      const result = await originalCall(request, extra);
+      return finalizeCallToolResult(
+        result,
+        {},
+        implementation,
+        negotiatedVersion,
+      );
     });
   }
 
   const originalResources = proto._requestHandlers?.get?.("resources/list");
   if (typeof originalResources === "function") {
     proto._requestHandlers.set("resources/list", async (request, extra) => {
+      const negotiatedVersion = assertSupportedRequestProtocolVersion(request);
       const listed = await originalResources(request, extra);
-      return decorateCacheableResult(listed);
+      return decorateCacheableResult(listed, {
+        implementation,
+        negotiatedVersion,
+      });
+    });
+  }
+
+  const originalResourceTemplates = proto._requestHandlers?.get?.(
+    "resources/templates/list",
+  );
+  if (typeof originalResourceTemplates === "function") {
+    proto._requestHandlers.set(
+      "resources/templates/list",
+      async (request, extra) => {
+        const negotiatedVersion = assertSupportedRequestProtocolVersion(request);
+        const listed = await originalResourceTemplates(request, extra);
+        return decorateCacheableResult(listed, {
+          implementation,
+          negotiatedVersion,
+        });
+      },
+    );
+  }
+
+  const originalReadResource = proto._requestHandlers?.get?.("resources/read");
+  if (typeof originalReadResource === "function") {
+    proto._requestHandlers.set("resources/read", async (request, extra) => {
+      const negotiatedVersion = assertSupportedRequestProtocolVersion(request);
+      const requestedUri = request?.params?.uri;
+      try {
+        const readResult = await originalReadResource(request, extra);
+        const base =
+          readResult && typeof readResult === "object" ? readResult : {};
+        return {
+          ...base,
+          resultType: base.resultType ?? "complete",
+          _meta: {
+            ...protocolMeta({}, implementation, negotiatedVersion),
+            ...(base._meta && typeof base._meta === "object" ? base._meta : {}),
+          },
+        };
+      } catch (error) {
+        if (error instanceof McpError) {
+          if (error.code === ErrorCode.InvalidParams) {
+            throw new McpError(ErrorCode.InvalidParams, error.message, {
+              uri: requestedUri,
+              ...(error.data && typeof error.data === "object"
+                ? error.data
+                : {}),
+            });
+          }
+          throw error;
+        }
+        throw new McpError(
+          ErrorCode.InvalidParams,
+          `Resource ${requestedUri ?? ""} not found`,
+          { uri: requestedUri },
+        );
+      }
     });
   }
 }

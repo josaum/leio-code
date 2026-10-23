@@ -6,8 +6,10 @@ import path from "node:path";
 
 import { confineToRepo } from "./export-paths.js";
 
-test("confineToRepo accepts paths inside the repo", () => {
+test("confineToRepo accepts paths inside the repo and returns null for empty candidate", () => {
   const root = path.join(os.tmpdir(), "leio-repo");
+  assert.equal(confineToRepo(root, ""), null);
+  assert.equal(confineToRepo(root, null), null);
   assert.equal(
     confineToRepo(root, "exports/out.json"),
     path.resolve(root, "exports/out.json"),

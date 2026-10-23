@@ -158,7 +158,8 @@ pub fn shared_events_path(events_dir: &Path, checkout: &crate::checkout::Checkou
 /// JSON-LD `@type` label for individual entities.
 fn entity_type_for(query_id_prefix: &str) -> &'static str {
     match query_id_prefix {
-        "find_symbol" => "Symbol",
+        "find_symbol" | "explain_symbol" => "Symbol",
+        "find_text" => "TextMatch",
         "find_env" | "explain_env" => "EnvVar",
         "find_redis" | "explain_redis" => "RedisKey",
         "find_deploy_target" | "explain_deploy_target" => "DeployTarget",

@@ -177,6 +177,11 @@ def build_wheel(platform: dict[str, str]) -> Path:
     mcp_dir = stage / "src" / "leio_code" / "mcp"
     stage_server(mcp_dir, with_modules=True)
     shutil.copy2(ROOT / "packaging" / "register-mcp.js", stage / "src" / "leio_code" / "register-mcp.js")
+    shutil.copytree(
+        ROOT / "skills" / "leio-code",
+        stage / "src" / "leio_code" / "skills" / "leio-code",
+        ignore=shutil.ignore_patterns(".DS_Store", "__pycache__"),
+    )
     wheel_dir = DIST / "wheels-any"
     wheel_dir.mkdir(parents=True, exist_ok=True)
     subprocess.run(
@@ -200,6 +205,11 @@ def pack_npm() -> Path:
     )
     stage_server(stage / "server")
     shutil.copy2(ROOT / "packaging" / "register-mcp.js", stage / "register-mcp.js")
+    shutil.copytree(
+        ROOT / "skills" / "leio-code",
+        stage / "skills" / "leio-code",
+        ignore=shutil.ignore_patterns(".DS_Store", "__pycache__"),
+    )
     install_js = (stage / "install.js").read_text(encoding="utf-8")
     (stage / "install.js").write_text(
         install_js.replace('from "../register-mcp.js"', 'from "./register-mcp.js"'),

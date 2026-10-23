@@ -1,6 +1,11 @@
 ---
 name: leio-code
 description: Mandatory first-pass before grep on any repository or cross-repo task. Start in LEIO Code for symbols, env vars, routes, callers, deploy wiring, or auth. Triggers on "run leio", leio-code status, find symbol, who calls, who imports, doctor, audit, knowledge explain, nav goto. Do not use on ChatGPT Developer Mode or https://leio-code.getjai.com/mcp (use leio-code-apps-sdk).
+license: MIT OR Apache-2.0
+compatibility: Requires leio-code CLI or leio-code stdio MCP server with local repository filesystem access.
+metadata:
+  author: leio-code
+  version: "2.6.5"
 ---
 
 # LEIO Code
@@ -70,13 +75,14 @@ Unsure which family after the loop: `leio_code_guide`. CLI has no `guide` — th
 | Conversation TXT/ZIP/JSON evidence and method guidance | `leio_code_conversation` (local stdio) / `conversation` (CLI) |
 | Health / index age | `status` |
 | What this repo models | `capabilities` |
-| Ranked working set | `context` |
-| Symbol / env / redis / route / service | `find` |
-| Lineage | `explain` |
+| Ranked working set / dirty-tree impact | `context` (pass `diff=true` / `--diff` to seed from uncommitted git changes, 1-hop importers, and missing co-edit partners) |
+| Symbol / text / env / redis / route / service | `find` (`kind="text"` for AST-enriched literal/regex search) |
+| Lineage / one-shot symbol code + callers | `explain` (`kind="symbol"` returns bounded source excerpt, signature, callers, callees, and co-edited files in one call) |
 | Callers / callees / imports / dead-code | `graph` |
 | One doctor family | `doctor` |
 | Composite pre-deploy rollup | `audit` (`strict=true` when gating) |
 | Fast health gate | `doctor baseline` (same checks as `status --strict`) |
+| Explicit worktree preparation, coding handoff, execution status, review, cancellation | `leio_code_task` (local stdio) / `leio-harness task` — see [task contract](../../docs/HARNESS-TASKS.md); use guide topic=tasks; worker=codex can omit argv, result includes bounded inline evidence; submit requires explicitly authorized work and verification |
 | PR-shaped gate | `doctor ci` |
 | Every registered doctor | `doctor all` or `verify` |
 | Formal context / code-graph / hypergraph | `export` |
@@ -85,7 +91,7 @@ Unsure which family after the loop: `leio_code_guide`. CLI has no `guide` — th
 | Raw SPARQL | `knowledge` `sparql` |
 | Stateful code / FCA / heading walk | `nav` (`leio_code_guide` topic=`navigation`) |
 | Local Arrow semantic | `find` (falls back to the local `nodes.arrow` store) |
-| Hosted wiki ingest | `leio_code_kb_bootstrap` (script path, not a CLI verb) |
+| Multi-source Arrow KB | `leio_code_kb` (`add` / `remove` / `list` / `build` / `query` / `drop`) |
 
 CLI mirrors the same verbs. Do not assume deploy-target, cartridge, or doctor families exist — read `capabilities`.
 
@@ -150,3 +156,5 @@ walk to select its sole target. Ambiguous walks remain explicit listings. Keep
 the same root and session. After edits, inspect local source freshness; refresh
 the index for changed edges. Default context/graph/nav packets are compact;
 `full: true` restores diagnostics. See [the editing loop](../../docs/NAV-EDITING-LOOP.md).
+
+For an explicitly requested background review of current uncommitted work, local stdio `leio_code_task(action=review, repo_root=<source root>, sources=[<relative files>])` captures selected current files and runs read-only Codex with built-in snapshot integrity verification. No manual snapshot, worker argv or verify command is needed. Unselected context and dependencies are absent. Follow returned snapshot-root next_calls; source-root list returns durable review receipts. See docs/HARNESS-TASKS.md for isolation and bounds.

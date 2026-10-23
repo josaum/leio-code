@@ -36,7 +36,7 @@ use serde_json::Value;
 use crate::model::{QueryEnvelope, RepoIndex};
 use crate::query::{
     explain_binary, explain_cartridge, explain_deploy_target, explain_env_var, explain_redis_key,
-    explain_route,
+    explain_route, explain_symbol,
 };
 use crate::value_resolution::ValueResolutionOpts;
 
@@ -151,6 +151,12 @@ pub fn dispatch(
             Some(name) => DispatchOutcome::Ok(Box::new(explain_cartridge(index, &name))),
             None => DispatchOutcome::MissingField(
                 "Cartridge entity missing required `name` field".to_string(),
+            ),
+        },
+        "Symbol" => match string_field(entity, &["qual_name", "name"]) {
+            Some(name) => DispatchOutcome::Ok(Box::new(explain_symbol(index, &name, repo))),
+            None => DispatchOutcome::MissingField(
+                "Symbol entity missing required `name` (or `qual_name`) field".to_string(),
             ),
         },
         other => DispatchOutcome::UnknownType(other.to_string()),

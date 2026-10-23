@@ -66,6 +66,14 @@ fn sarif_format_has_required_keys() {
     let v: serde_json::Value = serde_json::from_str(&out).expect("sarif parse");
     assert_eq!(v["version"], "2.1.0");
     assert_eq!(v["runs"][0]["tool"]["driver"]["name"], "leio-code");
+    let rules = v["runs"][0]["tool"]["driver"]["rules"]
+        .as_array()
+        .expect("tool.driver.rules array");
+    assert!(
+        rules.len() >= 19,
+        "expected at least 19 SARIF reportingDescriptor rules, got {}",
+        rules.len()
+    );
     let results = v["runs"][0]["results"].as_array().expect("results array");
     assert!(!results.is_empty());
     let invocations = v["runs"][0]["invocations"]

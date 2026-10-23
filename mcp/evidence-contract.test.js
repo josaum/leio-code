@@ -43,4 +43,8 @@ test("canonical digest is independent of object key insertion order", () => {
     buildEvidenceContract(left).payload_sha256,
     buildEvidenceContract(right).payload_sha256,
   );
+  assert.throws(
+    () => buildEvidenceContract({ bad: Number.POSITIVE_INFINITY }),
+    /non-finite numbers/,
+  );
 });

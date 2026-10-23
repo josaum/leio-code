@@ -98,4 +98,18 @@ test("GitHub helpers parse normalized repository identity", () => {
     owner: "openai",
     repo: "codex",
   });
+  assert.equal(parseGitHubOwnerRepo("https://gitlab.com/openai/codex"), null);
+  assert.equal(parseGitHubOwnerRepo(null), null);
+  assert.equal(normalizeRepoUrl(null), null);
+  assert.equal(normalizeRepoUrl("   "), null);
+  assert.equal(normalizeRepoUrl("openai/."), null);
+  assert.equal(normalizeRepoUrl("openai/.."), null);
+  assert.equal(normalizeRepoUrl("https://github.com/openai"), null);
+  assert.equal(normalizeRepoUrl("https://github.com/openai/%E0%A4%A"), null);
+  assert.equal(
+    normalizeRepoUrl("https://custom.host/org/repo", {
+      allowedHosts: ["custom.host"],
+    }),
+    "https://custom.host/org/repo",
+  );
 });

@@ -1,5 +1,36 @@
 /** Compact successful editing-loop results; full=true retains the diagnostic packet. */
 const pick = (value, keys) => Object.fromEntries(keys.filter(k => value?.[k] !== undefined).map(k => [k,value[k]]));
+
+function formatCompactText(toolFamily, lean) {
+  const lines = [typeof lean.summary === "string" ? lean.summary : "LEIO result"];
+  if (toolFamily === "context") {
+    const ctx = lean.entities?.[0] ?? {};
+    for (const f of ctx.files_to_read ?? []) {
+      const syms = (f.symbols ?? []).map(s => `${s.name}:${s.line ?? "?"}`).join(", ");
+      lines.push(`- ${f.path}${syms ? ` [${syms}]` : ""}`);
+    }
+    for (const t of (ctx.tests_to_run ?? []).slice(0, 3)) {
+      if (t?.command) lines.push(`test: ${t.command}`);
+    }
+    for (const r of (ctx.risk_notes ?? []).slice(0, 3)) {
+      lines.push(`risk: ${r}`);
+    }
+  } else if (toolFamily === "nav") {
+    for (const row of (lean.entities ?? []).slice(0, 10)) {
+      const loc = row.path ? `${row.path}${row.line ? `:${row.line}` : ""}` : "";
+      lines.push(`- [${row.role ?? "item"}${row.index !== undefined ? ` #${row.index}` : ""}] ${loc} ${row.symbol ?? ""}`.trim());
+    }
+  } else if (toolFamily === "graph") {
+    for (const row of (lean.entities ?? []).slice(0, 12)) {
+      if (row.path || row.name || row.qual_name || row.import) {
+        const loc = row.path ? `${row.path}${row.line ? `:${row.line}` : ""}` : "";
+        lines.push(`- ${loc} ${row.qual_name ?? row.name ?? row.import ?? ""}`.trim());
+      }
+    }
+  }
+  return lines.join("\n");
+}
+
 export function compactEditingResult(result, {full = false, scope = {}} = {}) {
   const original = result.structuredContent;
   if (full || !original?.ok || !["context","graph","nav"].includes(original.tool_family)) return result;
@@ -11,7 +42,7 @@ export function compactEditingResult(result, {full = false, scope = {}} = {}) {
   lean.warnings = envelope.warnings ?? [];
   if (original.tool_family === "context") {
     const context = envelope.entities?.[0] ?? {};
-    lean.entities = [{...pick(context,["task","instruction_sources","memory_sources","verification_anchors","tests_to_run","risk_notes"]),
+    lean.entities = [{...pick(context,["task","diff_summary","instruction_sources","memory_sources","verification_anchors","tests_to_run","risk_notes"]),
       files_to_read:(context.files_to_read ?? []).slice(0,5).map(row => ({...pick(row,["path","language","reasons"]),symbols:row.symbols?.slice(0,3)})),
       omitted_files:Math.max(0,(context.files_to_read?.length ?? 0)-5)}];
     lean.meta = pick(envelope.meta,["workspace_profile"]);
@@ -36,6 +67,6 @@ export function compactEditingResult(result, {full = false, scope = {}} = {}) {
     if (needle) row.open = {tool:"leio_code_nav",arguments:{repo_root:original.repo_root,...pick(scope,["index_path","session"]),kind:"goto",needle}};
   }
   data.diagnostics = {tool:`leio_code_${original.tool_family}`,arguments:{...scope,repo_root:original.repo_root,full:true}};
-  // Source text appears once, in structuredContent. The text block is a short finding.
-  return {...result,content:[{type:"text",text:typeof lean.summary === "string" ? lean.summary : "LEIO result"}],structuredContent:data};
+  // Source text appears once, in structuredContent. The text block is a compact grounded digest.
+  return {...result,content:[{type:"text",text:formatCompactText(original.tool_family, lean)}],structuredContent:data};
 }

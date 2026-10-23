@@ -1,0 +1,157 @@
+{
+  "version": 1,
+  "description": "25-task multi-category evaluation suite for LEIO Code and LEIO Harness paper ablations.",
+  "tasks": [
+    {
+      "id": "t01",
+      "category": "symbol_module",
+      "task": "context file ranking scoring exact identifier relevance",
+      "relevant_paths": ["src/context.rs"]
+    },
+    {
+      "id": "t02",
+      "category": "symbol_module",
+      "task": "update installed CLI and refresh plugin caches",
+      "relevant_paths": ["src/update.rs"]
+    },
+    {
+      "id": "t03",
+      "category": "symbol_module",
+      "task": "formal concept analysis lattice induction Galois cover",
+      "relevant_paths": ["src/fca.rs", "src/lattice.rs"]
+    },
+    {
+      "id": "t04",
+      "category": "symbol_module",
+      "task": "incremental filesystem watcher debounce reindex loop",
+      "relevant_paths": ["src/watcher.rs"]
+    },
+    {
+      "id": "t05",
+      "category": "symbol_module",
+      "task": "git history co-edit playbook counters and doctor boosts",
+      "relevant_paths": ["src/playbook.rs"]
+    },
+    {
+      "id": "t06",
+      "category": "infra_topology",
+      "task": "fix Apps SDK Docker smoke",
+      "relevant_paths": ["apps-sdk/scripts/smoke-docker.sh", "apps-sdk/smoke.mjs"]
+    },
+    {
+      "id": "t07",
+      "category": "infra_topology",
+      "task": "session startup inject canonical skill instructions",
+      "relevant_paths": ["hooks/session-context.sh"]
+    },
+    {
+      "id": "t08",
+      "category": "infra_topology",
+      "task": "Keycloak realm OAuth client configuration for ChatGPT app",
+      "relevant_paths": ["apps-sdk/keycloak/configure-app-client.mjs", "apps-sdk/keycloak/chatgpt-client-config.mjs"]
+    },
+    {
+      "id": "t09",
+      "category": "infra_topology",
+      "task": "stdio MCP bootstrap script stripped PATH cargo binary",
+      "relevant_paths": ["scripts/launch-stdio-mcp.sh"]
+    },
+    {
+      "id": "t10",
+      "category": "infra_topology",
+      "task": "register MCP server and default skill across agent hosts",
+      "relevant_paths": ["packaging/register-mcp.js"]
+    },
+    {
+      "id": "t11",
+      "category": "cross_lang_protocol",
+      "task": "MCP binary resolution installed cargo executable",
+      "relevant_paths": ["mcp/resolve-binary.js"]
+    },
+    {
+      "id": "t12",
+      "category": "cross_lang_protocol",
+      "task": "compact editing packet files_to_read token budget compression",
+      "relevant_paths": ["mcp/compact.js"]
+    },
+    {
+      "id": "t13",
+      "category": "cross_lang_protocol",
+      "task": "MCP 2025-11-25 protocol version handshake and server discovery",
+      "relevant_paths": ["mcp/mcp-spec-2025-11-25.js"]
+    },
+    {
+      "id": "t14",
+      "category": "cross_lang_protocol",
+      "task": "JSON-LD W3C PROV provenance event journal and URI mapping",
+      "relevant_paths": ["src/jsonld.rs"]
+    },
+    {
+      "id": "t15",
+      "category": "cross_lang_protocol",
+      "task": "cross-language subprocess spawn and HTTP route edge extraction",
+      "relevant_paths": ["src/cross_language/mod.rs", "src/cross_language/http_route.rs", "src/cross_language/http_client.rs"]
+    },
+    {
+      "id": "t16",
+      "category": "knowledge_graph",
+      "task": "compiled markdown wiki SPARQL explain and adaptive search",
+      "relevant_paths": ["src/knowledge.rs", "src/knowledge_explain.rs", "crates/leio-knowledge-core/src/lib.rs", "crates/leio-knowledge-core/src/sparql.rs"]
+    },
+    {
+      "id": "t17",
+      "category": "knowledge_graph",
+      "task": "code graph N-Quads export and caller callee query cache",
+      "relevant_paths": ["src/code_graph.rs", "src/graph_query.rs"],
+      "co_edit_partners": ["src/indexer.rs"]
+    },
+    {
+      "id": "t18",
+      "category": "knowledge_graph",
+      "task": "persistent navigation cursor goto related and lattice alignment",
+      "relevant_paths": ["src/nav.rs"]
+    },
+    {
+      "id": "t19",
+      "category": "knowledge_graph",
+      "task": "zero-copy mmap Arrow node store and BGE-M3 SIMD cosine reranking",
+      "relevant_paths": ["src/local_nodes.rs", "src/arrow_ipc.rs"]
+    },
+    {
+      "id": "t20",
+      "category": "knowledge_graph",
+      "task": "audit SARIF 2.1.0 report generation and strict doctor exit codes",
+      "relevant_paths": ["src/audit.rs", "src/doctors/mod.rs"]
+    },
+    {
+      "id": "t21",
+      "category": "multi_agent_harness",
+      "task": "persist workflow approval retry revision inputs",
+      "relevant_paths": ["crates/leio-harness/src/workflow.rs"]
+    },
+    {
+      "id": "t22",
+      "category": "multi_agent_harness",
+      "task": "local deployment verify revision rollback artifact",
+      "relevant_paths": ["crates/leio-harness/src/delivery.rs"]
+    },
+    {
+      "id": "t23",
+      "category": "multi_agent_harness",
+      "task": "GEPA spherical slerp trust-region mutation and Pareto frontier",
+      "relevant_paths": ["crates/leio-harness/src/gepa.rs"]
+    },
+    {
+      "id": "t24",
+      "category": "multi_agent_harness",
+      "task": "SIGReg sliced Epps-Pulley isotropy score and directional collapse",
+      "relevant_paths": ["crates/leio-harness/src/sigreg.rs"]
+    },
+    {
+      "id": "t25",
+      "category": "multi_agent_harness",
+      "task": "Arrow Flight do_exchange semantic embedding bus publish and match",
+      "relevant_paths": ["crates/leio-harness/src/bus.rs"]
+    }
+  ]
+}

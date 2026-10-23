@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import fs from "node:fs";
+import { taskInputSchema, createTaskHandler } from "./harness-tasks.js";
 import { compactEditingResult } from "./compact.js";
 import { indexDiagnostics, retrievalAssessment } from "./orientation.js";
 import os from "node:os";
@@ -45,6 +46,7 @@ import {
   LeioNavigationToolOutputSchema,
   LeioNavToolOutputSchema,
   LeioStatusToolOutputSchema,
+  LeioTaskToolOutputSchema,
   LeioToolOutputSchema,
   LeioWatchToolOutputSchema,
 } from "./output-schemas.js";
@@ -308,8 +310,33 @@ const needleField = z
   .string()
   .min(1)
   .describe(
-    "Search needle. Usually a symbol name, file path, import literal, env var, Redis key, or deploy target name.",
-  );
+    "Search needle. Required for all find kinds except binary and route (where omitting needle returns the full registry).",
+  )
+  .optional();
+const findMethodField = z
+  .string()
+  .min(1)
+  .describe("Optional HTTP method filter (e.g. POST) when kind=route.")
+  .optional();
+const queryOutputFormatField = z
+  .enum(["json", "jsonld"])
+  .describe(
+    "Output format: json (default envelope) or jsonld (@context/@id/@type for filtering and SPARQL ingest).",
+  )
+  .optional();
+const whereFilterField = z
+  .string()
+  .min(1)
+  .describe(
+    "Optional jq-subset filter applied to JSON-LD output (implies format=jsonld unless format is set explicitly).",
+  )
+  .optional();
+const doctorFormatField = z
+  .enum(["json", "sarif"])
+  .describe(
+    "Diagnostic output format: json (default QueryEnvelope) or sarif (SARIF 2.1.0 machine report).",
+  )
+  .optional();
 const optionalNeedleField = z
   .string()
   .min(1)
@@ -321,8 +348,15 @@ const contextTaskField = z
   .string()
   .min(1)
   .describe(
-    "Natural-language task, symbol, path, env var, Redis key, or feature area to prepare an agent-ready context bundle with zones, instructions, anchors, tests, and doctors.",
-  );
+    "Natural-language task, symbol, path, env var, Redis key, or feature area to prepare an agent-ready context bundle with zones, instructions, anchors, tests, and doctors. Optional when diff=true.",
+  )
+  .optional();
+const contextDiffField = z
+  .boolean()
+  .describe(
+    "Seed context from uncommitted/staged git changes (--diff), boosting modified files, 1-hop importers, and missing co-edit partners.",
+  )
+  .optional();
 const outputDirField = z
   .string()
   .describe("Directory where exported artifacts should be written.")
@@ -821,6 +855,7 @@ const STDIO_OUTPUT_SCHEMAS = {
   leio_code_nav: LeioNavToolOutputSchema,
   leio_code_status: LeioStatusToolOutputSchema,
   leio_code_watch: LeioWatchToolOutputSchema,
+  leio_code_task: LeioTaskToolOutputSchema,
 };
 
 function registerLeioTool(name, description, inputSchema, handler) {
@@ -854,6 +889,12 @@ const activeKindSchemas = makeKindSchemas(null);
 const kindToolHandles = new Map();
 
 function registerAllTools() {
+  registerLeioTool(
+    "leio_code_task",
+    "Agent-first durable coding tasks, local stdio only. review captures explicit sources including current uncommitted files into an isolated snapshot, starts read-only Codex with built-in integrity verification; no worktree preparation or verify_argv required. list also returns captured review receipts. prepare creates an explicit detached worktree from a committed base; source edits are excluded only with acknowledgment. submit requires task, worker and verify_argv: worker=codex without argv uses installed Codex with existing login/model, workspace-write sandbox and caller context. Explicit argv supports other workers. list/status/events/cancel observe or stop execution. result returns bounded inline patch, logs, verification and next action alongside full artifact paths. No bus or ambient agents. Worker output is untrusted evidence; review before accepting. See guide topic=tasks.",
+    taskInputSchema,
+    createTaskHandler({runProcess}),
+  );
   const conversationSchema = {
     repo_root: z.string().min(1).describe("Absolute local folder containing the explicitly selected conversation files; no recursive indexing."),
     sources: z.array(z.string().min(1)).min(1).max(8).describe("Selected UTF-8 WhatsApp TXT/ZIP or normalized JSON paths, confined to repo_root."),
@@ -984,9 +1025,10 @@ async function runLeioArgs(args, timeout_ms) {
 
   registerLeioTool(
     "leio_code_context",
-    "Start a repository task here: provide task and repo_root for ranked files, instructions, tests, provider identity, index coverage and limitations. Status and capabilities are optional diagnostics; a precise known file can go directly to graph. Read structuredContent.next_calls for direct definition opens and graph follow-ups pinned to the same repository and index. Use full=true only when exhaustive detail is needed.",
+    "Start a repository task here: provide task (or diff=true for uncommitted working-tree impact) and repo_root for ranked files, instructions, tests, provider identity, index coverage and limitations. Status and capabilities are optional diagnostics; a precise known file can go directly to graph. Read structuredContent.next_calls for direct definition opens and graph follow-ups pinned to the same repository and index. Use full=true only when exhaustive detail is needed.",
     {
       task: contextTaskField,
+      diff: contextDiffField,
       full: z
         .boolean()
         .describe(
@@ -1008,6 +1050,7 @@ async function runLeioArgs(args, timeout_ms) {
       const input = z
         .object({
           task: contextTaskField,
+          diff: contextDiffField,
           full: z.boolean().optional(),
           limit: z.number().int().min(1).max(40).optional(),
           repo_root: repoRootField,
@@ -1016,7 +1059,17 @@ async function runLeioArgs(args, timeout_ms) {
         })
         .parse(raw);
 
-      const args = ["context", input.task];
+      if (!input.diff && !input.task) {
+        throw new Error("task is required for leio_code_context unless diff=true");
+      }
+
+      const args = ["context"];
+      if (input.task) {
+        args.push(input.task);
+      }
+      if (input.diff) {
+        args.push("--diff");
+      }
       if (input.full) {
         args.push("--full");
       }
@@ -1059,10 +1112,13 @@ async function runLeioArgs(args, timeout_ms) {
 
   registerLeioTool(
     "leio_code_find",
-    "PREFERRED over Grep/Glob for code lookups. Finds symbols, env vars, Redis keys, deploy targets, cartridges, API routes, and Docker services with exact file:line evidence. Faster and more complete than manual searching — covers the entire monorepo index in one call.",
+    "PREFERRED over Grep/Glob for code lookups. Finds symbols, env vars, Redis keys, deploy targets, cartridges, API routes, Docker services, binaries, routes, and callers with exact file:line evidence. Supports format=jsonld and where=<jq-subset> filtering.",
     {
       kind: activeKindSchemas.find,
       needle: needleField,
+      method: findMethodField,
+      format: queryOutputFormatField,
+      where: whereFilterField,
       repo_root: repoRootField,
       index_path: indexPathField,
       timeout_ms: timeoutMsField,
@@ -1072,13 +1128,34 @@ async function runLeioArgs(args, timeout_ms) {
         .object({
           kind: activeKindSchemas.find,
           needle: needleField,
+          method: findMethodField,
+          format: queryOutputFormatField,
+          where: whereFilterField,
           repo_root: repoRootField,
           index_path: indexPathField,
           timeout_ms: timeoutMsField,
         })
         .parse(raw);
 
-      return invokeLeio(["find", input.kind, input.needle], {
+      if (input.kind !== "binary" && input.kind !== "route" && !input.needle) {
+        throw new Error(`needle is required for find kind "${input.kind}"`);
+      }
+
+      const args = ["find", input.kind];
+      if (input.needle) {
+        args.push(input.needle);
+      }
+      if (input.method) {
+        args.push("--method", input.method);
+      }
+      if (input.format) {
+        args.push("--format", input.format);
+      }
+      if (input.where) {
+        args.push("--where", input.where);
+      }
+
+      return invokeLeio(args, {
         repoRoot: input.repo_root,
         indexPath: input.index_path,
         timeoutMs: input.timeout_ms,
@@ -1088,13 +1165,15 @@ async function runLeioArgs(args, timeout_ms) {
 
   registerLeioTool(
     "leio_code_explain",
-    "Deep operational explanation with evidence and lineage. Use for deploy targets (profile, cartridges, health checks, rollback), env vars (who reads/writes, operational meaning), Redis keys (state semantics), or cartridges (where deployed, integrations). Much richer than reading individual files.",
+    "Deep operational explanation with evidence and lineage. Use for deploy targets (profile, cartridges, health checks, rollback), env vars (who reads/writes, operational meaning), Redis keys (state semantics), cartridges (where deployed, integrations), binaries, or HTTP routes. Supports format=jsonld and where=<jq-subset> filtering.",
     {
       kind: activeKindSchemas.explain,
       needle: z
         .string()
         .describe("Target to explain.")
         .optional(),
+      format: queryOutputFormatField,
+      where: whereFilterField,
       repo_root: repoRootField,
       index_path: indexPathField,
       timeout_ms: timeoutMsField,
@@ -1104,6 +1183,8 @@ async function runLeioArgs(args, timeout_ms) {
         .object({
           kind: activeKindSchemas.explain,
           needle: z.string().optional(),
+          format: queryOutputFormatField,
+          where: whereFilterField,
           repo_root: repoRootField,
           index_path: indexPathField,
           timeout_ms: timeoutMsField,
@@ -1118,6 +1199,12 @@ async function runLeioArgs(args, timeout_ms) {
       if (input.needle) {
         args.push(input.needle);
       }
+      if (input.format) {
+        args.push("--format", input.format);
+      }
+      if (input.where) {
+        args.push("--where", input.where);
+      }
 
       return invokeLeio(args, {
         repoRoot: input.repo_root,
@@ -1129,9 +1216,10 @@ async function runLeioArgs(args, timeout_ms) {
 
   registerLeioTool(
     "leio_code_doctor",
-    "CI-grade architectural audit. Detects contract drift across deploy targets, auth chains, session state, events, cartridge boundaries, egress, Redis hygiene, gateway boundaries, frontend congruence, TypeScript config anchors, LEIO Code self-contracts, flight protocol, and more. Run kind=all for full sweep, or targeted doctors for specific concerns. Essential before any deploy or cross-cutting refactor.",
+    "CI-grade architectural audit. Detects contract drift across deploy targets, auth chains, session state, events, cartridge boundaries, egress, Redis hygiene, gateway boundaries, frontend congruence, TypeScript config anchors, LEIO Code self-contracts, flight protocol, and more. Run kind=all for full sweep, targeted doctors, or explain:<rule>/explain-list/suggest:<rule>/triage/playbook/playbook-sync. Pass format=sarif for SARIF 2.1.0 output.",
     {
       kind: activeKindSchemas.doctor,
+      format: doctorFormatField,
       repo_root: repoRootField,
       index_path: indexPathField,
       timeout_ms: timeoutMsField,
@@ -1140,13 +1228,19 @@ async function runLeioArgs(args, timeout_ms) {
       const input = z
         .object({
           kind: activeKindSchemas.doctor,
+          format: doctorFormatField,
           repo_root: repoRootField,
           index_path: indexPathField,
           timeout_ms: timeoutMsField,
         })
         .parse(raw);
 
-      return invokeLeio(["doctor", input.kind], {
+      const args = ["doctor", input.kind];
+      if (input.format === "sarif") {
+        args.push("--format", "sarif");
+      }
+
+      return invokeLeio(args, {
         repoRoot: input.repo_root,
         indexPath: input.index_path,
         timeoutMs: input.timeout_ms,
@@ -1664,6 +1758,61 @@ async function runLeioArgs(args, timeout_ms) {
       };
     },
   );
+
+  registerLeioTool(
+    "leio_code_kb",
+    "Pure-Arrow knowledge base: fuse any repos/docs folders into one queryable collection (lexical + vector scoring, no server). Actions: add, remove, list, build, query, drop.",
+    {
+      action: z
+        .enum(["add", "remove", "list", "build", "query", "drop"])
+        .describe("KB operation."),
+      name: z.string().optional().describe("Knowledge base name."),
+      source: z.string().optional().describe("Source path for add/remove; source filter for query."),
+      query: z.string().optional().describe("Query text for the query action."),
+      top_k: z.number().int().positive().optional().describe("Max hits for query (default 5)."),
+      embed_repo: z.string().optional().describe("Repo root used for embeddings config on build."),
+    },
+    async (raw) => {
+      const input = z
+        .object({
+          action: z.enum(["add", "remove", "list", "build", "query", "drop"]),
+          name: z.string().optional(),
+          source: z.string().optional(),
+          query: z.string().optional(),
+          top_k: z.number().int().positive().optional(),
+          embed_repo: z.string().optional(),
+        })
+        .parse(raw);
+      const args = [];
+      if (input.action === "add") {
+        if (!input.name || !input.source) {
+          return executionErrorResult("kb add requires name and source");
+        }
+        args.push("add", input.name, "--source", path.resolve(input.source));
+      } else if (input.action === "remove") {
+        if (!input.name || !input.source) {
+          return executionErrorResult("kb remove requires name and source");
+        }
+        args.push("remove", input.name, "--source", input.source);
+      } else if (input.action === "build") {
+        if (!input.name) return executionErrorResult("kb build requires name");
+        args.push("build", input.name);
+        if (input.embed_repo) args.push("--embed-repo", path.resolve(input.embed_repo));
+      } else if (input.action === "query") {
+        if (!input.name || !input.query) {
+          return executionErrorResult("kb query requires name and query");
+        }
+        args.push("query", input.name, input.query, "--top-k", String(input.top_k ?? 5));
+        if (input.source) args.push("--source", input.source);
+      } else if (input.action === "drop") {
+        if (!input.name) return executionErrorResult("kb drop requires name");
+        args.push("drop", input.name);
+      } else {
+        args.push("list");
+      }
+      return runLeioArgs(["--json", "kb", ...args], input.timeout_ms);
+    },
+  );
 }
 
 /**
@@ -1681,6 +1830,9 @@ async function upgradeToolSchemas() {
     leio_code_find: {
       kind: activeKindSchemas.find,
       needle: needleField,
+      method: findMethodField,
+      format: queryOutputFormatField,
+      where: whereFilterField,
       repo_root: repoRootField,
       index_path: indexPathField,
       timeout_ms: timeoutMsField,
@@ -1688,12 +1840,15 @@ async function upgradeToolSchemas() {
     leio_code_explain: {
       kind: activeKindSchemas.explain,
       needle: z.string().describe("Target to explain.").optional(),
+      format: queryOutputFormatField,
+      where: whereFilterField,
       repo_root: repoRootField,
       index_path: indexPathField,
       timeout_ms: timeoutMsField,
     },
     leio_code_doctor: {
       kind: activeKindSchemas.doctor,
+      format: doctorFormatField,
       repo_root: repoRootField,
       index_path: indexPathField,
       timeout_ms: timeoutMsField,
@@ -1748,60 +1903,6 @@ async function upgradeToolSchemas() {
 
 registerAllTools();
 installLazyToolAccess(server, upgradeToolSchemas);
-
-  registerLeioTool(
-    "leio_code_kb",
-    "Pure-Arrow knowledge base: fuse any repos/docs folders into one queryable collection (lexical + vector scoring, no server). Actions: add, remove, list, build, query, drop.",
-    {
-      action: z
-        .enum(["add", "remove", "list", "build", "query", "drop"])
-        .describe("KB operation."),
-      name: z.string().optional().describe("Knowledge base name."),
-      source: z.string().optional().describe("Source path for add/remove; source filter for query."),
-      query: z.string().optional().describe("Query text for the query action."),
-      top_k: z.number().int().positive().optional().describe("Max hits for query (default 5)."),
-      embed_repo: z.string().optional().describe("Repo root used for embeddings config on build."),
-    },
-    async (raw) => {
-      const input = z
-        .object({
-          action: z.enum(["add", "remove", "list", "build", "query", "drop"]),
-          name: z.string().optional(),
-          source: z.string().optional(),
-          query: z.string().optional(),
-          top_k: z.number().int().positive().optional(),
-          embed_repo: z.string().optional(),
-        })
-        .parse(raw);
-      const args = [];
-      if (input.action === "add") {
-        if (!input.name || !input.source) {
-          return executionErrorResult("kb add requires name and source");
-        }
-        args.push("add", input.name, "--source", path.resolve(input.source));
-      } else if (input.action === "remove") {
-        if (!input.name || !input.source) {
-          return executionErrorResult("kb remove requires name and source");
-        }
-        args.push("remove", input.name, "--source", input.source);
-      } else if (input.action === "build") {
-        if (!input.name) return executionErrorResult("kb build requires name");
-        args.push("build", input.name);
-        if (input.embed_repo) args.push("--embed-repo", path.resolve(input.embed_repo));
-      } else if (input.action === "query") {
-        if (!input.name || !input.query) {
-          return executionErrorResult("kb query requires name and query");
-        }
-        args.push("query", input.name, input.query, "--top-k", String(input.top_k ?? 5));
-        if (input.source) args.push("--source", input.source);
-      } else if (input.action === "drop") {
-        if (!input.name) return executionErrorResult("kb drop requires name");
-        args.push("drop", input.name);
-      }
-      return runLeioArgs(["kb", ...args], input.timeout_ms);
-    },
-  );
-
 installModernProtocol(server, {
   implementation: IMPLEMENTATION_STDIO,
   capabilities: stdioServerOptions().capabilities,
