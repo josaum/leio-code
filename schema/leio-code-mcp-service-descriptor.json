@@ -2410,14 +2410,18 @@
     {
       "name": "leio_code_context",
       "title": "Prepare repository context",
-      "description": "Start a repository task here: provide task and repo_root for ranked files, instructions, tests, provider identity, index coverage and limitations. Status and capabilities are optional diagnostics; a precise known file can go directly to graph. Read structuredContent.next_calls for direct definition opens and graph follow-ups pinned to the same repository and index. Use full=true only when exhaustive detail is needed.",
+      "description": "Start a repository task here: provide task (or diff=true for uncommitted working-tree impact) and repo_root for ranked files, instructions, tests, provider identity, index coverage and limitations. Status and capabilities are optional diagnostics; a precise known file can go directly to graph. Read structuredContent.next_calls for direct definition opens and graph follow-ups pinned to the same repository and index. Use full=true only when exhaustive detail is needed.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "task": {
             "type": "string",
             "minLength": 1,
-            "description": "Natural-language task, symbol, path, env var, Redis key, or feature area to prepare an agent-ready context bundle with zones, instructions, anchors, tests, and doctors."
+            "description": "Natural-language task, symbol, path, env var, Redis key, or feature area to prepare an agent-ready context bundle with zones, instructions, anchors, tests, and doctors. Optional when diff=true."
+          },
+          "diff": {
+            "type": "boolean",
+            "description": "Seed context from uncommitted/staged git changes (--diff), boosting modified files, 1-hop importers, and missing co-edit partners."
           },
           "full": {
             "type": "boolean",
@@ -2443,9 +2447,6 @@
             "description": "Execution timeout in milliseconds."
           }
         },
-        "required": [
-          "task"
-        ],
         "additionalProperties": false,
         "$schema": "http://json-schema.org/draft-07/schema#"
       },
@@ -3365,7 +3366,7 @@
     {
       "name": "leio_code_find",
       "title": "Find repository entity",
-      "description": "PREFERRED over Grep/Glob for code lookups. Finds symbols, env vars, Redis keys, deploy targets, cartridges, API routes, and Docker services with exact file:line evidence. Faster and more complete than manual searching — covers the entire monorepo index in one call.",
+      "description": "PREFERRED over Grep/Glob for code lookups. Finds symbols, env vars, Redis keys, deploy targets, cartridges, API routes, Docker services, binaries, routes, and callers with exact file:line evidence. Supports format=jsonld and where=<jq-subset> filtering.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -3373,6 +3374,7 @@
             "type": "string",
             "enum": [
               "symbol",
+              "text",
               "env-var",
               "redis-key",
               "deploy-target",
@@ -3389,7 +3391,25 @@
           "needle": {
             "type": "string",
             "minLength": 1,
-            "description": "Search needle. Usually a symbol name, file path, import literal, env var, Redis key, or deploy target name."
+            "description": "Search needle. Required for all find kinds except binary and route (where omitting needle returns the full registry)."
+          },
+          "method": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Optional HTTP method filter (e.g. POST) when kind=route."
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "json",
+              "jsonld"
+            ],
+            "description": "Output format: json (default envelope) or jsonld (@context/@id/@type for filtering and SPARQL ingest)."
+          },
+          "where": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Optional jq-subset filter applied to JSON-LD output (implies format=jsonld unless format is set explicitly)."
           },
           "repo_root": {
             "type": "string",
@@ -3406,8 +3426,7 @@
           }
         },
         "required": [
-          "kind",
-          "needle"
+          "kind"
         ],
         "additionalProperties": false,
         "$schema": "http://json-schema.org/draft-07/schema#"
@@ -3781,13 +3800,14 @@
     {
       "name": "leio_code_explain",
       "title": "Explain repository entity",
-      "description": "Deep operational explanation with evidence and lineage. Use for deploy targets (profile, cartridges, health checks, rollback), env vars (who reads/writes, operational meaning), Redis keys (state semantics), or cartridges (where deployed, integrations). Much richer than reading individual files.",
+      "description": "Deep operational explanation with evidence and lineage. Use for deploy targets (profile, cartridges, health checks, rollback), env vars (who reads/writes, operational meaning), Redis keys (state semantics), cartridges (where deployed, integrations), binaries, or HTTP routes. Supports format=jsonld and where=<jq-subset> filtering.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "kind": {
             "type": "string",
             "enum": [
+              "symbol",
               "deploy-target",
               "env-var",
               "redis-key",
@@ -3800,6 +3820,19 @@
           "needle": {
             "type": "string",
             "description": "Target to explain."
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "json",
+              "jsonld"
+            ],
+            "description": "Output format: json (default envelope) or jsonld (@context/@id/@type for filtering and SPARQL ingest)."
+          },
+          "where": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Optional jq-subset filter applied to JSON-LD output (implies format=jsonld unless format is set explicitly)."
           },
           "repo_root": {
             "type": "string",
@@ -4190,7 +4223,7 @@
     {
       "name": "leio_code_doctor",
       "title": "Run architecture doctor",
-      "description": "CI-grade architectural audit. Detects contract drift across deploy targets, auth chains, session state, events, cartridge boundaries, egress, Redis hygiene, gateway boundaries, frontend congruence, TypeScript config anchors, LEIO Code self-contracts, flight protocol, and more. Run kind=all for full sweep, or targeted doctors for specific concerns. Essential before any deploy or cross-cutting refactor.",
+      "description": "CI-grade architectural audit. Detects contract drift across deploy targets, auth chains, session state, events, cartridge boundaries, egress, Redis hygiene, gateway boundaries, frontend congruence, TypeScript config anchors, LEIO Code self-contracts, flight protocol, and more. Run kind=all for full sweep, targeted doctors, or explain:<rule>/explain-list/suggest:<rule>/triage/playbook/playbook-sync. Pass format=sarif for SARIF 2.1.0 output.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -4198,6 +4231,14 @@
             "type": "string",
             "minLength": 1,
             "description": "Doctor preset: baseline (quick health), ci (broader checks), or all (every profile suite). For a targeted check, choose a doctor kind returned by capabilities. (kind catalog unavailable; validated by the CLI)"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "json",
+              "sarif"
+            ],
+            "description": "Diagnostic output format: json (default QueryEnvelope) or sarif (SARIF 2.1.0 machine report)."
           },
           "repo_root": {
             "type": "string",
@@ -11602,14 +11643,20 @@
     },
     "leio_code_context": {
       "type": "method",
-      "description": "Start a repository task here: provide task and repo_root for ranked files, instructions, tests, provider identity, index coverage and limitations. Status and capabilities are optional diagnostics; a precise known file can go directly to graph. Read structuredContent.next_calls for direct definition opens and graph follow-ups pinned to the same repository and index. Use full=true only when exhaustive detail is needed.",
+      "description": "Start a repository task here: provide task (or diff=true for uncommitted working-tree impact) and repo_root for ranked files, instructions, tests, provider identity, index coverage and limitations. Status and capabilities are optional diagnostics; a precise known file can go directly to graph. Read structuredContent.next_calls for direct definition opens and graph follow-ups pinned to the same repository and index. Use full=true only when exhaustive detail is needed.",
       "params": [
         {
           "name": "task",
           "type": "string",
           "minLength": 1,
-          "description": "Natural-language task, symbol, path, env var, Redis key, or feature area to prepare an agent-ready context bundle with zones, instructions, anchors, tests, and doctors.",
-          "required": true
+          "description": "Natural-language task, symbol, path, env var, Redis key, or feature area to prepare an agent-ready context bundle with zones, instructions, anchors, tests, and doctors. Optional when diff=true.",
+          "required": false
+        },
+        {
+          "name": "diff",
+          "type": "boolean",
+          "description": "Seed context from uncommitted/staged git changes (--diff), boosting modified files, 1-hop importers, and missing co-edit partners.",
+          "required": false
         },
         {
           "name": "full",
@@ -11655,7 +11702,11 @@
           "task": {
             "type": "string",
             "minLength": 1,
-            "description": "Natural-language task, symbol, path, env var, Redis key, or feature area to prepare an agent-ready context bundle with zones, instructions, anchors, tests, and doctors."
+            "description": "Natural-language task, symbol, path, env var, Redis key, or feature area to prepare an agent-ready context bundle with zones, instructions, anchors, tests, and doctors. Optional when diff=true."
+          },
+          "diff": {
+            "type": "boolean",
+            "description": "Seed context from uncommitted/staged git changes (--diff), boosting modified files, 1-hop importers, and missing co-edit partners."
           },
           "full": {
             "type": "boolean",
@@ -11681,9 +11732,6 @@
             "description": "Execution timeout in milliseconds."
           }
         },
-        "required": [
-          "task"
-        ],
         "additionalProperties": false,
         "$schema": "http://json-schema.org/draft-07/schema#"
       },
@@ -12640,13 +12688,14 @@
     },
     "leio_code_find": {
       "type": "method",
-      "description": "PREFERRED over Grep/Glob for code lookups. Finds symbols, env vars, Redis keys, deploy targets, cartridges, API routes, and Docker services with exact file:line evidence. Faster and more complete than manual searching — covers the entire monorepo index in one call.",
+      "description": "PREFERRED over Grep/Glob for code lookups. Finds symbols, env vars, Redis keys, deploy targets, cartridges, API routes, Docker services, binaries, routes, and callers with exact file:line evidence. Supports format=jsonld and where=<jq-subset> filtering.",
       "params": [
         {
           "name": "kind",
           "type": "string",
           "enum": [
             "symbol",
+            "text",
             "env-var",
             "redis-key",
             "deploy-target",
@@ -12665,8 +12714,32 @@
           "name": "needle",
           "type": "string",
           "minLength": 1,
-          "description": "Search needle. Usually a symbol name, file path, import literal, env var, Redis key, or deploy target name.",
-          "required": true
+          "description": "Search needle. Required for all find kinds except binary and route (where omitting needle returns the full registry).",
+          "required": false
+        },
+        {
+          "name": "method",
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional HTTP method filter (e.g. POST) when kind=route.",
+          "required": false
+        },
+        {
+          "name": "format",
+          "type": "string",
+          "enum": [
+            "json",
+            "jsonld"
+          ],
+          "description": "Output format: json (default envelope) or jsonld (@context/@id/@type for filtering and SPARQL ingest).",
+          "required": false
+        },
+        {
+          "name": "where",
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional jq-subset filter applied to JSON-LD output (implies format=jsonld unless format is set explicitly).",
+          "required": false
         },
         {
           "name": "repo_root",
@@ -12699,6 +12772,7 @@
             "type": "string",
             "enum": [
               "symbol",
+              "text",
               "env-var",
               "redis-key",
               "deploy-target",
@@ -12715,7 +12789,25 @@
           "needle": {
             "type": "string",
             "minLength": 1,
-            "description": "Search needle. Usually a symbol name, file path, import literal, env var, Redis key, or deploy target name."
+            "description": "Search needle. Required for all find kinds except binary and route (where omitting needle returns the full registry)."
+          },
+          "method": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Optional HTTP method filter (e.g. POST) when kind=route."
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "json",
+              "jsonld"
+            ],
+            "description": "Output format: json (default envelope) or jsonld (@context/@id/@type for filtering and SPARQL ingest)."
+          },
+          "where": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Optional jq-subset filter applied to JSON-LD output (implies format=jsonld unless format is set explicitly)."
           },
           "repo_root": {
             "type": "string",
@@ -12732,8 +12824,7 @@
           }
         },
         "required": [
-          "kind",
-          "needle"
+          "kind"
         ],
         "additionalProperties": false,
         "$schema": "http://json-schema.org/draft-07/schema#"
@@ -13113,12 +13204,13 @@
     },
     "leio_code_explain": {
       "type": "method",
-      "description": "Deep operational explanation with evidence and lineage. Use for deploy targets (profile, cartridges, health checks, rollback), env vars (who reads/writes, operational meaning), Redis keys (state semantics), or cartridges (where deployed, integrations). Much richer than reading individual files.",
+      "description": "Deep operational explanation with evidence and lineage. Use for deploy targets (profile, cartridges, health checks, rollback), env vars (who reads/writes, operational meaning), Redis keys (state semantics), cartridges (where deployed, integrations), binaries, or HTTP routes. Supports format=jsonld and where=<jq-subset> filtering.",
       "params": [
         {
           "name": "kind",
           "type": "string",
           "enum": [
+            "symbol",
             "deploy-target",
             "env-var",
             "redis-key",
@@ -13133,6 +13225,23 @@
           "name": "needle",
           "type": "string",
           "description": "Target to explain.",
+          "required": false
+        },
+        {
+          "name": "format",
+          "type": "string",
+          "enum": [
+            "json",
+            "jsonld"
+          ],
+          "description": "Output format: json (default envelope) or jsonld (@context/@id/@type for filtering and SPARQL ingest).",
+          "required": false
+        },
+        {
+          "name": "where",
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional jq-subset filter applied to JSON-LD output (implies format=jsonld unless format is set explicitly).",
           "required": false
         },
         {
@@ -13165,6 +13274,7 @@
           "kind": {
             "type": "string",
             "enum": [
+              "symbol",
               "deploy-target",
               "env-var",
               "redis-key",
@@ -13177,6 +13287,19 @@
           "needle": {
             "type": "string",
             "description": "Target to explain."
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "json",
+              "jsonld"
+            ],
+            "description": "Output format: json (default envelope) or jsonld (@context/@id/@type for filtering and SPARQL ingest)."
+          },
+          "where": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Optional jq-subset filter applied to JSON-LD output (implies format=jsonld unless format is set explicitly)."
           },
           "repo_root": {
             "type": "string",
@@ -13573,7 +13696,7 @@
     },
     "leio_code_doctor": {
       "type": "method",
-      "description": "CI-grade architectural audit. Detects contract drift across deploy targets, auth chains, session state, events, cartridge boundaries, egress, Redis hygiene, gateway boundaries, frontend congruence, TypeScript config anchors, LEIO Code self-contracts, flight protocol, and more. Run kind=all for full sweep, or targeted doctors for specific concerns. Essential before any deploy or cross-cutting refactor.",
+      "description": "CI-grade architectural audit. Detects contract drift across deploy targets, auth chains, session state, events, cartridge boundaries, egress, Redis hygiene, gateway boundaries, frontend congruence, TypeScript config anchors, LEIO Code self-contracts, flight protocol, and more. Run kind=all for full sweep, targeted doctors, or explain:<rule>/explain-list/suggest:<rule>/triage/playbook/playbook-sync. Pass format=sarif for SARIF 2.1.0 output.",
       "params": [
         {
           "name": "kind",
@@ -13581,6 +13704,16 @@
           "minLength": 1,
           "description": "Doctor preset: baseline (quick health), ci (broader checks), or all (every profile suite). For a targeted check, choose a doctor kind returned by capabilities. (kind catalog unavailable; validated by the CLI)",
           "required": true
+        },
+        {
+          "name": "format",
+          "type": "string",
+          "enum": [
+            "json",
+            "sarif"
+          ],
+          "description": "Diagnostic output format: json (default QueryEnvelope) or sarif (SARIF 2.1.0 machine report).",
+          "required": false
         },
         {
           "name": "repo_root",
@@ -13613,6 +13746,14 @@
             "type": "string",
             "minLength": 1,
             "description": "Doctor preset: baseline (quick health), ci (broader checks), or all (every profile suite). For a targeted check, choose a doctor kind returned by capabilities. (kind catalog unavailable; validated by the CLI)"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "json",
+              "sarif"
+            ],
+            "description": "Diagnostic output format: json (default QueryEnvelope) or sarif (SARIF 2.1.0 machine report)."
           },
           "repo_root": {
             "type": "string",

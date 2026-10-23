@@ -17,9 +17,12 @@ install:
 		echo "ok: installed $(DEST_DIR)/leio-code"; \
 		echo "ok: installed $(DEST_DIR)/leio-harness"; \
 		"$(DEST_DIR)/leio-code" --help >/dev/null; \
-		"$(DEST_DIR)/leio-harness" --help >/dev/null
+		"$(DEST_DIR)/leio-harness" --help >/dev/null; \
+		LEIO_MCP_COMMAND=bash LEIO_MCP_ARGS='["$(CURDIR)/scripts/launch-stdio-mcp.sh"]' node packaging/register-mcp.js; \
+		echo "ok: registered MCP server and default skill across detected agent hosts"
 
 verify:
+	cargo fmt --all -- --check
 	cargo test --locked --lib
 	cargo test --locked -p leio-harness
 	node --test mcp/resolve-binary.test.js mcp/export-paths.test.js mcp/watch-state.test.js mcp/service-descriptor.test.js
@@ -28,8 +31,16 @@ verify:
 	python3 -m unittest tests.test_benchmark_retrieval tests.test_evaluate_retrieval
 
 coverage:
-	python3 -m coverage run --include="*/scripts/benchmark_models.py" -m pytest tests/test_benchmark_models.py -q
-	python3 -m coverage report -m
+	@if python3 -c "import coverage, pytest" >/dev/null 2>&1; then \
+		python3 -m coverage run --include="*/scripts/benchmark_models.py" -m pytest tests/test_benchmark_models.py -q; \
+		python3 -m coverage report -m; \
+	else \
+		rm -rf /tmp/leio-pycov; \
+		python3 -m trace --count -C /tmp/leio-pycov --module unittest tests/test_benchmark_models.py; \
+	fi
+	node --test --experimental-test-coverage packaging/register-mcp.test.js
+	npm --prefix mcp test -- --experimental-test-coverage
+	cd apps-sdk && node --test --experimental-test-coverage auth.test.js tenant-scope.test.mjs repo-url.test.js runtime-contract.test.js server-health.test.js submission-contract.test.js graph-result.test.js validate-repo-url.test.js mcp-spec-contract.test.js surface-parity.test.js keycloak/*.test.mjs
 
 # Publishing targets live in a withheld fragment so the generated public
 # Makefile never references the exporter it does not ship.

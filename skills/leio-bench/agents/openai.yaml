@@ -1,0 +1,4 @@
+interface:
+  display_name: "LEIO Bench"
+  short_description: "Run model-swept LEIO golden benchmarks"
+  default_prompt: "Use $leio-bench to generate or execute the model-swept LEIO golden task benchmark."

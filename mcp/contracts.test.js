@@ -1,8 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
+import { resolveBinaryPath } from "./resolve-binary.js";
+
+const here = dirname(fileURLToPath(import.meta.url));
+const repoRoot = join(here, "..");
+const leioBin = resolveBinaryPath({
+  binaryName: process.platform === "win32" ? "leio-code.exe" : "leio-code",
+  startDir: repoRoot,
+});
 
 const schema = JSON.parse(readFileSync(new URL("./contracts/query-result-jsonld-v1.schema.json", import.meta.url)));
 const context = JSON.parse(readFileSync(new URL("./contracts/context.jsonld", import.meta.url)))["@context"];
@@ -34,8 +45,15 @@ test("producer schema rejects malformed or falsely advertised documents", () => 
 });
 
 test("schema accepts an actual CLI document when provided for verification", {
-  skip: !process.env.LEIO_JSONLD_TEST_DOCUMENT,
+  skip: !process.env.LEIO_JSONLD_TEST_DOCUMENT && !leioBin,
 }, () => {
-  const document = JSON.parse(readFileSync(process.env.LEIO_JSONLD_TEST_DOCUMENT, "utf8"));
+  const raw = process.env.LEIO_JSONLD_TEST_DOCUMENT
+    ? readFileSync(process.env.LEIO_JSONLD_TEST_DOCUMENT, "utf8")
+    : execFileSync(
+        leioBin,
+        ["--repo", repoRoot, "find", "symbol", "render_envelope_as_jsonld", "--format", "jsonld"],
+        { encoding: "utf8" },
+      );
+  const document = JSON.parse(raw);
   assert.equal(validate(document), true, JSON.stringify(validate.errors));
 });

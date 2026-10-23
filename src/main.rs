@@ -23,7 +23,7 @@ use leio_code::baseline_allowlist;
 use leio_code::capabilities::{workspace_capabilities, workspace_capabilities_from_facets};
 use leio_code::code_graph::{default_code_graph_output_dir, export_code_graph};
 use leio_code::config::repo_profile;
-use leio_code::context::build_context_bundle;
+use leio_code::context::build_context_bundle_with_options;
 use leio_code::diagnostics::{self, DiagFormat, RunMeta};
 use leio_code::doctors::{run_all_doctors, run_baseline_doctors, run_ci_doctors, run_doctor};
 use leio_code::export::{
@@ -43,9 +43,9 @@ use leio_code::model::QueryEnvelope;
 use leio_code::nav::NavAction;
 use leio_code::query::{
     explain_binary, explain_cartridge, explain_deploy_target, explain_env_var, explain_redis_key,
-    explain_route, find_api_routes, find_binaries, find_binary_callers, find_cartridges,
-    find_deploy_targets, find_docker_services, find_env_vars, find_redis_keys, find_route_callers,
-    find_routes, find_subprocess_callers, find_symbols,
+    explain_route, explain_symbol, find_api_routes, find_binaries, find_binary_callers,
+    find_cartridges, find_deploy_targets, find_docker_services, find_env_vars, find_redis_keys,
+    find_route_callers, find_routes, find_subprocess_callers, find_symbols, find_text,
 };
 use serde_json::json;
 
@@ -178,10 +178,10 @@ enum Command {
         #[arg(long)]
         catalog: bool,
     },
-    /// Build an agent-ready context bundle for a task
+    /// Build an agent-ready context bundle for a task or uncommitted working-tree diff
     Context {
-        /// Natural language task, symbol, path, env var, Redis key, or feature area
-        task: String,
+        /// Natural language task, symbol, path, env var, Redis key, or feature area (optional when `--diff` is set)
+        task: Option<String>,
         /// Maximum number of ranked files/entities to include
         #[arg(long, default_value = "8")]
         limit: usize,
@@ -190,6 +190,10 @@ enum Command {
         /// diet (top-3 per-file entities plus counts).
         #[arg(long)]
         full: bool,
+        /// Seed the context bundle from uncommitted/staged git changes (`git status --porcelain`),
+        /// boosting modified files, their 1-hop importers, and missing co-edit partners.
+        #[arg(long)]
+        diff: bool,
     },
     Find {
         /// Entity kind (symbol, env-var, redis-key, route, etc.) or search needle (defaults to symbol).
@@ -482,6 +486,8 @@ enum OutputFormatArg {
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum FindKind {
     Symbol,
+    /// Fast literal/regex search across indexed files, enriched with enclosing AST symbol.
+    Text,
     EnvVar,
     RedisKey,
     DeployTarget,
@@ -502,6 +508,8 @@ enum FindKind {
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum ExplainKind {
+    /// One-shot symbol explanation: bounded source excerpt, signature, callers, callees, and co-edited files.
+    Symbol,
     DeployTarget,
     EnvVar,
     RedisKey,
@@ -1104,14 +1112,29 @@ fn main() -> Result<()> {
             };
             print_and_maybe_fail(&envelope, cli.json, false)?;
         }
-        Command::Context { task, limit, full } => {
+        Command::Context {
+            task,
+            limit,
+            full,
+            diff,
+        } => {
+            if !diff && task.as_deref().unwrap_or("").trim().is_empty() {
+                anyhow::bail!("context requires a <task> argument or --diff");
+            }
             let index = load_or_build_index(&repo, &index_path).with_context(|| {
                 format!(
                     "failed to build or update index at {}",
                     index_path.display()
                 )
             })?;
-            let envelope = build_context_bundle(&index, &repo, &task, limit, full);
+            let envelope = build_context_bundle_with_options(
+                &index,
+                &repo,
+                task.as_deref().unwrap_or(""),
+                limit,
+                full,
+                diff,
+            );
             print_and_maybe_fail(&envelope, cli.json, false)?;
         }
         Command::Find {
@@ -1149,6 +1172,7 @@ fn main() -> Result<()> {
             })?;
             let envelope = match kind {
                 FindKind::Symbol => find_symbols(&index, &needle_owned),
+                FindKind::Text => find_text(&index, &needle_owned),
                 FindKind::EnvVar => find_env_vars(&index, &needle_owned),
                 FindKind::RedisKey => find_redis_keys(&index, &needle_owned),
                 FindKind::DeployTarget => find_deploy_targets(&index, &needle_owned),
@@ -1229,6 +1253,13 @@ fn main() -> Result<()> {
                     )
                 })?;
                 let envelope = match kind {
+                    ExplainKind::Symbol => explain_symbol(
+                        &index,
+                        needle.as_deref().context(
+                            "explain symbol requires a symbol name or definition:path#line",
+                        )?,
+                        &repo,
+                    ),
                     ExplainKind::DeployTarget => explain_deploy_target(
                         &index,
                         needle

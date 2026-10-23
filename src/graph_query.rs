@@ -1067,6 +1067,94 @@ pub fn try_load_graph_query_cache(root: &Path) -> Option<CodeGraphQueryCache> {
     load_graph_cache(&path).ok()
 }
 
+/// Load the code-graph query cache from disk, or build/refresh it on-the-fly when
+/// missing/stale and the index is reasonably sized (`<= 1000` files).
+pub fn ensure_or_load_graph_query_cache(
+    index: &RepoIndex,
+    root: &Path,
+) -> Option<CodeGraphQueryCache> {
+    let output_dir = default_code_graph_output_dir(root);
+    let stale = code_graph_refresh_reason(index, &output_dir).is_some();
+    if !stale && let Some(cache) = try_load_graph_query_cache(root) {
+        return Some(cache);
+    }
+    if index.files.len() <= 1000 {
+        let _ = export_code_graph(index, root, &output_dir);
+        return try_load_graph_query_cache(root);
+    }
+    try_load_graph_query_cache(root)
+}
+
+/// Return bounded `(callers, callees)` JSON arrays for a symbol defined in `path`.
+pub fn symbol_call_neighbors_from_cache(
+    cache: &CodeGraphQueryCache,
+    path: &str,
+    name: &str,
+    qual_name: Option<&str>,
+    limit: usize,
+) -> (Vec<serde_json::Value>, Vec<serde_json::Value>) {
+    let mut matching_iris: Vec<&str> = Vec::new();
+    for needle in [qual_name.unwrap_or(name), name] {
+        for iri in cache
+            .symbol_lookup_name
+            .get(needle)
+            .into_iter()
+            .flatten()
+            .chain(
+                cache
+                    .symbol_lookup_qual_name
+                    .get(needle)
+                    .into_iter()
+                    .flatten(),
+            )
+        {
+            if let Some(sym) = cache.symbols.get(iri)
+                && sym.path == path
+                && !matching_iris.contains(&iri.as_str())
+            {
+                matching_iris.push(iri.as_str());
+            }
+        }
+    }
+    let mut callers = Vec::new();
+    let mut callees = Vec::new();
+    let mut seen_callers = BTreeSet::new();
+    let mut seen_callees = BTreeSet::new();
+    for iri in matching_iris {
+        for n in fetch_neighbors_from_cache(cache, GraphDirection::CallersOf, iri) {
+            if callers.len() >= limit {
+                break;
+            }
+            if seen_callers.insert((n.path.clone(), n.qual_name.clone(), n.line)) {
+                callers.push(json!({
+                    "symbol": n.iri,
+                    "name": n.name,
+                    "qual_name": n.qual_name,
+                    "kind": n.kind,
+                    "path": n.path,
+                    "line": n.line,
+                }));
+            }
+        }
+        for n in fetch_neighbors_from_cache(cache, GraphDirection::CalleesOf, iri) {
+            if callees.len() >= limit {
+                break;
+            }
+            if seen_callees.insert((n.path.clone(), n.qual_name.clone(), n.line)) {
+                callees.push(json!({
+                    "symbol": n.iri,
+                    "name": n.name,
+                    "qual_name": n.qual_name,
+                    "kind": n.kind,
+                    "path": n.path,
+                    "line": n.line,
+                }));
+            }
+        }
+    }
+    (callers, callees)
+}
+
 fn load_or_refresh_graph_cache(
     index: &RepoIndex,
     root: &Path,

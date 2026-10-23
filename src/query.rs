@@ -848,6 +848,323 @@ pub fn explain_route(index: &crate::model::RepoIndex, route: &str) -> QueryEnvel
     }
 }
 
+/// Explain a symbol in one stateless call: bounded source excerpt (`line..end_line`),
+/// signature, direct callers, direct callees, and co-edited partner files.
+pub fn explain_symbol(index: &RepoIndex, needle: &str, root: &Path) -> QueryEnvelope {
+    let started = Instant::now();
+    let trimmed = needle
+        .trim()
+        .strip_prefix("definition:")
+        .unwrap_or(needle.trim());
+    let query_lc = trimmed.to_ascii_lowercase();
+
+    let mut exact: Vec<&SymbolOccurrence> = index
+        .all_symbols()
+        .filter(|item| {
+            item.name == trimmed
+                || item.qual_name.as_deref() == Some(trimmed)
+                || format!("{}:{}", item.path, item.line) == trimmed
+                || format!("{}#{}", item.path, item.line) == trimmed
+        })
+        .collect();
+    if exact.is_empty() {
+        exact = index
+            .all_symbols()
+            .filter(|item| {
+                item.name.to_ascii_lowercase().contains(&query_lc)
+                    || item
+                        .qual_name
+                        .as_deref()
+                        .is_some_and(|qual| qual.to_ascii_lowercase().contains(&query_lc))
+            })
+            .take(5)
+            .collect();
+    } else {
+        exact.truncate(5);
+    }
+
+    let graph_cache = crate::graph_query::ensure_or_load_graph_query_cache(index, root);
+    let playbook = crate::playbook::load_or_auto_sync(root);
+    let canonical_root = root.canonicalize().ok();
+
+    let mut entities = Vec::new();
+    let mut evidence = Vec::new();
+    let mut total_callers = 0usize;
+    let mut total_callees = 0usize;
+
+    for sym in &exact {
+        let next_sym_line = index
+            .files
+            .iter()
+            .find(|f| f.path == sym.path)
+            .and_then(|f| {
+                f.symbols
+                    .iter()
+                    .filter(|other| other.line > sym.line)
+                    .map(|other| other.line)
+                    .min()
+            });
+        let max_end = sym.line.saturating_add(45);
+        let inferred_end = next_sym_line
+            .map(|next| next.saturating_sub(1).max(sym.line))
+            .unwrap_or(max_end)
+            .min(max_end);
+
+        let (signature, source_excerpt, actual_end) = read_bounded_symbol_excerpt(
+            canonical_root.as_deref(),
+            root,
+            &sym.path,
+            sym.line,
+            inferred_end,
+        );
+
+        let (callers, callees) = graph_cache
+            .as_ref()
+            .map(|cache| {
+                crate::graph_query::symbol_call_neighbors_from_cache(
+                    cache,
+                    &sym.path,
+                    &sym.name,
+                    sym.qual_name.as_deref(),
+                    10,
+                )
+            })
+            .unwrap_or_default();
+        total_callers += callers.len();
+        total_callees += callees.len();
+
+        let co_edited_files: Vec<serde_json::Value> = playbook
+            .as_ref()
+            .and_then(|pb| pb.co_edits.get(&sym.path))
+            .map(|partners| {
+                let mut pairs: Vec<(&String, &u32)> = partners.iter().collect();
+                pairs.sort_by(|a, b| b.1.cmp(a.1).then_with(|| a.0.cmp(b.0)));
+                pairs
+                    .into_iter()
+                    .take(5)
+                    .map(|(path, count)| json!({ "path": path, "co_edit_count": count }))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        evidence.push(EvidenceItem {
+            kind: "symbol_definition".to_string(),
+            path: sym.path.clone(),
+            line: Some(sym.line),
+            detail: format!(
+                "{} {} (lines {}..={})",
+                sym.kind.as_str(),
+                sym.qual_name.as_deref().unwrap_or(&sym.name),
+                sym.line,
+                actual_end
+            ),
+        });
+        for caller in &callers {
+            if let Some(caller_path) = caller.get("path").and_then(|v| v.as_str()) {
+                let caller_line = caller
+                    .get("line")
+                    .and_then(|v| v.as_u64())
+                    .and_then(|n| usize::try_from(n).ok());
+                let caller_name = caller
+                    .get("qual_name")
+                    .or_else(|| caller.get("name"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("caller");
+                evidence.push(EvidenceItem {
+                    kind: "symbol_caller".to_string(),
+                    path: caller_path.to_string(),
+                    line: caller_line,
+                    detail: format!("calls `{}` from `{}`", sym.name, caller_name),
+                });
+            }
+        }
+
+        entities.push(json!({
+            "@kind": "Symbol",
+            "name": sym.name,
+            "qual_name": sym.qual_name,
+            "kind": sym.kind.as_str(),
+            "path": sym.path,
+            "line": sym.line,
+            "end_line": actual_end,
+            "language": sym.language.as_str(),
+            "signature": signature,
+            "source_excerpt": source_excerpt,
+            "callers": callers,
+            "callees": callees,
+            "co_edited_files": co_edited_files,
+        }));
+    }
+
+    QueryEnvelope {
+        schema_version: crate::model::SCHEMA_VERSION.to_string(),
+        query_id: query_id("explain_symbol"),
+        kind: "explain".to_string(),
+        summary: format!(
+            "symbol `{}`: {} definition(s), {} caller(s), {} callee(s)",
+            needle,
+            entities.len(),
+            total_callers,
+            total_callees
+        ),
+        confidence: if entities.is_empty() { 0.0 } else { 0.95 },
+        entities,
+        evidence,
+        warnings: Vec::new(),
+        meta: Some(json!({
+            "definition_count": exact.len(),
+            "caller_count": total_callers,
+            "callee_count": total_callees,
+        })),
+        timing_ms: started.elapsed().as_millis(),
+    }
+}
+
+fn read_bounded_symbol_excerpt(
+    canonical_root: Option<&Path>,
+    root: &Path,
+    rel_path: &str,
+    start_line: usize,
+    end_line: usize,
+) -> (Option<String>, Option<String>, usize) {
+    let candidate = root.join(rel_path);
+    let Ok(canon) = candidate.canonicalize() else {
+        return (None, None, start_line);
+    };
+    if let Some(croot) = canonical_root
+        && !canon.starts_with(croot)
+    {
+        return (None, None, start_line);
+    }
+    let Ok(meta) = fs::metadata(&canon) else {
+        return (None, None, start_line);
+    };
+    if !meta.is_file() || meta.len() > 2 * 1024 * 1024 {
+        return (None, None, start_line);
+    }
+    let Ok(text) = fs::read_to_string(&canon) else {
+        return (None, None, start_line);
+    };
+    let lines: Vec<&str> = text.lines().collect();
+    if start_line == 0 || start_line > lines.len() {
+        return (None, None, start_line);
+    }
+    let clamped_end = end_line.max(start_line).min(lines.len());
+    let signature = lines
+        .get(start_line - 1)
+        .map(|s| s.trim().chars().take(300).collect::<String>());
+    let mut excerpt = String::new();
+    let mut actual_end = start_line;
+    for line_no in start_line..=clamped_end {
+        let line_text = lines[line_no - 1];
+        if excerpt.len() + line_text.len() + 16 > 4096 {
+            break;
+        }
+        excerpt.push_str(&format!("{line_no}: {line_text}\n"));
+        actual_end = line_no;
+    }
+    (signature, Some(excerpt.trim_end().to_string()), actual_end)
+}
+
+/// Fast literal/regex line search across indexed repository files, enriched with
+/// the enclosing AST symbol from the index.
+pub fn find_text(index: &RepoIndex, needle: &str) -> QueryEnvelope {
+    let started = Instant::now();
+    let root = Path::new(&index.root);
+    let canonical_root = root.canonicalize().ok();
+    let needle_lc = needle.to_ascii_lowercase();
+    let compiled_regex = regex::RegexBuilder::new(needle)
+        .case_insensitive(true)
+        .size_limit(1 << 20)
+        .build()
+        .ok();
+
+    let mut entities = Vec::new();
+    let mut evidence = Vec::new();
+
+    for file in &index.files {
+        if entities.len() >= 50 {
+            break;
+        }
+        let candidate = root.join(&file.path);
+        let Ok(canon) = candidate.canonicalize() else {
+            continue;
+        };
+        if let Some(ref croot) = canonical_root
+            && !canon.starts_with(croot)
+        {
+            continue;
+        }
+        let Ok(meta) = fs::metadata(&canon) else {
+            continue;
+        };
+        if !meta.is_file() || meta.len() > 2 * 1024 * 1024 {
+            continue;
+        }
+        let Ok(content) = fs::read_to_string(&canon) else {
+            continue;
+        };
+        let mut per_file_hits = 0usize;
+        for (idx, line_str) in content.lines().enumerate() {
+            let matched = compiled_regex
+                .as_ref()
+                .is_some_and(|re| re.is_match(line_str))
+                || line_str.to_ascii_lowercase().contains(&needle_lc);
+            if !matched {
+                continue;
+            }
+            let line_no = idx + 1;
+            let enclosing = file
+                .symbols
+                .iter()
+                .filter(|sym| sym.line <= line_no)
+                .max_by_key(|sym| sym.line);
+            let snippet: String = line_str.trim().chars().take(240).collect();
+            let enclosing_name = enclosing.map(|sym| sym.qual_name.as_deref().unwrap_or(&sym.name));
+            entities.push(json!({
+                "path": file.path,
+                "line": line_no,
+                "language": file.language.as_str(),
+                "snippet": snippet,
+                "enclosing_symbol": enclosing_name,
+                "enclosing_kind": enclosing.map(|sym| sym.kind.as_str()),
+                "enclosing_line": enclosing.map(|sym| sym.line),
+            }));
+            evidence.push(EvidenceItem {
+                kind: "text_match".to_string(),
+                path: file.path.clone(),
+                line: Some(line_no),
+                detail: match enclosing_name {
+                    Some(sym_name) => format!("[in {sym_name}] {snippet}"),
+                    None => snippet,
+                },
+            });
+            per_file_hits += 1;
+            if per_file_hits >= 5 || entities.len() >= 50 {
+                break;
+            }
+        }
+    }
+
+    QueryEnvelope {
+        schema_version: crate::model::SCHEMA_VERSION.to_string(),
+        query_id: query_id("find_text"),
+        kind: "find".to_string(),
+        summary: format!("found {} text matches for `{}`", entities.len(), needle),
+        confidence: confidence(entities.len()),
+        entities,
+        evidence,
+        warnings: Vec::new(),
+        meta: Some(json!({
+            "search": {
+                "strategy": "indexed_file_text_scan",
+                "needle": needle,
+            }
+        })),
+        timing_ms: started.elapsed().as_millis(),
+    }
+}
+
 /// Matcher for `find redis-key`. Switches between substring and glob/regex modes
 /// based on the needle's syntax: `*` / `?` enable glob mode; a literal substring
 /// otherwise (case-insensitive). Templated literals like `session:{id}` are

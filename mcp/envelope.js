@@ -384,6 +384,51 @@ export function buildActionPalette(capabilityHints) {
   };
 }
 
+function formatEnvelopeDigest(envelope) {
+  if (!envelope || typeof envelope !== "object") {
+    return "";
+  }
+  const lines = [];
+  if (Array.isArray(envelope.evidence) && envelope.evidence.length > 0) {
+    for (const ev of envelope.evidence.slice(0, 15)) {
+      if (!ev || typeof ev !== "object") continue;
+      const loc = ev.line ? `${ev.path}:${ev.line}` : ev.path || "";
+      lines.push(`- ${loc}${ev.kind ? ` [${ev.kind}]` : ""} ${ev.detail ?? ""}`.trim());
+    }
+  }
+  if (Array.isArray(envelope.entities)) {
+    for (const entity of envelope.entities.slice(0, 5)) {
+      if (!entity || typeof entity !== "object") continue;
+      if (typeof entity.source_excerpt === "string" && entity.source_excerpt.length > 0) {
+        const header = `${entity.path}:${entity.line}..${entity.end_line ?? entity.line} ${entity.qual_name ?? entity.name ?? ""}`.trim();
+        lines.push(`source (${header}):\n${entity.source_excerpt}`);
+      }
+      if (Array.isArray(entity.callers) && entity.callers.length > 0) {
+        const callerList = entity.callers
+          .slice(0, 8)
+          .map((c) => `${c.path}:${c.line ?? "?"} (${c.qual_name ?? c.name})`)
+          .join(", ");
+        lines.push(`callers: ${callerList}`);
+      }
+      if (Array.isArray(entity.callees) && entity.callees.length > 0) {
+        const calleeList = entity.callees
+          .slice(0, 8)
+          .map((c) => `${c.path}:${c.line ?? "?"} (${c.qual_name ?? c.name})`)
+          .join(", ");
+        lines.push(`callees: ${calleeList}`);
+      }
+      if (Array.isArray(entity.co_edited_files) && entity.co_edited_files.length > 0) {
+        const coList = entity.co_edited_files
+          .slice(0, 5)
+          .map((c) => `${c.path} (${c.co_edit_count}x)`)
+          .join(", ");
+        lines.push(`co_edited_files: ${coList}`);
+      }
+    }
+  }
+  return lines.length > 0 ? `\n${lines.join("\n")}` : "";
+}
+
 export function formatTextResult(invocation, execution, envelope) {
   const audit = envelope?.summary;
   const summary =
@@ -420,9 +465,10 @@ export function formatTextResult(invocation, execution, envelope) {
   const workspaceProfile = metaSummary?.workspace_profile
     ? `\nprofile: ${metaSummary.workspace_profile}`
     : "";
+  const digest = formatEnvelopeDigest(envelope);
 
   const exitSuffix =
     execution.code === 0 ? "" : `\nexit_code: ${execution.code}`;
 
-  return `${summary}${confidence}${timing}${search}${workspaceProfile}${warnings}${exitSuffix}\ncommand: ${invocation.command} ${invocation.args.join(" ")}`.trim();
+  return `${summary}${confidence}${timing}${search}${workspaceProfile}${warnings}${digest}${exitSuffix}\ncommand: ${invocation.command} ${invocation.args.join(" ")}`.trim();
 }

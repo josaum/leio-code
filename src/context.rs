@@ -145,13 +145,145 @@ pub fn build_context_bundle(
     limit: usize,
     full: bool,
 ) -> QueryEnvelope {
+    build_context_bundle_with_options(index, root, task, limit, full, false)
+}
+
+/// Discover modified, staged, or untracked repo-relative file paths from `git status --porcelain`.
+pub fn discover_working_tree_changed_files(root: &Path) -> Vec<String> {
+    let Ok(out) = std::process::Command::new("git")
+        .args(["status", "--porcelain", "-uall"])
+        .current_dir(root)
+        .output()
+    else {
+        return Vec::new();
+    };
+    if !out.status.success() {
+        return Vec::new();
+    }
+    let mut seen = BTreeSet::new();
+    let mut paths = Vec::new();
+    for line in String::from_utf8_lossy(&out.stdout).lines() {
+        if line.len() < 4 {
+            continue;
+        }
+        let raw_path = line[3..].trim();
+        let target = raw_path
+            .rsplit_once(" -> ")
+            .map(|(_, right)| right)
+            .unwrap_or(raw_path)
+            .trim_matches('"')
+            .to_string();
+        if !target.is_empty() && !target.starts_with(".leio-code/") && seen.insert(target.clone()) {
+            paths.push(target);
+        }
+    }
+    paths
+}
+
+fn upsert_scored_file(
+    files: &mut Vec<ScoredFile>,
+    index: &RepoIndex,
+    path: &str,
+    delta: i64,
+    reason: &str,
+) {
+    if let Some(existing) = files.iter_mut().find(|f| f.path == path) {
+        existing.score += delta;
+        existing.reasons.insert(reason.to_string());
+        return;
+    }
+    if let Some(record) = index.files.iter().find(|f| f.path == path) {
+        let mut reasons = BTreeSet::new();
+        reasons.insert(reason.to_string());
+        files.push(ScoredFile {
+            path: record.path.clone(),
+            language: record.language.as_str().to_string(),
+            score: delta,
+            modified_unix_ms: record.modified_unix_ms,
+            graph_proximity: 2,
+            reasons,
+            symbols: record
+                .symbols
+                .iter()
+                .take(8)
+                .map(|s| {
+                    json!({
+                        "name": s.name,
+                        "kind": s.kind.as_str(),
+                        "line": s.line,
+                    })
+                })
+                .collect(),
+            env_vars: record
+                .env_vars
+                .iter()
+                .take(5)
+                .map(|e| json!({ "name": e.name, "line": e.line }))
+                .collect(),
+            redis_keys: record
+                .redis_keys
+                .iter()
+                .take(5)
+                .map(|r| json!({ "key": r.key, "line": r.line }))
+                .collect(),
+        });
+    } else {
+        let mut reasons = BTreeSet::new();
+        reasons.insert(reason.to_string());
+        files.push(ScoredFile {
+            path: path.to_string(),
+            language: "manifest".to_string(),
+            score: delta,
+            modified_unix_ms: 0,
+            graph_proximity: 1,
+            reasons,
+            symbols: Vec::new(),
+            env_vars: Vec::new(),
+            redis_keys: Vec::new(),
+        });
+    }
+}
+
+pub fn build_context_bundle_with_options(
+    index: &RepoIndex,
+    root: &Path,
+    task: &str,
+    limit: usize,
+    full: bool,
+    diff: bool,
+) -> QueryEnvelope {
     let started = Instant::now();
     let limit = limit.clamp(1, 40);
-    let task_tokens = task_tokens(task);
+    let changed_files = if diff {
+        discover_working_tree_changed_files(root)
+    } else {
+        Vec::new()
+    };
+    let effective_task_owned: String;
+    let task: &str = if task.trim().is_empty() && diff {
+        if changed_files.is_empty() {
+            "working-tree diff"
+        } else {
+            effective_task_owned = changed_files.join(" ");
+            &effective_task_owned
+        }
+    } else {
+        task
+    };
+    let mut task_tokens = task_tokens(task);
+    if diff {
+        for changed in &changed_files {
+            for tok in crate::context::task_tokens(changed) {
+                if !task_tokens.contains(&tok) {
+                    task_tokens.push(tok);
+                }
+            }
+        }
+    }
     let capabilities = workspace_capabilities(index, root);
     let mut warnings = Vec::new();
 
-    if task_tokens.is_empty() {
+    if task_tokens.is_empty() && !diff {
         warnings.push("context task did not contain enough searchable terms".to_string());
     }
 
@@ -160,7 +292,17 @@ pub fn build_context_bundle(
     let intents = classify_intents(&task_lc, &task_tokens);
     let identifier_needles = extract_identifier_needles(task);
 
-    let graph_cache = try_load_graph_query_cache(root);
+    let ablation = active_context_ablation();
+    let graph_cache = if matches!(
+        ablation,
+        ContextAblation::PathOnly | ContextAblation::AstSymbolOnly
+    ) {
+        None
+    } else if diff {
+        crate::graph_query::ensure_or_load_graph_query_cache(index, root)
+    } else {
+        try_load_graph_query_cache(root)
+    };
     let mut files = rank_files(
         index,
         &task_tokens,
@@ -171,7 +313,41 @@ pub fn build_context_bundle(
         &identifier_needles,
         graph_cache.as_ref(),
     );
-    let local_node_semantic_source = if crate::local_nodes::available(root) {
+    let mut impacted_dependents: Vec<String> = Vec::new();
+    if diff {
+        for changed in &changed_files {
+            upsert_scored_file(
+                &mut files,
+                index,
+                changed,
+                180,
+                "modified in git working tree (--diff)",
+            );
+            if let Some(ref cache) = graph_cache
+                && let Some(importers) = cache.importers_by_target_path.get(changed)
+            {
+                for imp in importers.iter().take(8) {
+                    if !changed_files.contains(&imp.path) {
+                        if !impacted_dependents.contains(&imp.path) {
+                            impacted_dependents.push(imp.path.clone());
+                        }
+                        upsert_scored_file(
+                            &mut files,
+                            index,
+                            &imp.path,
+                            95,
+                            "1-hop importer of modified file (--diff)",
+                        );
+                    }
+                }
+            }
+        }
+    }
+    let local_node_semantic_source = if !matches!(
+        ablation,
+        ContextAblation::PathOnly | ContextAblation::AstSymbolOnly
+    ) && crate::local_nodes::available(root)
+    {
         crate::local_nodes::search_hits_detailed(root, task, limit.saturating_mul(3))
             .ok()
             .map(|result| {
@@ -192,11 +368,76 @@ pub fn build_context_bundle(
     } else {
         None
     };
-    let playbook = crate::playbook::load_or_auto_sync(root);
+    let playbook = if matches!(
+        ablation,
+        ContextAblation::PathOnly
+            | ContextAblation::AstSymbolOnly
+            | ContextAblation::NaiveRrf
+            | ContextAblation::NoPlaybook
+    ) {
+        None
+    } else {
+        crate::playbook::load_or_auto_sync(root)
+    };
     let mut playbook_boost_count = 0usize;
+    let mut missing_co_edits: Vec<Value> = Vec::new();
     if let Some(ref pb) = playbook {
-        let seed_paths: Vec<String> = files.iter().take(3).map(|f| f.path.clone()).collect();
-        let mut boosted = false;
+        let seed_paths: Vec<String> = if diff && !changed_files.is_empty() {
+            changed_files.clone()
+        } else {
+            files.iter().take(3).map(|f| f.path.clone()).collect()
+        };
+        if diff {
+            for changed in &changed_files {
+                if let Some(partners) = pb.co_edits.get(changed) {
+                    let mut pairs: Vec<(&String, &u32)> = partners.iter().collect();
+                    pairs.sort_by(|a, b| b.1.cmp(a.1).then_with(|| a.0.cmp(b.0)));
+                    for (partner, count) in pairs.into_iter().take(3) {
+                        if *count >= 2 && !changed_files.contains(partner) {
+                            missing_co_edits.push(json!({
+                                "changed_file": changed,
+                                "partner_file": partner,
+                                "co_edit_count": *count,
+                            }));
+                            upsert_scored_file(
+                                &mut files,
+                                index,
+                                partner,
+                                70,
+                                &format!("co-edit partner of dirty file `{changed}` ({count}x)"),
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        let mut boosted = diff;
+        let top_seed_snapshot = if !diff {
+            files.first().map(|f| (f.path.clone(), f.score))
+        } else {
+            None
+        };
+        if let Some(ref top_seed) = top_seed_snapshot
+            && let Some(partners) = pb.co_edits.get(&top_seed.0)
+        {
+            let mut pairs: Vec<(&String, &u32)> = partners
+                .iter()
+                .filter(|(p, c)| **c >= 4 && !is_test_like_file_path(p))
+                .collect();
+            pairs.sort_by(|a, b| b.1.cmp(a.1).then_with(|| a.0.cmp(b.0)));
+            for (partner, count) in pairs.into_iter().take(2) {
+                let partner_delta = (top_seed.1 * 3 / 4).max(i64::from((*count).min(8)) * 260);
+                upsert_scored_file(
+                    &mut files,
+                    index,
+                    partner,
+                    partner_delta.min((top_seed.1 - 1).max(1)),
+                    &format!("playbook co-edit with `{}` ({count}x)", top_seed.0),
+                );
+                playbook_boost_count += 1;
+                boosted = true;
+            }
+        }
         for file in &mut files {
             let (delta, reason) = crate::playbook::file_playbook_boost(pb, &file.path, &seed_paths);
             if delta != 0 {
@@ -206,6 +447,18 @@ pub fn build_context_bundle(
                 }
                 playbook_boost_count += 1;
                 boosted = true;
+            }
+        }
+        if let Some((ref top_path, top_score)) = top_seed_snapshot {
+            let current_top_score = files
+                .iter()
+                .find(|f| &f.path == top_path)
+                .map(|f| f.score)
+                .unwrap_or(top_score);
+            for file in &mut files {
+                if &file.path != top_path && file.score >= current_top_score {
+                    file.score = (current_top_score - 1).max(1);
+                }
             }
         }
         if boosted {
@@ -218,6 +471,15 @@ pub fn build_context_bundle(
                     .then_with(|| left.path.cmp(&right.path))
             });
         }
+    } else if diff {
+        files.sort_by(|left, right| {
+            right
+                .score
+                .cmp(&left.score)
+                .then_with(|| right.graph_proximity.cmp(&left.graph_proximity))
+                .then_with(|| right.modified_unix_ms.cmp(&left.modified_unix_ms))
+                .then_with(|| left.path.cmp(&right.path))
+        });
     }
     files.truncate(limit);
     let mut symbols = rank_symbols(index, &task_tokens, limit, &idf);
@@ -241,7 +503,18 @@ pub fn build_context_bundle(
     let graph_queries = graph_queries(&files, &symbols, limit);
     let doctor_suggestions =
         doctor_suggestions(&capabilities.doctor_kinds, &task_tokens, playbook.as_ref());
-    let risk_notes = risk_notes(&files, &env_vars, &redis_keys, &deploy_targets);
+    let mut risk_notes = risk_notes(&files, &env_vars, &redis_keys, &deploy_targets);
+    for m in &missing_co_edits {
+        if let (Some(changed), Some(partner), Some(count)) = (
+            m.get("changed_file").and_then(Value::as_str),
+            m.get("partner_file").and_then(Value::as_str),
+            m.get("co_edit_count").and_then(Value::as_u64),
+        ) {
+            risk_notes.push(format!(
+                "co-edit partner `{partner}` is frequently co-edited with `{changed}` ({count}x) but has no working-tree edits yet"
+            ));
+        }
+    }
     let agent_instructions = discover_agent_instructions(root, &files, limit);
     let memory_banks = discover_memory_banks(root, &task_tokens, limit);
     let verification_anchors = verification_anchors(root, &files, &task_tokens, limit);
@@ -357,6 +630,13 @@ pub fn build_context_bundle(
         "doctor_suggestions": doctor_suggestions,
         "risk_notes": risk_notes,
     });
+    if diff {
+        bundle["diff_summary"] = json!({
+            "changed_files": changed_files,
+            "impacted_dependents": impacted_dependents,
+            "missing_co_edits": missing_co_edits,
+        });
+    }
     if full {
         // Exhaustive shape keeps the historical duplicate keys alongside
         // their zone-referenced names.
@@ -952,9 +1232,32 @@ fn score_file(
         .collect::<Vec<_>>();
     symbols.sort_by_key(|right| std::cmp::Reverse(right.0));
 
+    let ablation = active_context_ablation();
     let mut symbol_layer = sym_needles;
     if let Some((symbol_score, _)) = symbols.first() {
-        symbol_layer += *symbol_score;
+        let mut combined_sym_score = *symbol_score;
+        if matches!(
+            ablation,
+            ContextAblation::Full | ContextAblation::NoPlaybook
+        ) && symbols.len() >= 2
+            && task_tokens.len() >= 2
+        {
+            let prod_syms: Vec<&str> = file
+                .symbols
+                .iter()
+                .map(|s| s.name.as_str())
+                .filter(|name| intents.wants_tests || !is_likely_test_symbol_name(name))
+                .collect();
+            let joined_names = prod_syms.join(" ");
+            let union_score = match_score_idf(task_tokens, &joined_names, 14, idf);
+            let damped = if prod_syms.len() > 40 {
+                ((union_score as f64) / (1.0 + (prod_syms.len() as f64 / 20.0))).round() as i64
+            } else {
+                union_score
+            };
+            combined_sym_score = combined_sym_score.max(damped);
+        }
+        symbol_layer += combined_sym_score;
         reasons.insert("defines matching symbols".to_string());
     }
 
@@ -1008,6 +1311,31 @@ fn score_file(
         reasons.insert("touches matching Redis keys".to_string());
     }
 
+    match ablation {
+        ContextAblation::PathOnly => {
+            symbol_layer = 0;
+            config_layer = 0;
+        }
+        ContextAblation::AstSymbolOnly => {
+            config_layer = 0;
+        }
+        ContextAblation::NaiveRrf => {}
+        ContextAblation::NoPlaybook | ContextAblation::Full => {
+            if task_tokens.len() >= 2 && (path_layer > 0 || symbol_layer > 0 || config_layer > 0) {
+                apply_query_coverage_and_role_priors(
+                    file,
+                    task_tokens,
+                    idf,
+                    intents,
+                    &mut path_layer,
+                    &mut symbol_layer,
+                    &mut config_layer,
+                    &mut reasons,
+                );
+            }
+        }
+    }
+
     let score = path_layer + symbol_layer + config_layer;
     if score == 0 {
         return None;
@@ -1045,6 +1373,239 @@ fn score_file(
         },
         layers,
     ))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ContextAblation {
+    Full,
+    PathOnly,
+    AstSymbolOnly,
+    NaiveRrf,
+    NoPlaybook,
+}
+
+fn active_context_ablation() -> ContextAblation {
+    match std::env::var("LEIO_CONTEXT_ABLATION")
+        .ok()
+        .as_deref()
+        .map(str::trim)
+    {
+        Some("path_only") => ContextAblation::PathOnly,
+        Some("ast_symbol_only") => ContextAblation::AstSymbolOnly,
+        Some("naive_rrf") => ContextAblation::NaiveRrf,
+        Some("no_playbook") => ContextAblation::NoPlaybook,
+        _ => ContextAblation::Full,
+    }
+}
+
+fn is_test_like_file_path(path: &str) -> bool {
+    let p = path.to_ascii_lowercase();
+    p.starts_with("tests/")
+        || p.contains("/tests/")
+        || p.contains("__tests__")
+        || p.contains("/test/")
+        || p.contains(".spec.")
+        || p.contains(".test.")
+        || p.ends_with("_test.rs")
+        || p.ends_with("_test.py")
+        || p.contains("/test_")
+        || p.starts_with("test_")
+}
+
+fn is_likely_test_symbol_name(name: &str) -> bool {
+    name.starts_with("test_")
+        || name == "tests"
+        || (name.len() >= 24 && name.matches('_').count() >= 3)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn apply_query_coverage_and_role_priors(
+    file: &FileRecord,
+    task_tokens: &[String],
+    idf: &HashMap<String, f64>,
+    intents: IntentHints,
+    path_layer: &mut i64,
+    symbol_layer: &mut i64,
+    config_layer: &mut i64,
+    reasons: &mut BTreeSet<String>,
+) {
+    if !intents.wants_tests && is_test_like_file_path(&file.path) {
+        *path_layer = (*path_layer + *symbol_layer / 3 + *config_layer / 3).max(1);
+        *symbol_layer = 0;
+        *config_layer = 0;
+        return;
+    }
+
+    let (parent_dir, filename) = file
+        .path
+        .rsplit_once(['/', '\\'])
+        .map(|(dir, f)| (dir, f))
+        .unwrap_or(("", &file.path));
+    let file_stem = filename.split('.').next().unwrap_or(filename);
+    let mut stem_tokens = tokenize(file_stem);
+    if matches!(file_stem, "mod" | "index" | "lib" | "__init__") {
+        let parent_seg = parent_dir
+            .rsplit_once(['/', '\\'])
+            .map(|(_, seg)| seg)
+            .unwrap_or(parent_dir);
+        stem_tokens.extend(tokenize(parent_seg));
+    }
+    let mut stem_matched_count = 0usize;
+    let mut stem_idf_sum = 0.0f64;
+    for token in task_tokens {
+        if stem_tokens
+            .iter()
+            .any(|st| st == token || fuzzy_token_match(token, st))
+        {
+            stem_matched_count += 1;
+            stem_idf_sum += idf.get(token).copied().unwrap_or(1.0);
+        }
+    }
+    let path_tokens = tokenize(&file.path);
+    let mut path_distinct_covered = 0usize;
+    for token in task_tokens {
+        if path_tokens
+            .iter()
+            .any(|pt| pt == token || fuzzy_token_match(token, pt))
+        {
+            path_distinct_covered += 1;
+        }
+    }
+
+    let mut prod_sym_count = 0usize;
+    let mut vocab_tokens: HashSet<String> = path_tokens.into_iter().collect();
+    for sym in &file.symbols {
+        if !intents.wants_tests && is_likely_test_symbol_name(&sym.name) {
+            continue;
+        }
+        prod_sym_count += 1;
+        vocab_tokens.extend(tokenize(&sym.name));
+    }
+    for env in &file.env_vars {
+        vocab_tokens.extend(tokenize(&env.name));
+    }
+    for key in &file.redis_keys {
+        vocab_tokens.extend(tokenize(&key.key));
+    }
+
+    let mut distinct_covered = 0usize;
+    let mut covered_idf = 0.0f64;
+    for token in task_tokens {
+        if vocab_tokens
+            .iter()
+            .any(|vt| vt == token || fuzzy_token_match(token, vt))
+        {
+            distinct_covered += 1;
+            covered_idf += idf.get(token).copied().unwrap_or(1.0);
+        }
+    }
+
+    if stem_matched_count >= 1 {
+        let coverage_ratio = (distinct_covered.max(1) as f64) / (task_tokens.len().max(1) as f64);
+        let stem_bonus =
+            (stem_idf_sum * 240.0 * (stem_matched_count as f64) * coverage_ratio).round() as i64;
+        *path_layer += stem_bonus;
+        if stem_matched_count >= 2 {
+            *path_layer += (260.0 * coverage_ratio).round() as i64;
+            if *symbol_layer == 0 {
+                *symbol_layer = (*path_layer / 2).max(1);
+            }
+            reasons.insert("multiple task terms match filename stem".to_string());
+        }
+    }
+
+    let p_lc = file.path.to_ascii_lowercase();
+    if (p_lc.starts_with("hooks/") || p_lc.contains("/hooks/"))
+        && task_tokens
+            .iter()
+            .any(|t| matches!(t.as_str(), "session" | "startup" | "hook" | "inject"))
+    {
+        *path_layer += 240;
+        if *symbol_layer == 0 {
+            *symbol_layer = (*path_layer / 2).max(1);
+        }
+        reasons.insert("session/startup hook script path".to_string());
+    }
+
+    let wants_config_channel = intents.wants_deploy
+        || intents.wants_security
+        || task_tokens.iter().any(|t| {
+            matches!(
+                t.as_str(),
+                "env"
+                    | "redis"
+                    | "config"
+                    | "secret"
+                    | "token"
+                    | "key"
+                    | "keys"
+                    | "ttl"
+                    | "port"
+                    | "url"
+                    | "bridge"
+                    | "vigoros"
+                    | "session"
+                    | "smoke"
+            )
+        });
+
+    if distinct_covered >= 3 {
+        let scale = if distinct_covered >= 5 && prod_sym_count <= 40 {
+            62.0
+        } else {
+            38.0
+        };
+        let raw_bonus = covered_idf * (distinct_covered as f64) * scale;
+        let damped_bonus = if stem_matched_count == 0 && prod_sym_count > 40 {
+            raw_bonus / (1.0 + (prod_sym_count as f64 / 6.0))
+        } else if stem_matched_count == 0 && distinct_covered < 5 {
+            raw_bonus / (1.0 + (prod_sym_count as f64 / 25.0))
+        } else {
+            raw_bonus
+        };
+        let coverage_bonus = damped_bonus.round() as i64;
+        if *path_layer >= *symbol_layer {
+            *path_layer += coverage_bonus;
+        } else {
+            *symbol_layer += coverage_bonus;
+        }
+        reasons.insert(format!(
+            "covers {distinct_covered}/{} distinct task terms across file facets",
+            task_tokens.len()
+        ));
+        if distinct_covered >= 4 && *path_layer == 0 && prod_sym_count <= 45 {
+            *path_layer = (*symbol_layer / 2).max(1);
+        }
+        if path_distinct_covered >= 3 && *symbol_layer == 0 {
+            *symbol_layer = (*path_layer / 2).max(1);
+        }
+    } else if distinct_covered == 2
+        && stem_matched_count >= 1
+        && *config_layer > 0
+        && *symbol_layer == 0
+    {
+        *symbol_layer = (*path_layer / 2).max(1);
+    }
+
+    if *config_layer > 0 && !wants_config_channel && (*path_layer > 0 || *symbol_layer > 0) {
+        if *symbol_layer > 0 {
+            *symbol_layer += *config_layer;
+        } else {
+            *path_layer += *config_layer;
+        }
+        *config_layer = 0;
+    }
+
+    if task_tokens.len() >= 4 && distinct_covered <= 1 && stem_matched_count == 0 {
+        if *path_layer > 0 {
+            *path_layer += *symbol_layer + *config_layer;
+            *symbol_layer = 0;
+            *config_layer = 0;
+        } else if *symbol_layer > 0 {
+            *symbol_layer += *config_layer;
+            *config_layer = 0;
+        }
+    }
 }
 
 fn rank_symbols(
@@ -1991,7 +2552,19 @@ fn fuzzy_token_match(left: &str, right: &str) -> bool {
     if left.len() < 3 || right.len() < 3 {
         return false;
     }
-    left.starts_with(right) || right.starts_with(left)
+    if left.starts_with(right) || right.starts_with(left) {
+        return true;
+    }
+    if left.len() >= 6 && right.len() >= 6 {
+        let common = left
+            .as_bytes()
+            .iter()
+            .zip(right.as_bytes())
+            .take_while(|(a, b)| a == b)
+            .count();
+        return common >= 5;
+    }
+    false
 }
 
 fn task_tokens(task: &str) -> Vec<String> {
@@ -2924,5 +3497,45 @@ mod tests {
             "expected actionable hint when graph cache is absent, got {:?}",
             signals.get("code_graph_refresh_hint")
         );
+    }
+
+    #[test]
+    fn test_file_and_symbol_role_classifiers() {
+        assert!(is_test_like_file_path("tests/watch_smoke.rs"));
+        assert!(is_test_like_file_path("mcp/tools.test.js"));
+        assert!(is_test_like_file_path("scripts/test_benchmark_models.py"));
+        assert!(!is_test_like_file_path("src/context.rs"));
+        assert!(!is_test_like_file_path("mcp/tools.js"));
+
+        assert!(is_likely_test_symbol_name("test_bundle_ranking"));
+        assert!(is_likely_test_symbol_name("gate_promotes_when_improved"));
+        assert!(!is_likely_test_symbol_name("build_context_bundle"));
+    }
+
+    #[test]
+    fn morphological_prefix_matching_links_stems() {
+        assert!(fuzzy_token_match("configurable", "configure"));
+        assert!(fuzzy_token_match("validation", "validate"));
+        assert!(!fuzzy_token_match("catastrophe", "catalog"));
+    }
+
+    #[test]
+    fn upsert_scored_file_supports_manifest_and_doc_partners() {
+        let index = test_index();
+        let mut files = Vec::new();
+        upsert_scored_file(
+            &mut files,
+            &index,
+            "schema/leio-code-mcp-service-descriptor.json",
+            850,
+            "playbook co-edit with `mcp/tools.js` (6x)",
+        );
+        assert_eq!(files.len(), 1);
+        assert_eq!(
+            files[0].path,
+            "schema/leio-code-mcp-service-descriptor.json"
+        );
+        assert_eq!(files[0].language, "manifest");
+        assert_eq!(files[0].score, 850);
     }
 }

@@ -451,3 +451,160 @@ test("audit json returns a valid structured envelope", async (t) => {
     assert.equal(typeof result.structuredContent.envelope_summary?.summary, "string");
   });
 });
+
+test("kb, watch lifecycle, export options, init force, and nav source window flags", async (t) => {
+  await withClient(t, async ({ call, fixture }) => {
+    const exportedJson = structured(
+      await call("leio_code_export", {
+        kind: "formal-context",
+        format: "json",
+        object_kind: "file",
+        out: "fc.json",
+      }),
+      "export options",
+    );
+    assert.equal(exportedJson.ok, true);
+
+    const exportedDir = structured(
+      await call("leio_code_export", {
+        kind: "formal-context",
+        output_dir: "exports",
+      }),
+      "export output_dir",
+    );
+    assert.equal(exportedDir.ok, true);
+
+    const textKnowledge = structured(
+      await call("leio_code_knowledge", { kind: "text", needle: "Hours" }),
+      "knowledge text",
+    );
+    assert.equal(textKnowledge.tool_family, "knowledge");
+
+    await call("leio_code_nav", { kind: "goto", needle: "./src/lib.rs" });
+
+    const navWindow = structured(
+      await call("leio_code_nav", {
+        kind: "here",
+        source_offset: 0,
+        source_lines: 5,
+      }),
+      "nav window",
+    );
+    assert.equal(navWindow.ok, true);
+
+    await call("leio_code_nav", {
+      kind: "callers",
+      needle: "encode_payload",
+      follow: true,
+    });
+
+    const strictAudit = await call("leio_code_audit", { format: "json", strict: true });
+    assert.ok(strictAudit.structuredContent);
+
+    const started = structured(
+      await call("leio_code_watch", { action: "start", debounce_ms: 250 }),
+      "watch start",
+    );
+    assert.equal(started.running, true);
+    assert.equal(typeof started.pid, "number");
+
+    const startedAgain = structured(
+      await call("leio_code_watch", { action: "start" }),
+      "watch start again",
+    );
+    assert.equal(startedAgain.running, true);
+
+    const runningStatus = structured(
+      await call("leio_code_watch", { action: "status" }),
+      "watch status running",
+    );
+    assert.equal(typeof runningStatus.running, "boolean");
+
+    const stopped = structured(
+      await call("leio_code_watch", { action: "stop" }),
+      "watch stop",
+    );
+    assert.equal(stopped.running, false);
+
+    const stoppedAgain = structured(
+      await call("leio_code_watch", { action: "stop" }),
+      "watch stop again",
+    );
+    assert.equal(stoppedAgain.running, false);
+
+    const forceInit = structured(
+      await call("leio_code_init", { repo_root: fixture, force: true }),
+      "init force",
+    );
+    assert.equal(forceInit.ok, true);
+
+    for (const badKb of [
+      { action: "add" },
+      { action: "remove", name: "test-kb" },
+      { action: "build" },
+      { action: "query", name: "test-kb" },
+      { action: "drop" },
+    ]) {
+      const res = await call("leio_code_kb", badKb);
+      assert.equal(res.isError, true);
+    }
+
+    const kbList = await call("leio_code_kb", { action: "list" });
+    assert.equal(kbList.isError, false, textOf(kbList));
+
+    const findJsonld = await call("leio_code_find", {
+      kind: "symbol",
+      needle: "encode_payload",
+      format: "jsonld",
+      where: '.entities[] | select(.name == "encode_payload")',
+    });
+    assert.equal(findJsonld.isError, false, textOf(findJsonld));
+    assert.ok(findJsonld.structuredContent.envelope?.["@context"]);
+
+    const findBinaryNoNeedle = await call("leio_code_find", { kind: "binary" });
+    assert.equal(findBinaryNoNeedle.isError, false, textOf(findBinaryNoNeedle));
+
+    const findRouteMethod = await call("leio_code_find", {
+      kind: "route",
+      method: "POST",
+    });
+    assert.equal(findRouteMethod.isError, false, textOf(findRouteMethod));
+
+    const explainJsonld = await call("leio_code_explain", {
+      kind: "env-var",
+      needle: "MCP_SURFACE_TOKEN",
+      format: "jsonld",
+      where: '.entities[] | select(.name == "MCP_SURFACE_TOKEN")',
+    });
+    assert.equal(explainJsonld.isError, false, textOf(explainJsonld));
+    assert.ok(explainJsonld.structuredContent.envelope?.["@context"]);
+
+    const doctorSarif = await call("leio_code_doctor", {
+      kind: "repo-hygiene",
+      format: "sarif",
+    });
+    assert.equal(doctorSarif.isError, false, textOf(doctorSarif));
+    assert.equal(doctorSarif.structuredContent.envelope?.version, "2.1.0");
+
+    const explainSymbol = await call("leio_code_explain", {
+      kind: "symbol",
+      needle: "encode_payload",
+    });
+    assert.equal(explainSymbol.isError, false, textOf(explainSymbol));
+    assert.equal(explainSymbol.structuredContent.envelope?.entities?.[0]?.name, "encode_payload");
+    assert.match(textOf(explainSymbol), /encode_payload/);
+
+    const findText = await call("leio_code_find", {
+      kind: "text",
+      needle: "encode_payload",
+    });
+    assert.equal(findText.isError, false, textOf(findText));
+    assert.ok(findText.structuredContent.envelope?.entities?.length > 0);
+
+    const diffContext = await call("leio_code_context", {
+      diff: true,
+    });
+    assert.equal(diffContext.isError, false, textOf(diffContext));
+    assert.ok(diffContext.structuredContent.envelope?.entities?.[0]?.diff_summary);
+  });
+});

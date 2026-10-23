@@ -192,7 +192,13 @@ pub fn sync_git_co_edits(root: &Path, playbook: &mut Playbook) -> usize {
             // Fallback if previous HEAD was rebased away.
             let Ok(out) = Command::new("git")
                 .current_dir(root)
-                .args(["log", "-n", "50", "--name-only", "--pretty=format:COMMIT:%H:%s"])
+                .args([
+                    "log",
+                    "-n",
+                    "50",
+                    "--name-only",
+                    "--pretty=format:COMMIT:%H:%s",
+                ])
                 .output()
             else {
                 return 0;
@@ -307,10 +313,7 @@ pub fn parse_commit_file_sets(log_text: &str) -> Vec<Vec<String>> {
         .collect()
 }
 
-fn evict_co_edits(
-    co_edits: &mut BTreeMap<String, BTreeMap<String, u32>>,
-    max_entries: usize,
-) {
+fn evict_co_edits(co_edits: &mut BTreeMap<String, BTreeMap<String, u32>>, max_entries: usize) {
     let total: usize = co_edits.values().map(BTreeMap::len).sum();
     if total <= max_entries {
         return;
@@ -459,10 +462,7 @@ pub fn doctor_triage_priority(pb: &Playbook, doctor_name: &str) -> (i32, Option<
 }
 
 /// Update doctor warning triage counters after a doctor or suite run.
-pub fn record_doctor_observations_best_effort(
-    root: &Path,
-    rows: &[(String, QueryEnvelope)],
-) {
+pub fn record_doctor_observations_best_effort(root: &Path, rows: &[(String, QueryEnvelope)]) {
     if !root.join(".leio-code").is_dir() {
         return;
     }
@@ -660,7 +660,11 @@ pub fn playbook_stats_envelope(root: &Path, sync_first: bool) -> Result<QueryEnv
             }
         }
     }
-    top_co_edits.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)).then_with(|| a.2.cmp(&b.2)));
+    top_co_edits.sort_by(|a, b| {
+        b.0.cmp(&a.0)
+            .then_with(|| a.1.cmp(&b.1))
+            .then_with(|| a.2.cmp(&b.2))
+    });
     let top_co_edits_json: Vec<Value> = top_co_edits
         .iter()
         .take(15)
@@ -727,14 +731,22 @@ pub fn playbook_stats_envelope(root: &Path, sync_first: bool) -> Result<QueryEnv
 }
 
 /// Co-edit and outcome boost for a candidate file given top seed paths.
-pub fn file_playbook_boost(pb: &Playbook, file_path: &str, seed_paths: &[String]) -> (i64, Option<String>) {
+pub fn file_playbook_boost(
+    pb: &Playbook,
+    file_path: &str,
+    seed_paths: &[String],
+) -> (i64, Option<String>) {
     let mut co_edit_bonus = 0i64;
     let mut best_seed: Option<(&str, u32)> = None;
     for seed in seed_paths {
         if seed == file_path {
             continue;
         }
-        if let Some(count) = pb.co_edits.get(seed).and_then(|m| m.get(file_path)).copied()
+        if let Some(count) = pb
+            .co_edits
+            .get(seed)
+            .and_then(|m| m.get(file_path))
+            .copied()
             && count > 0
         {
             let bonus = i64::from(count.min(6)) * 4;
@@ -750,7 +762,8 @@ pub fn file_playbook_boost(pb: &Playbook, file_path: &str, seed_paths: &[String]
         .map(|o| (i64::from(o.helpfulness) - i64::from(o.harmfulness)).clamp(-5, 5) * 3)
         .unwrap_or(0);
     let total = co_edit_bonus.min(24) + outcome_delta;
-    let reason = best_seed.map(|(seed, count)| format!("playbook co-edit with `{seed}` ({count}x)"));
+    let reason =
+        best_seed.map(|(seed, count)| format!("playbook co-edit with `{seed}` ({count}x)"));
     (total, reason)
 }
 
@@ -778,8 +791,16 @@ src/c.rs
                 for j in (i + 1)..files.len() {
                     let a = &files[i];
                     let b = &files[j];
-                    *pb.co_edits.entry(a.clone()).or_default().entry(b.clone()).or_insert(0) += 1;
-                    *pb.co_edits.entry(b.clone()).or_default().entry(a.clone()).or_insert(0) += 1;
+                    *pb.co_edits
+                        .entry(a.clone())
+                        .or_default()
+                        .entry(b.clone())
+                        .or_insert(0) += 1;
+                    *pb.co_edits
+                        .entry(b.clone())
+                        .or_default()
+                        .entry(a.clone())
+                        .or_insert(0) += 1;
                 }
             }
         }
@@ -866,5 +887,167 @@ src/good.rs
         assert_eq!(commits[0].files, vec!["src/bad.rs", "src/other.rs"]);
         assert_eq!(commits[1].subject, "feat: add clean helper");
         assert_eq!(commits[1].files, vec!["src/good.rs"]);
+    }
+
+    #[test]
+    fn playbook_outcomes_queries_boost_and_envelopes_round_trip() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path();
+        fs::create_dir_all(root.join(".leio-code")).expect("mkdir .leio-code");
+
+        // Queries and eviction
+        record_query_best_effort(root, "   ");
+        record_query_best_effort(root, "MY_SYMBOL");
+        record_query_best_effort(root, "MY_SYMBOL");
+        record_query_best_effort(root, "OTHER_SYMBOL");
+        let mut pb = load_or_default(root);
+        assert_eq!(pb.query_counts.get("MY_SYMBOL"), Some(&2));
+        evict_query_counts(&mut pb.query_counts, 1);
+        assert_eq!(pb.query_counts.len(), 1);
+        assert!(pb.query_counts.contains_key("MY_SYMBOL"));
+
+        // Session outcomes and envelope
+        record_session_outcome(root, &[String::from("src/a.rs")], true).expect("helpful");
+        record_session_outcome(root, &[String::from("src/b.rs")], false).expect("harmful");
+        let out_env = record_session_outcomes_envelope(
+            root,
+            &[String::from("src/a.rs"), String::from("  ")],
+            &[String::from("src/b.rs")],
+        )
+        .expect("outcomes envelope");
+        assert_eq!(out_env.kind, "playbook_outcome");
+        assert_eq!(out_env.entities.len(), 2);
+
+        // Co-edit boost + outcome delta
+        let mut pb = load_or_default(root);
+        pb.co_edits
+            .entry("src/seed.rs".to_string())
+            .or_default()
+            .insert("src/a.rs".to_string(), 3);
+        let (boost_a, reason_a) =
+            file_playbook_boost(&pb, "src/a.rs", &[String::from("src/seed.rs")]);
+        assert!(boost_a > 0);
+        assert!(
+            reason_a
+                .as_deref()
+                .unwrap_or_default()
+                .contains("src/seed.rs")
+        );
+        let (boost_b, reason_b) = file_playbook_boost(&pb, "src/b.rs", &[String::from("src/b.rs")]);
+        assert!(boost_b < 0);
+        assert!(reason_b.is_none());
+
+        // Triage priorities (demotion, normal, zero-fired, missing)
+        pb.doctor_triage.insert(
+            "demote-me".to_string(),
+            DoctorTriageEntry {
+                doctor: "demote-me".to_string(),
+                fired_count: 10,
+                resolved_count: 0,
+                ignored_count: 9,
+            },
+        );
+        pb.doctor_triage.insert(
+            "normal-doc".to_string(),
+            DoctorTriageEntry {
+                doctor: "normal-doc".to_string(),
+                fired_count: 4,
+                resolved_count: 2,
+                ignored_count: 1,
+            },
+        );
+        pb.doctor_triage.insert(
+            "empty-doc".to_string(),
+            DoctorTriageEntry {
+                doctor: "empty-doc".to_string(),
+                fired_count: 0,
+                resolved_count: 0,
+                ignored_count: 0,
+            },
+        );
+        assert_eq!(
+            doctor_triage_priority(&pb, "demote-me"),
+            (-10, Some("candidate_for_demotion"))
+        );
+        assert_eq!(
+            doctor_triage_priority(&pb, "normal-doc"),
+            (0, Some("normal"))
+        );
+        assert_eq!(doctor_triage_priority(&pb, "empty-doc"), (0, None));
+        assert_eq!(doctor_triage_priority(&pb, "unknown-doc"), (0, None));
+        save_playbook(root, &pb).expect("save playbook");
+
+        let triage_env = doctor_triage_envelope(root);
+        assert_eq!(triage_env.kind, "doctor_triage");
+        assert_eq!(triage_env.entities.len(), 2);
+
+        let stats_env = playbook_stats_envelope(root, false).expect("stats envelope");
+        assert_eq!(stats_env.kind, "playbook_stats");
+    }
+
+    #[test]
+    fn sync_git_co_edits_and_auto_sync_track_commits_and_reverts() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path();
+        fs::create_dir_all(root.join(".leio-code")).expect("mkdir .leio-code");
+        fs::create_dir_all(root.join("src")).expect("mkdir src");
+
+        let git = |args: &[&str]| {
+            let status = Command::new("git")
+                .args(args)
+                .current_dir(root)
+                .status()
+                .expect("git");
+            assert!(status.success());
+        };
+        git(&["init", "-q"]);
+        fs::write(root.join("src/a.rs"), "pub fn a() {}\n").unwrap();
+        fs::write(root.join("src/b.rs"), "pub fn b() {}\n").unwrap();
+        git(&["add", "."]);
+        git(&[
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.invalid",
+            "commit",
+            "-qm",
+            "feat: initial pair",
+        ]);
+
+        let synced = load_or_auto_sync(root).expect("auto sync initial");
+        assert_eq!(synced.co_edits["src/a.rs"]["src/b.rs"], 1);
+
+        // Incremental normal commit bumps helpfulness
+        fs::write(root.join("src/a.rs"), "pub fn a() { /* v2 */ }\n").unwrap();
+        fs::write(root.join("src/b.rs"), "pub fn b() { /* v2 */ }\n").unwrap();
+        git(&["add", "."]);
+        git(&[
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.invalid",
+            "commit",
+            "-qm",
+            "feat: incremental update",
+        ]);
+        let stats = playbook_stats_envelope(root, true).expect("sync stats");
+        assert!(stats.summary.contains("synced"));
+        let pb = load_or_default(root);
+        assert_eq!(pb.file_outcomes["src/a.rs"].helpfulness, 1);
+
+        // Revert commit bumps harmfulness
+        fs::write(root.join("src/a.rs"), "pub fn a() {}\n").unwrap();
+        git(&["add", "."]);
+        git(&[
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.invalid",
+            "commit",
+            "-qm",
+            "Revert \"incremental update\"",
+        ]);
+        let pb2 = load_or_auto_sync(root).expect("auto sync revert");
+        assert_eq!(pb2.file_outcomes["src/a.rs"].harmfulness, 1);
     }
 }

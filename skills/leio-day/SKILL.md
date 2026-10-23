@@ -1,6 +1,11 @@
 ---
 name: leio-day
 description: Orchestrate multi-model agent days — decompose a goal into lanes, run them through leio-harness (worktrees, leases, Arrow semantic bus), route each lane to the right OpenRouter model via work-shapes, and ground every lane in the LEIO code view plus Reference Provider governed knowledge. Triggers on "agent day", "run lanes", "multi-model", "orchestrate agents", "harness day", "which model should do this".
+license: MIT OR Apache-2.0
+compatibility: Requires leio-code, leio-harness, and a clean git repository.
+metadata:
+  author: leio-code
+  version: "2.6.5"
 ---
 
 # LEIO Day — multi-model orchestration
@@ -65,7 +70,7 @@ leio-harness day --spec day.json
 - Custom template env values expand `{task}`/`{model}` too (use them to pass
   lane context through the environment).
 - OpenRouter-direct lanes (no agent CLI): the benchmark runner
-  (`scripts/benchmark_models.py`, `--agent openrouter-direct`) ships a
+  ([scripts/benchmark_models.py](../../scripts/benchmark_models.py), `--agent openrouter-direct`) ships a
   python-built chat-completions transport with `response_format` enforcement
   and retries — reuse it as the template pattern.
 
@@ -80,7 +85,7 @@ leio-harness day --spec day.json
    refusals are answers too — never invent numbers for unsigned metrics.
 3. Agent lanes that cannot run tools need their grounding **embedded in the
    prompt** (see the openrouter-direct pattern in
-   `scripts/benchmark_models.py`).
+   [scripts/benchmark_models.py](../../scripts/benchmark_models.py)).
 
 ## Gates and failure modes
 
@@ -97,7 +102,7 @@ leio-harness day --spec day.json
 
 ## Workbench integration (JAI Team)
 
-`scripts/jai-day --spec <file> [--watch]` wraps the day runner;
+`jai-day --spec <file> [--watch]` wraps the day runner;
 `jai-ship harness` rebuilds + installs the stack and re-pins Hermes MCP;
 `jai-bench --execute` runs the model sweep. Emit a `widget` block in chat for
 one-click runs.

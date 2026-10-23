@@ -1,6 +1,11 @@
 ---
 name: leio-trio
-description: Protocol for running LEIO Code (code ground truth), Reference Provider (governed business truth) and the leio-harness agent swarm (lanes, worktrees, semantic bus, S-2PC consensus, improvement gate) as ONE evidence chain. Use it whenever a task touches two or more of - code structure (especially across repos), business facts/metrics/forecasts/decisions, parallel or multi-model agents - even when the user names none of the tools. Triggers include "plan a swarm/day", "brief the lanes", "fan out agents", "cross-repo refactor", "ground this in LEIO and Reference Provider", "which numbers are signed", "verify this synthesis end to end", "pre-merge/pre-deploy evidence", "trio", "cognitive stack", "truth stack", "provenance chain", and any report that must carry LEIO query ids, Reference Provider receipts and harness manifests. Single-repo lookups go to leio-code, a lone business question to reference-provider-ask, model sweeps to leio-bench, and authoring one day spec to leio-day - this skill is the interlock that wraps them.
+description: Protocol for running LEIO Code (code ground truth), Reference Provider (governed business truth), and the leio-harness agent swarm (lanes, worktrees, semantic bus, S-2PC consensus, improvement gate) as one evidence chain. Use whenever a task touches two or more of code structure, governed business facts/metrics/forecasts/decisions, or parallel/multi-model agents. Triggers on "plan a swarm/day", "brief the lanes", "fan out agents", "cross-repo refactor", "ground this in LEIO and Reference Provider", "which numbers are signed", "verify this synthesis end to end", "pre-merge/pre-deploy evidence", "trio", "cognitive stack", "truth stack", and "provenance chain". Single-repo lookups go to leio-code, lone business questions to reference-provider-ask, model sweeps to leio-bench, and day specs to leio-day.
+license: MIT OR Apache-2.0
+compatibility: Requires python3, leio-code, and leio-harness.
+metadata:
+  author: leio-code
+  version: "2.6.5"
 ---
 
 # LEIO Trio — three sovereignties, one evidence chain

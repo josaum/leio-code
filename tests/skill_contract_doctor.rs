@@ -774,3 +774,75 @@ fn reports_broken_resources_forbidden_artifacts_and_sanitized_credentials() {
     assert!(!serialized.contains(&raw_hex));
     assert!(!serialized.contains(&raw_prefixed));
 }
+
+#[test]
+fn accepts_official_agentskills_optional_frontmatter_and_rejects_invalid_values() {
+    let fixture = Fixture::new();
+    fixture.write_and_track(
+        "skills/spec-valid/SKILL.md",
+        "---\nname: spec-valid\ndescription: Use when validating official Agent Skills specification optional frontmatter fields.\nlicense: MIT OR Apache-2.0\ncompatibility: Requires leio-code CLI or stdio MCP server.\nallowed-tools: Bash(leio-code:*) Read\nmetadata:\n  author: leio-code\n  version: \"2.6.5\"\n---\n# Spec Valid\n",
+    );
+    fixture.write_and_track("skills/spec-valid/agents/openai.yaml", ui("spec-valid"));
+
+    let long_compat = "c".repeat(501);
+    fixture.write_and_track(
+        "skills/spec-invalid/SKILL.md",
+        format!(
+            "---\nname: spec-invalid\ndescription: Use when validating invalid optional frontmatter fields from the Agent Skills specification.\nlicense: \"\"\ncompatibility: {long_compat}\nallowed-tools: \"\"\nmetadata:\n  version: 1\n---\n# Spec Invalid\n"
+        ),
+    );
+    fixture.write_and_track("skills/spec-invalid/agents/openai.yaml", ui("spec-invalid"));
+
+    fixture.write_and_track(
+        "skills/registry.toml",
+        registry(&[
+            retained("skills/spec-valid/SKILL.md", "spec-valid", false),
+            retained("skills/spec-invalid/SKILL.md", "spec-invalid", false),
+        ]),
+    );
+
+    let envelope = doctor_skill_contract(fixture.path());
+
+    assert_no_finding(&envelope, "skills/spec-valid/SKILL.md", "frontmatter-keys");
+    assert_no_finding(
+        &envelope,
+        "skills/spec-valid/SKILL.md",
+        "frontmatter-license-invalid",
+    );
+    assert_no_finding(
+        &envelope,
+        "skills/spec-valid/SKILL.md",
+        "compatibility-length",
+    );
+    assert_no_finding(
+        &envelope,
+        "skills/spec-valid/SKILL.md",
+        "frontmatter-allowed-tools-invalid",
+    );
+    assert_no_finding(
+        &envelope,
+        "skills/spec-valid/SKILL.md",
+        "frontmatter-metadata-invalid",
+    );
+
+    assert_finding(
+        &envelope,
+        "skills/spec-invalid/SKILL.md",
+        "frontmatter-license-invalid",
+    );
+    assert_finding(
+        &envelope,
+        "skills/spec-invalid/SKILL.md",
+        "compatibility-length",
+    );
+    assert_finding(
+        &envelope,
+        "skills/spec-invalid/SKILL.md",
+        "frontmatter-allowed-tools-invalid",
+    );
+    assert_finding(
+        &envelope,
+        "skills/spec-invalid/SKILL.md",
+        "frontmatter-metadata-invalid",
+    );
+}

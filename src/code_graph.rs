@@ -4313,11 +4313,7 @@ const bare = import("react");
     fn incremental_code_graph_reuses_unchanged_files() {
         let root = tempfile::tempdir().expect("tempdir");
         fs::create_dir_all(root.path().join("src")).unwrap();
-        fs::write(
-            root.path().join("src/a.rs"),
-            "pub fn alpha() { beta(); }\n",
-        )
-        .unwrap();
+        fs::write(root.path().join("src/a.rs"), "pub fn alpha() { beta(); }\n").unwrap();
         fs::write(root.path().join("src/b.rs"), "pub fn beta() {}\n").unwrap();
         let index_path = root.path().join(".leio-code/index.json");
         let out_dir = default_code_graph_output_dir(root.path());

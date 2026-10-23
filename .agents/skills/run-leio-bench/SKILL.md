@@ -1,6 +1,11 @@
 ---
 name: run-leio-bench
 description: Repo-local entry for the model-swept golden-task benchmark (scripts/benchmark_models.py). Use when a task asks to sweep or benchmark models against LEIO golden tasks in this checkout, or to regenerate benchmarks/model-sweep/day-spec.json.
+license: MIT OR Apache-2.0
+compatibility: Requires python3, leio-harness, and a clean git checkout.
+metadata:
+  author: leio-code
+  version: "2.6.5"
 ---
 
 # run-leio-bench (repo-local)

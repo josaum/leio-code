@@ -47,7 +47,7 @@ test('Artifact previews bound head/tail reads and reject redirected files/direct
 test('Review distinguishes verification failure, partial running output and acceptance evidence',t=>{
   const root=fixture(t),run=path.join(root,'.leio-code/harness/runs/test-run');
   fs.mkdirSync(path.join(run,'worker'),{recursive:true});
-  fs.writeFileSync(path.join(run,'worker/stdout.log'),JSON.stringify({type:'item.completed',item:{type:'agent_message',text:'I changed the parser'}})+'\n');
+  fs.writeFileSync(path.join(run,'worker/stdout.log'),JSON.stringify({type:'thread.started'})+'\n'+JSON.stringify({type:'item.completed',item:{type:'agent_message',text:'I changed the parser'}})+'\n'+JSON.stringify({type:'item.completed',item:{type:'command_execution',command:'cargo test',aggregated_output:'ok',exit_code:0}})+'\n');
   const snapshot={repoRoot:root,runId:'test-run',state:'failed',phase:'completed',error:'verification failed',verificationResult:{status:'failed',exitCode:7},changedPaths:['parser.rs'],diffTruncated:false,untrackedTruncated:false};
   const review=reviewTask(snapshot,1024);
   assert.equal(review.next_action,'inspect_failure');assert.equal(review.verification.exit_code,7);

@@ -7,11 +7,24 @@ set -euo pipefail
 if [[ -z "${LEIO_CODE_BIN:-}" && -x "${HOME}/.cargo/bin/leio-code" ]]; then
   export LEIO_CODE_BIN="${HOME}/.cargo/bin/leio-code"
 fi
-if [[ -d "${HOME}/.cargo/bin" ]]; then
-  case ":${PATH}:" in
-    *":${HOME}/.cargo/bin:"*) ;;
-    *) export PATH="${HOME}/.cargo/bin:${PATH}" ;;
-  esac
+for dir in "${HOME}/.cargo/bin" "${HOME}/.local/bin" "/opt/homebrew/bin" "/usr/local/bin"; do
+  if [[ -d "${dir}" ]]; then
+    case ":${PATH}:" in
+      *":${dir}:"*) ;;
+      *) export PATH="${dir}:${PATH}" ;;
+    esac
+  fi
+done
+
+if ! command -v node >/dev/null 2>&1; then
+  for candidate in \
+    "${HOME}"/.nvm/versions/node/*/bin \
+    "${HOME}"/.local/share/fnm/node-versions/*/installation/bin \
+    "${HOME}/Library/Application Support/fnm/node-versions"/*/installation/bin; do
+    if [[ -x "${candidate}/node" ]]; then
+      export PATH="${candidate}:${PATH}"
+    fi
+  done
 fi
 
 if [[ -n "${CLAUDE_PLUGIN_ROOT:-}" && -f "${CLAUDE_PLUGIN_ROOT}/mcp/index.js" ]]; then

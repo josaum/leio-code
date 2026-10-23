@@ -1,6 +1,11 @@
 ---
 name: run-leio-code
 description: Use when a repository task needs LEIO Code orientation, symbol search, call graphs, runtime topology, context bundles, or doctor checks before manual search.
+license: MIT OR Apache-2.0
+compatibility: Requires cargo, python3, and a local git checkout.
+metadata:
+  author: leio-code
+  version: "2.6.5"
 ---
 
 

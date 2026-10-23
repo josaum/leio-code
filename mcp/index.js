@@ -310,8 +310,33 @@ const needleField = z
   .string()
   .min(1)
   .describe(
-    "Search needle. Usually a symbol name, file path, import literal, env var, Redis key, or deploy target name.",
-  );
+    "Search needle. Required for all find kinds except binary and route (where omitting needle returns the full registry).",
+  )
+  .optional();
+const findMethodField = z
+  .string()
+  .min(1)
+  .describe("Optional HTTP method filter (e.g. POST) when kind=route.")
+  .optional();
+const queryOutputFormatField = z
+  .enum(["json", "jsonld"])
+  .describe(
+    "Output format: json (default envelope) or jsonld (@context/@id/@type for filtering and SPARQL ingest).",
+  )
+  .optional();
+const whereFilterField = z
+  .string()
+  .min(1)
+  .describe(
+    "Optional jq-subset filter applied to JSON-LD output (implies format=jsonld unless format is set explicitly).",
+  )
+  .optional();
+const doctorFormatField = z
+  .enum(["json", "sarif"])
+  .describe(
+    "Diagnostic output format: json (default QueryEnvelope) or sarif (SARIF 2.1.0 machine report).",
+  )
+  .optional();
 const optionalNeedleField = z
   .string()
   .min(1)
@@ -323,8 +348,15 @@ const contextTaskField = z
   .string()
   .min(1)
   .describe(
-    "Natural-language task, symbol, path, env var, Redis key, or feature area to prepare an agent-ready context bundle with zones, instructions, anchors, tests, and doctors.",
-  );
+    "Natural-language task, symbol, path, env var, Redis key, or feature area to prepare an agent-ready context bundle with zones, instructions, anchors, tests, and doctors. Optional when diff=true.",
+  )
+  .optional();
+const contextDiffField = z
+  .boolean()
+  .describe(
+    "Seed context from uncommitted/staged git changes (--diff), boosting modified files, 1-hop importers, and missing co-edit partners.",
+  )
+  .optional();
 const outputDirField = z
   .string()
   .describe("Directory where exported artifacts should be written.")
@@ -993,9 +1025,10 @@ async function runLeioArgs(args, timeout_ms) {
 
   registerLeioTool(
     "leio_code_context",
-    "Start a repository task here: provide task and repo_root for ranked files, instructions, tests, provider identity, index coverage and limitations. Status and capabilities are optional diagnostics; a precise known file can go directly to graph. Read structuredContent.next_calls for direct definition opens and graph follow-ups pinned to the same repository and index. Use full=true only when exhaustive detail is needed.",
+    "Start a repository task here: provide task (or diff=true for uncommitted working-tree impact) and repo_root for ranked files, instructions, tests, provider identity, index coverage and limitations. Status and capabilities are optional diagnostics; a precise known file can go directly to graph. Read structuredContent.next_calls for direct definition opens and graph follow-ups pinned to the same repository and index. Use full=true only when exhaustive detail is needed.",
     {
       task: contextTaskField,
+      diff: contextDiffField,
       full: z
         .boolean()
         .describe(
@@ -1017,6 +1050,7 @@ async function runLeioArgs(args, timeout_ms) {
       const input = z
         .object({
           task: contextTaskField,
+          diff: contextDiffField,
           full: z.boolean().optional(),
           limit: z.number().int().min(1).max(40).optional(),
           repo_root: repoRootField,
@@ -1025,7 +1059,17 @@ async function runLeioArgs(args, timeout_ms) {
         })
         .parse(raw);
 
-      const args = ["context", input.task];
+      if (!input.diff && !input.task) {
+        throw new Error("task is required for leio_code_context unless diff=true");
+      }
+
+      const args = ["context"];
+      if (input.task) {
+        args.push(input.task);
+      }
+      if (input.diff) {
+        args.push("--diff");
+      }
       if (input.full) {
         args.push("--full");
       }
@@ -1068,10 +1112,13 @@ async function runLeioArgs(args, timeout_ms) {
 
   registerLeioTool(
     "leio_code_find",
-    "PREFERRED over Grep/Glob for code lookups. Finds symbols, env vars, Redis keys, deploy targets, cartridges, API routes, and Docker services with exact file:line evidence. Faster and more complete than manual searching — covers the entire monorepo index in one call.",
+    "PREFERRED over Grep/Glob for code lookups. Finds symbols, env vars, Redis keys, deploy targets, cartridges, API routes, Docker services, binaries, routes, and callers with exact file:line evidence. Supports format=jsonld and where=<jq-subset> filtering.",
     {
       kind: activeKindSchemas.find,
       needle: needleField,
+      method: findMethodField,
+      format: queryOutputFormatField,
+      where: whereFilterField,
       repo_root: repoRootField,
       index_path: indexPathField,
       timeout_ms: timeoutMsField,
@@ -1081,13 +1128,34 @@ async function runLeioArgs(args, timeout_ms) {
         .object({
           kind: activeKindSchemas.find,
           needle: needleField,
+          method: findMethodField,
+          format: queryOutputFormatField,
+          where: whereFilterField,
           repo_root: repoRootField,
           index_path: indexPathField,
           timeout_ms: timeoutMsField,
         })
         .parse(raw);
 
-      return invokeLeio(["find", input.kind, input.needle], {
+      if (input.kind !== "binary" && input.kind !== "route" && !input.needle) {
+        throw new Error(`needle is required for find kind "${input.kind}"`);
+      }
+
+      const args = ["find", input.kind];
+      if (input.needle) {
+        args.push(input.needle);
+      }
+      if (input.method) {
+        args.push("--method", input.method);
+      }
+      if (input.format) {
+        args.push("--format", input.format);
+      }
+      if (input.where) {
+        args.push("--where", input.where);
+      }
+
+      return invokeLeio(args, {
         repoRoot: input.repo_root,
         indexPath: input.index_path,
         timeoutMs: input.timeout_ms,
@@ -1097,13 +1165,15 @@ async function runLeioArgs(args, timeout_ms) {
 
   registerLeioTool(
     "leio_code_explain",
-    "Deep operational explanation with evidence and lineage. Use for deploy targets (profile, cartridges, health checks, rollback), env vars (who reads/writes, operational meaning), Redis keys (state semantics), or cartridges (where deployed, integrations). Much richer than reading individual files.",
+    "Deep operational explanation with evidence and lineage. Use for deploy targets (profile, cartridges, health checks, rollback), env vars (who reads/writes, operational meaning), Redis keys (state semantics), cartridges (where deployed, integrations), binaries, or HTTP routes. Supports format=jsonld and where=<jq-subset> filtering.",
     {
       kind: activeKindSchemas.explain,
       needle: z
         .string()
         .describe("Target to explain.")
         .optional(),
+      format: queryOutputFormatField,
+      where: whereFilterField,
       repo_root: repoRootField,
       index_path: indexPathField,
       timeout_ms: timeoutMsField,
@@ -1113,6 +1183,8 @@ async function runLeioArgs(args, timeout_ms) {
         .object({
           kind: activeKindSchemas.explain,
           needle: z.string().optional(),
+          format: queryOutputFormatField,
+          where: whereFilterField,
           repo_root: repoRootField,
           index_path: indexPathField,
           timeout_ms: timeoutMsField,
@@ -1127,6 +1199,12 @@ async function runLeioArgs(args, timeout_ms) {
       if (input.needle) {
         args.push(input.needle);
       }
+      if (input.format) {
+        args.push("--format", input.format);
+      }
+      if (input.where) {
+        args.push("--where", input.where);
+      }
 
       return invokeLeio(args, {
         repoRoot: input.repo_root,
@@ -1138,9 +1216,10 @@ async function runLeioArgs(args, timeout_ms) {
 
   registerLeioTool(
     "leio_code_doctor",
-    "CI-grade architectural audit. Detects contract drift across deploy targets, auth chains, session state, events, cartridge boundaries, egress, Redis hygiene, gateway boundaries, frontend congruence, TypeScript config anchors, LEIO Code self-contracts, flight protocol, and more. Run kind=all for full sweep, or targeted doctors for specific concerns. Essential before any deploy or cross-cutting refactor.",
+    "CI-grade architectural audit. Detects contract drift across deploy targets, auth chains, session state, events, cartridge boundaries, egress, Redis hygiene, gateway boundaries, frontend congruence, TypeScript config anchors, LEIO Code self-contracts, flight protocol, and more. Run kind=all for full sweep, targeted doctors, or explain:<rule>/explain-list/suggest:<rule>/triage/playbook/playbook-sync. Pass format=sarif for SARIF 2.1.0 output.",
     {
       kind: activeKindSchemas.doctor,
+      format: doctorFormatField,
       repo_root: repoRootField,
       index_path: indexPathField,
       timeout_ms: timeoutMsField,
@@ -1149,13 +1228,19 @@ async function runLeioArgs(args, timeout_ms) {
       const input = z
         .object({
           kind: activeKindSchemas.doctor,
+          format: doctorFormatField,
           repo_root: repoRootField,
           index_path: indexPathField,
           timeout_ms: timeoutMsField,
         })
         .parse(raw);
 
-      return invokeLeio(["doctor", input.kind], {
+      const args = ["doctor", input.kind];
+      if (input.format === "sarif") {
+        args.push("--format", "sarif");
+      }
+
+      return invokeLeio(args, {
         repoRoot: input.repo_root,
         indexPath: input.index_path,
         timeoutMs: input.timeout_ms,
@@ -1722,8 +1807,10 @@ async function runLeioArgs(args, timeout_ms) {
       } else if (input.action === "drop") {
         if (!input.name) return executionErrorResult("kb drop requires name");
         args.push("drop", input.name);
+      } else {
+        args.push("list");
       }
-      return runLeioArgs(["kb", ...args], input.timeout_ms);
+      return runLeioArgs(["--json", "kb", ...args], input.timeout_ms);
     },
   );
 }
@@ -1743,6 +1830,9 @@ async function upgradeToolSchemas() {
     leio_code_find: {
       kind: activeKindSchemas.find,
       needle: needleField,
+      method: findMethodField,
+      format: queryOutputFormatField,
+      where: whereFilterField,
       repo_root: repoRootField,
       index_path: indexPathField,
       timeout_ms: timeoutMsField,
@@ -1750,12 +1840,15 @@ async function upgradeToolSchemas() {
     leio_code_explain: {
       kind: activeKindSchemas.explain,
       needle: z.string().describe("Target to explain.").optional(),
+      format: queryOutputFormatField,
+      where: whereFilterField,
       repo_root: repoRootField,
       index_path: indexPathField,
       timeout_ms: timeoutMsField,
     },
     leio_code_doctor: {
       kind: activeKindSchemas.doctor,
+      format: doctorFormatField,
       repo_root: repoRootField,
       index_path: indexPathField,
       timeout_ms: timeoutMsField,

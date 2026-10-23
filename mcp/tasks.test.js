@@ -7,8 +7,11 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
+import {findBinaryUpwards,findInstalledBinary} from './resolve-binary.js';
 const here=path.dirname(fileURLToPath(import.meta.url));
-const harness=process.env.LEIO_HARNESS_BIN;
+const harnessName=process.platform==='win32'?'leio-harness.exe':'leio-harness';
+const resolvedHarness=process.env.LEIO_HARNESS_BIN||findInstalledBinary(harnessName)||findBinaryUpwards(path.resolve(here,'..'),harnessName);
+const harness=resolvedHarness&&existsSync(resolvedHarness)?resolvedHarness:undefined;
 test('MCP tasks submit, report actual output and verification, paginate events, and cancel', {skip: !harness && 'set LEIO_HARNESS_BIN to the built harness'}, async t => {
   const repo=mkdtempSync(path.join(tmpdir(),'leio-task-mcp-'));
   writeFileSync(path.join(repo,'.gitignore'),'.leio-code/\n');

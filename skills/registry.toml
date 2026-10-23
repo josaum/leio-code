@@ -1,0 +1,37 @@
+schema_version = 1
+credential_allowlist = []
+
+[[skills]]
+path = "skills/leio-code/SKILL.md"
+name = "leio-code"
+status = "retain"
+
+[[skills]]
+path = "skills/leio-code-apps-sdk/SKILL.md"
+name = "leio-code-apps-sdk"
+status = "retain"
+
+[[skills]]
+path = "skills/leio-bench/SKILL.md"
+name = "leio-bench"
+status = "retain"
+
+[[skills]]
+path = "skills/leio-day/SKILL.md"
+name = "leio-day"
+status = "retain"
+
+[[skills]]
+path = "skills/leio-trio/SKILL.md"
+name = "leio-trio"
+status = "retain"
+
+[[skills]]
+path = ".agents/skills/run-leio-code/SKILL.md"
+name = "run-leio-code"
+status = "retain"
+
+[[skills]]
+path = ".agents/skills/run-leio-bench/SKILL.md"
+name = "run-leio-bench"
+status = "retain"

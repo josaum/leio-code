@@ -1,0 +1,3812 @@
+{
+  "generated_at": "2026-10-23T12:57:48Z",
+  "binary_version": "leio-code 2.6.5 (a979878f45eb, clean)",
+  "suite_size": 25,
+  "ablations": {
+    "rg_lexical": {
+      "label": "Ripgrep Lexical Baseline",
+      "task_count": 25,
+      "mrr": 0.3193,
+      "hit_at_1": 0.2,
+      "hit_at_3": 0.4,
+      "hit_at_5": 0.52,
+      "mean_tokens_to_localize": 17260.6,
+      "mean_tool_calls": 7.04,
+      "median_latency_ms": 106.47,
+      "by_category": {
+        "cross_lang_protocol": {
+          "count": 5,
+          "mrr": 0.0,
+          "hit_at_1": 0.0,
+          "hit_at_3": 0.0
+        },
+        "infra_topology": {
+          "count": 5,
+          "mrr": 0.24,
+          "hit_at_1": 0.2,
+          "hit_at_3": 0.2
+        },
+        "knowledge_graph": {
+          "count": 5,
+          "mrr": 0.44,
+          "hit_at_1": 0.4,
+          "hit_at_3": 0.4
+        },
+        "multi_agent_harness": {
+          "count": 5,
+          "mrr": 0.4667,
+          "hit_at_1": 0.2,
+          "hit_at_3": 0.8
+        },
+        "symbol_module": {
+          "count": 5,
+          "mrr": 0.45,
+          "hit_at_1": 0.2,
+          "hit_at_3": 0.6
+        }
+      },
+      "results": [
+        {
+          "id": "t01",
+          "category": "symbol_module",
+          "task": "context file ranking scoring exact identifier relevance",
+          "relevant_paths": [
+            "src/context.rs"
+          ],
+          "paths": [
+            "public/scripts/benchmark_navigation.mjs",
+            "public/benchmarks/navigation-results.json",
+            "public/benchmarks/public-results.json",
+            "src/context.rs",
+            "README.md"
+          ],
+          "elapsed_ms": 108.78,
+          "first_relevant_rank": 4,
+          "reciprocal_rank": 0.25,
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "hit_at_5": true,
+          "tokens_to_localize": 17755,
+          "tool_calls_to_localize": 7
+        },
+        {
+          "id": "t02",
+          "category": "symbol_module",
+          "task": "update installed CLI and refresh plugin caches",
+          "relevant_paths": [
+            "src/update.rs"
+          ],
+          "paths": [
+            "CHANGELOG.md",
+            "src/update.rs",
+            "public/benchmarks/public-results.json",
+            "src/main.rs",
+            "docs/HARNESS-TASKS.md"
+          ],
+          "elapsed_ms": 80.53,
+          "first_relevant_rank": 2,
+          "reciprocal_rank": 0.5,
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 12130,
+          "tool_calls_to_localize": 5
+        },
+        {
+          "id": "t03",
+          "category": "symbol_module",
+          "task": "formal concept analysis lattice induction Galois cover",
+          "relevant_paths": [
+            "src/fca.rs",
+            "src/lattice.rs"
+          ],
+          "paths": [
+            "README.md",
+            "src/fca.rs",
+            "public/docs/CLI-GUIDE.md",
+            "skills/leio-code/references/lattice-nav.md",
+            "src/main.rs"
+          ],
+          "elapsed_ms": 91.13,
+          "first_relevant_rank": 2,
+          "reciprocal_rank": 0.5,
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 10227,
+          "tool_calls_to_localize": 6
+        },
+        {
+          "id": "t04",
+          "category": "symbol_module",
+          "task": "incremental filesystem watcher debounce reindex loop",
+          "relevant_paths": [
+            "src/watcher.rs"
+          ],
+          "paths": [
+            "src/watcher.rs",
+            "tests/watch_smoke.rs",
+            "src/main.rs",
+            "docs/POSITIONING.md",
+            "schema/leio-code-mcp-service-descriptor.json"
+          ],
+          "elapsed_ms": 76.2,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 3875,
+          "tool_calls_to_localize": 4
+        },
+        {
+          "id": "t05",
+          "category": "symbol_module",
+          "task": "git history co-edit playbook counters and doctor boosts",
+          "relevant_paths": [
+            "src/playbook.rs"
+          ],
+          "paths": [
+            "ROADMAP.md",
+            "mcp/guide.js",
+            "src/context.rs",
+            "src/main.rs",
+            "CHANGELOG.md"
+          ],
+          "elapsed_ms": 109.83,
+          "first_relevant_rank": null,
+          "reciprocal_rank": 0.0,
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "hit_at_5": false,
+          "tokens_to_localize": 27386,
+          "tool_calls_to_localize": 8
+        },
+        {
+          "id": "t06",
+          "category": "infra_topology",
+          "task": "fix Apps SDK Docker smoke",
+          "relevant_paths": [
+            "apps-sdk/scripts/smoke-docker.sh",
+            "apps-sdk/smoke.mjs"
+          ],
+          "paths": [
+            "CHANGELOG.md",
+            "src/context.rs",
+            "apps-sdk/README.md",
+            "apps-sdk/server.js",
+            "docs/DEPLOY-GCP.md"
+          ],
+          "elapsed_ms": 51.22,
+          "first_relevant_rank": null,
+          "reciprocal_rank": 0.0,
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "hit_at_5": false,
+          "tokens_to_localize": 20675,
+          "tool_calls_to_localize": 9
+        },
+        {
+          "id": "t07",
+          "category": "infra_topology",
+          "task": "session startup inject canonical skill instructions",
+          "relevant_paths": [
+            "hooks/session-context.sh"
+          ],
+          "paths": [
+            "CHANGELOG.md",
+            "docs/retrieval-agent-evaluation.md",
+            "public/benchmarks/public-results.json",
+            "mcp/index.js",
+            "src/context.rs"
+          ],
+          "elapsed_ms": 74.74,
+          "first_relevant_rank": null,
+          "reciprocal_rank": 0.0,
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "hit_at_5": false,
+          "tokens_to_localize": 18231,
+          "tool_calls_to_localize": 8
+        },
+        {
+          "id": "t08",
+          "category": "infra_topology",
+          "task": "Keycloak realm OAuth client configuration for ChatGPT app",
+          "relevant_paths": [
+            "apps-sdk/keycloak/configure-app-client.mjs",
+            "apps-sdk/keycloak/chatgpt-client-config.mjs"
+          ],
+          "paths": [
+            "apps-sdk/README.md",
+            "docs/DEPLOY-GCP.md",
+            "apps-sdk/SUBMISSION.md",
+            "apps-sdk/keycloak/realm-contract.test.mjs",
+            "apps-sdk/keycloak/configure-app-client.mjs"
+          ],
+          "elapsed_ms": 91.33,
+          "first_relevant_rank": 5,
+          "reciprocal_rank": 0.2,
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "hit_at_5": true,
+          "tokens_to_localize": 15160,
+          "tool_calls_to_localize": 9
+        },
+        {
+          "id": "t09",
+          "category": "infra_topology",
+          "task": "stdio MCP bootstrap script stripped PATH cargo binary",
+          "relevant_paths": [
+            "scripts/launch-stdio-mcp.sh"
+          ],
+          "paths": [
+            "scripts/launch-stdio-mcp.sh",
+            "README.md",
+            "CHANGELOG.md",
+            "codex/AGENTS.md",
+            "public/docs/CLI-GUIDE.md"
+          ],
+          "elapsed_ms": 113.21,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 9451,
+          "tool_calls_to_localize": 4
+        },
+        {
+          "id": "t10",
+          "category": "infra_topology",
+          "task": "register MCP server and default skill across agent hosts",
+          "relevant_paths": [
+            "packaging/register-mcp.js"
+          ],
+          "paths": [
+            "CHANGELOG.md",
+            "mcp/guide.js",
+            "apps-sdk/server.js",
+            "Makefile",
+            "README.md"
+          ],
+          "elapsed_ms": 155.55,
+          "first_relevant_rank": null,
+          "reciprocal_rank": 0.0,
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "hit_at_5": false,
+          "tokens_to_localize": 23987,
+          "tool_calls_to_localize": 8
+        },
+        {
+          "id": "t11",
+          "category": "cross_lang_protocol",
+          "task": "MCP binary resolution installed cargo executable",
+          "relevant_paths": [
+            "mcp/resolve-binary.js"
+          ],
+          "paths": [
+            "CHANGELOG.md",
+            "public/benchmarks/navigation-results.json",
+            "docs/superpowers/specs/2026-08-19-repository-local-doctor-packs-design.md",
+            "public/benchmarks/public-results.json",
+            "public/scripts/benchmark_navigation.mjs"
+          ],
+          "elapsed_ms": 86.53,
+          "first_relevant_rank": null,
+          "reciprocal_rank": 0.0,
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "hit_at_5": false,
+          "tokens_to_localize": 20188,
+          "tool_calls_to_localize": 8
+        },
+        {
+          "id": "t12",
+          "category": "cross_lang_protocol",
+          "task": "compact editing packet files_to_read token budget compression",
+          "relevant_paths": [
+            "mcp/compact.js"
+          ],
+          "paths": [
+            "mcp/index.js",
+            "CHANGELOG.md",
+            "mcp/guide.js",
+            "src/context.rs",
+            "apps-sdk/server.js"
+          ],
+          "elapsed_ms": 115.71,
+          "first_relevant_rank": null,
+          "reciprocal_rank": 0.0,
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "hit_at_5": false,
+          "tokens_to_localize": 25934,
+          "tool_calls_to_localize": 8
+        },
+        {
+          "id": "t13",
+          "category": "cross_lang_protocol",
+          "task": "MCP 2025-11-25 protocol version handshake and server discovery",
+          "relevant_paths": [
+            "mcp/mcp-spec-2025-11-25.js"
+          ],
+          "paths": [
+            "README.md",
+            "CHANGELOG.md",
+            "apps-sdk/README.md",
+            "apps-sdk/server.js",
+            "public/docs/CLI-GUIDE.md"
+          ],
+          "elapsed_ms": 141.05,
+          "first_relevant_rank": null,
+          "reciprocal_rank": 0.0,
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "hit_at_5": false,
+          "tokens_to_localize": 26062,
+          "tool_calls_to_localize": 8
+        },
+        {
+          "id": "t14",
+          "category": "cross_lang_protocol",
+          "task": "JSON-LD W3C PROV provenance event journal and URI mapping",
+          "relevant_paths": [
+            "src/jsonld.rs"
+          ],
+          "paths": [
+            "README.md",
+            "docs/output-schema.md",
+            "public/docs/CLI-GUIDE.md",
+            "docs/superpowers/specs/2026-08-26-multi-repo-orchestration-design.md",
+            "src/main.rs"
+          ],
+          "elapsed_ms": 146.41,
+          "first_relevant_rank": null,
+          "reciprocal_rank": 0.0,
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "hit_at_5": false,
+          "tokens_to_localize": 28205,
+          "tool_calls_to_localize": 8
+        },
+        {
+          "id": "t15",
+          "category": "cross_lang_protocol",
+          "task": "cross-language subprocess spawn and HTTP route edge extraction",
+          "relevant_paths": [
+            "src/cross_language/mod.rs",
+            "src/cross_language/http_route.rs",
+            "src/cross_language/http_client.rs"
+          ],
+          "paths": [
+            "CHANGELOG.md",
+            "src/query.rs",
+            "src/export.rs",
+            "src/indexer.rs",
+            "docs/POSITIONING.md"
+          ],
+          "elapsed_ms": 109.34,
+          "first_relevant_rank": null,
+          "reciprocal_rank": 0.0,
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "hit_at_5": false,
+          "tokens_to_localize": 25558,
+          "tool_calls_to_localize": 10
+        },
+        {
+          "id": "t16",
+          "category": "knowledge_graph",
+          "task": "compiled markdown wiki SPARQL explain and adaptive search",
+          "relevant_paths": [
+            "src/knowledge.rs",
+            "src/knowledge_explain.rs",
+            "crates/leio-knowledge-core/src/lib.rs",
+            "crates/leio-knowledge-core/src/sparql.rs"
+          ],
+          "paths": [
+            "src/main.rs",
+            "mcp/guide.js",
+            "mcp/index.js",
+            "docs/output-schema.md",
+            "schema/leio-code-mcp-service-descriptor.json"
+          ],
+          "elapsed_ms": 94.26,
+          "first_relevant_rank": null,
+          "reciprocal_rank": 0.0,
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "hit_at_5": false,
+          "tokens_to_localize": 22851,
+          "tool_calls_to_localize": 11
+        },
+        {
+          "id": "t17",
+          "category": "knowledge_graph",
+          "task": "code graph N-Quads export and caller callee query cache",
+          "relevant_paths": [
+            "src/code_graph.rs",
+            "src/graph_query.rs"
+          ],
+          "paths": [
+            "README.md",
+            "src/lib.rs",
+            "CHANGELOG.md",
+            "mcp/guide.js",
+            "src/code_graph.rs"
+          ],
+          "elapsed_ms": 117.5,
+          "first_relevant_rank": 5,
+          "reciprocal_rank": 0.2,
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "hit_at_5": true,
+          "tokens_to_localize": 25900,
+          "tool_calls_to_localize": 9
+        },
+        {
+          "id": "t18",
+          "category": "knowledge_graph",
+          "task": "persistent navigation cursor goto related and lattice alignment",
+          "relevant_paths": [
+            "src/nav.rs"
+          ],
+          "paths": [
+            "src/nav.rs",
+            "CHANGELOG.md",
+            "skills/leio-code/references/lattice-nav.md",
+            "mcp/guide.js",
+            "mcp/workflow.js"
+          ],
+          "elapsed_ms": 95.8,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 5903,
+          "tool_calls_to_localize": 4
+        },
+        {
+          "id": "t19",
+          "category": "knowledge_graph",
+          "task": "zero-copy mmap Arrow node store and BGE-M3 SIMD cosine reranking",
+          "relevant_paths": [
+            "src/local_nodes.rs",
+            "src/arrow_ipc.rs"
+          ],
+          "paths": [
+            "src/local_nodes.rs",
+            "README.md",
+            "CHANGELOG.md",
+            "src/export.rs",
+            "public/docs/CLI-GUIDE.md"
+          ],
+          "elapsed_ms": 152.17,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 9004,
+          "tool_calls_to_localize": 5
+        },
+        {
+          "id": "t20",
+          "category": "knowledge_graph",
+          "task": "audit SARIF 2.1.0 report generation and strict doctor exit codes",
+          "relevant_paths": [
+            "src/audit.rs",
+            "src/doctors/mod.rs"
+          ],
+          "paths": [
+            "ROADMAP.md",
+            "src/main.rs",
+            "CHANGELOG.md",
+            "src/diagnostics.rs",
+            "docs/output-schema.md"
+          ],
+          "elapsed_ms": 115.69,
+          "first_relevant_rank": null,
+          "reciprocal_rank": 0.0,
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "hit_at_5": false,
+          "tokens_to_localize": 25347,
+          "tool_calls_to_localize": 9
+        },
+        {
+          "id": "t21",
+          "category": "multi_agent_harness",
+          "task": "persist workflow approval retry revision inputs",
+          "relevant_paths": [
+            "crates/leio-harness/src/workflow.rs"
+          ],
+          "paths": [
+            "docs/harness/WORKFLOW.md",
+            "crates/leio-harness/tests/workflow.rs",
+            "public/benchmarks/navigation-results.json",
+            "CHANGELOG.md",
+            "public/benchmarks/public-results.json"
+          ],
+          "elapsed_ms": 84.21,
+          "first_relevant_rank": null,
+          "reciprocal_rank": 0.0,
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "hit_at_5": false,
+          "tokens_to_localize": 17377,
+          "tool_calls_to_localize": 8
+        },
+        {
+          "id": "t22",
+          "category": "multi_agent_harness",
+          "task": "local deployment verify revision rollback artifact",
+          "relevant_paths": [
+            "crates/leio-harness/src/delivery.rs"
+          ],
+          "paths": [
+            "CHANGELOG.md",
+            "mcp/guide.js",
+            "crates/leio-harness/src/delivery.rs",
+            "crates/leio-harness/tests/delivery.rs",
+            "docs/harness/WORKFLOW.md"
+          ],
+          "elapsed_ms": 81.28,
+          "first_relevant_rank": 3,
+          "reciprocal_rank": 0.3333333333333333,
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 16168,
+          "tool_calls_to_localize": 6
+        },
+        {
+          "id": "t23",
+          "category": "multi_agent_harness",
+          "task": "GEPA spherical slerp trust-region mutation and Pareto frontier",
+          "relevant_paths": [
+            "crates/leio-harness/src/gepa.rs"
+          ],
+          "paths": [
+            "crates/leio-harness/src/gepa.rs",
+            "crates/leio-harness/src/main.rs",
+            "docs/harness/AGENT-FABRIC.md",
+            "crates/leio-harness/src/bus_client.rs",
+            "crates/leio-harness/src/bus.rs"
+          ],
+          "elapsed_ms": 106.47,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 3919,
+          "tool_calls_to_localize": 4
+        },
+        {
+          "id": "t24",
+          "category": "multi_agent_harness",
+          "task": "SIGReg sliced Epps-Pulley isotropy score and directional collapse",
+          "relevant_paths": [
+            "crates/leio-harness/src/sigreg.rs"
+          ],
+          "paths": [
+            "crates/leio-harness/src/main.rs",
+            "crates/leio-harness/src/sigreg.rs",
+            "docs/harness/AGENT-FABRIC.md",
+            "crates/leio-harness/src/improvement.rs",
+            "scripts/benchmark_paper_ablations.py"
+          ],
+          "elapsed_ms": 102.86,
+          "first_relevant_rank": 2,
+          "reciprocal_rank": 0.5,
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 5887,
+          "tool_calls_to_localize": 5
+        },
+        {
+          "id": "t25",
+          "category": "multi_agent_harness",
+          "task": "Arrow Flight do_exchange semantic embedding bus publish and match",
+          "relevant_paths": [
+            "crates/leio-harness/src/bus.rs"
+          ],
+          "paths": [
+            "docs/harness/AGENT-FABRIC.md",
+            "crates/leio-harness/src/bus.rs",
+            "crates/leio-harness/src/main.rs",
+            "crates/leio-harness/src/bus_client.rs",
+            "CHANGELOG.md"
+          ],
+          "elapsed_ms": 122.83,
+          "first_relevant_rank": 2,
+          "reciprocal_rank": 0.5,
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 14334,
+          "tool_calls_to_localize": 5
+        }
+      ]
+    },
+    "path_only": {
+      "label": "LEIO Path-Only IDF",
+      "task_count": 25,
+      "mrr": 0.6747,
+      "hit_at_1": 0.52,
+      "hit_at_3": 0.84,
+      "hit_at_5": 0.88,
+      "mean_tokens_to_localize": 1019.1,
+      "mean_tool_calls": 3.04,
+      "median_latency_ms": 116.53,
+      "by_category": {
+        "cross_lang_protocol": {
+          "count": 5,
+          "mrr": 0.6,
+          "hit_at_1": 0.4,
+          "hit_at_3": 0.8
+        },
+        "infra_topology": {
+          "count": 5,
+          "mrr": 0.74,
+          "hit_at_1": 0.6,
+          "hit_at_3": 0.8
+        },
+        "knowledge_graph": {
+          "count": 5,
+          "mrr": 0.4667,
+          "hit_at_1": 0.2,
+          "hit_at_3": 0.8
+        },
+        "multi_agent_harness": {
+          "count": 5,
+          "mrr": 0.7,
+          "hit_at_1": 0.6,
+          "hit_at_3": 0.8
+        },
+        "symbol_module": {
+          "count": 5,
+          "mrr": 0.8667,
+          "hit_at_1": 0.8,
+          "hit_at_3": 1.0
+        }
+      },
+      "results": [
+        {
+          "id": "t01",
+          "category": "symbol_module",
+          "task": "context file ranking scoring exact identifier relevance",
+          "relevant_paths": [
+            "src/context.rs"
+          ],
+          "paths": [
+            "src/context.rs",
+            "mcp/contracts/context.jsonld",
+            "tests/export_formal_context_stream.rs",
+            "benchmarks/context-golden-tasks.json",
+            "hooks/session-context.sh"
+          ],
+          "elapsed_ms": 117.64,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 585,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t02",
+          "category": "symbol_module",
+          "task": "update installed CLI and refresh plugin caches",
+          "relevant_paths": [
+            "src/update.rs"
+          ],
+          "paths": [
+            "scripts/install_codex_plugin.py",
+            "tests/test_install_codex_plugin.py",
+            "src/update.rs",
+            ".claude-plugin/plugin.json",
+            ".codex-plugin/plugin.json"
+          ],
+          "elapsed_ms": 114.07,
+          "first_relevant_rank": 3,
+          "reciprocal_rank": 0.3333333333333333,
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 1480,
+          "tool_calls_to_localize": 4
+        },
+        {
+          "id": "t03",
+          "category": "symbol_module",
+          "task": "formal concept analysis lattice induction Galois cover",
+          "relevant_paths": [
+            "src/fca.rs",
+            "src/lattice.rs"
+          ],
+          "paths": [
+            "src/lattice.rs",
+            "tests/export_formal_context_stream.rs",
+            "tests/diagnostics_format.rs",
+            "crates/leio-harness/tests/cli_coverage.rs",
+            "tests/language_discovery.rs"
+          ],
+          "elapsed_ms": 125.42,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 586,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t04",
+          "category": "symbol_module",
+          "task": "incremental filesystem watcher debounce reindex loop",
+          "relevant_paths": [
+            "src/watcher.rs"
+          ],
+          "paths": [
+            "src/watcher.rs",
+            "mcp/watch-state.js",
+            "mcp/watch-state.test.js",
+            "src/doctors/orphan_files.rs",
+            ".github/workflows/watch-linux.yml"
+          ],
+          "elapsed_ms": 132.77,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 578,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t05",
+          "category": "symbol_module",
+          "task": "git history co-edit playbook counters and doctor boosts",
+          "relevant_paths": [
+            "src/playbook.rs"
+          ],
+          "paths": [
+            "src/playbook.rs",
+            "tests/skill_contract_doctor.rs",
+            "tests/doctor_explain.rs",
+            "tests/generic_doctor_pack.rs",
+            "tests/doctor_suggest.rs"
+          ],
+          "elapsed_ms": 121.83,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 580,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t06",
+          "category": "infra_topology",
+          "task": "fix Apps SDK Docker smoke",
+          "relevant_paths": [
+            "apps-sdk/scripts/smoke-docker.sh",
+            "apps-sdk/smoke.mjs"
+          ],
+          "paths": [
+            "apps-sdk/scripts/smoke-docker.sh",
+            "apps-sdk/keycloak/docker-compose.yml",
+            "apps-sdk/smoke.mjs",
+            "apps-sdk/Dockerfile",
+            "apps-sdk/keycloak/Dockerfile"
+          ],
+          "elapsed_ms": 104.9,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 576,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t07",
+          "category": "infra_topology",
+          "task": "session startup inject canonical skill instructions",
+          "relevant_paths": [
+            "hooks/session-context.sh"
+          ],
+          "paths": [
+            "src/doctors/skill_contract.rs",
+            "tests/skill_contract_doctor.rs",
+            "tests/skill_runbook_safety.rs",
+            "mcp/startup-resilience.test.js",
+            "hooks/session-context.sh"
+          ],
+          "elapsed_ms": 106.1,
+          "first_relevant_rank": 5,
+          "reciprocal_rank": 0.2,
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "hit_at_5": true,
+          "tokens_to_localize": 2078,
+          "tool_calls_to_localize": 6
+        },
+        {
+          "id": "t08",
+          "category": "infra_topology",
+          "task": "Keycloak realm OAuth client configuration for ChatGPT app",
+          "relevant_paths": [
+            "apps-sdk/keycloak/configure-app-client.mjs",
+            "apps-sdk/keycloak/chatgpt-client-config.mjs"
+          ],
+          "paths": [
+            "apps-sdk/keycloak/chatgpt-client-config.test.mjs",
+            "apps-sdk/keycloak/chatgpt-client-config.mjs",
+            "apps-sdk/keycloak/configure-app-client.mjs",
+            "apps-sdk/keycloak/realm/leio-code-realm.json",
+            "apps-sdk/keycloak/import-realm.mjs"
+          ],
+          "elapsed_ms": 109.09,
+          "first_relevant_rank": 2,
+          "reciprocal_rank": 0.5,
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 1053,
+          "tool_calls_to_localize": 3
+        },
+        {
+          "id": "t09",
+          "category": "infra_topology",
+          "task": "stdio MCP bootstrap script stripped PATH cargo binary",
+          "relevant_paths": [
+            "scripts/launch-stdio-mcp.sh"
+          ],
+          "paths": [
+            "scripts/launch-stdio-mcp.sh",
+            "mcp/resolve-binary.test.js",
+            "mcp/resolve-binary.js",
+            "mcp/install-binary.mjs",
+            "scripts/verify-stdio.mjs"
+          ],
+          "elapsed_ms": 107.19,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 579,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t10",
+          "category": "infra_topology",
+          "task": "register MCP server and default skill across agent hosts",
+          "relevant_paths": [
+            "packaging/register-mcp.js"
+          ],
+          "paths": [
+            "packaging/register-mcp.js",
+            "packaging/register-mcp.test.js",
+            "apps-sdk/server.js",
+            "packaging/python/src/leio_code/register.py",
+            "src/doctors/skill_contract.rs"
+          ],
+          "elapsed_ms": 110.37,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 586,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t11",
+          "category": "cross_lang_protocol",
+          "task": "MCP binary resolution installed cargo executable",
+          "relevant_paths": [
+            "mcp/resolve-binary.js"
+          ],
+          "paths": [
+            "mcp/resolve-binary.test.js",
+            "mcp/resolve-binary.js",
+            "mcp/install-binary.mjs",
+            "mcp/install-root.test.js",
+            "mcp/install-root.js"
+          ],
+          "elapsed_ms": 114.09,
+          "first_relevant_rank": 2,
+          "reciprocal_rank": 0.5,
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 1026,
+          "tool_calls_to_localize": 3
+        },
+        {
+          "id": "t12",
+          "category": "cross_lang_protocol",
+          "task": "compact editing packet files_to_read token budget compression",
+          "relevant_paths": [
+            "mcp/compact.js"
+          ],
+          "paths": [
+            "mcp/compact.js",
+            "mcp/compact.test.js",
+            "apps-sdk/keycloak/get-service-token.sh",
+            "src/doctors/orphan_files.rs",
+            "tests/generic_doctor_pack.rs"
+          ],
+          "elapsed_ms": 120.71,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 583,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t13",
+          "category": "cross_lang_protocol",
+          "task": "MCP 2025-11-25 protocol version handshake and server discovery",
+          "relevant_paths": [
+            "mcp/mcp-spec-2025-11-25.js"
+          ],
+          "paths": [
+            "mcp/mcp-spec-2025-11-25.test.js",
+            "mcp/mcp-spec-2025-11-25.js",
+            "apps-sdk/server.js",
+            "src/doctors/version_manifest.rs",
+            "apps-sdk/server-health.test.js"
+          ],
+          "elapsed_ms": 120.61,
+          "first_relevant_rank": 2,
+          "reciprocal_rank": 0.5,
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 1036,
+          "tool_calls_to_localize": 3
+        },
+        {
+          "id": "t14",
+          "category": "cross_lang_protocol",
+          "task": "JSON-LD W3C PROV provenance event journal and URI mapping",
+          "relevant_paths": [
+            "src/jsonld.rs"
+          ],
+          "paths": [
+            "src/doctors/vendored_crate_provenance.rs",
+            "benchmarks/paper-ablation-results.json",
+            "benchmarks/paper-evaluation-suite.json",
+            "public-export.json",
+            "mcp/package.json"
+          ],
+          "elapsed_ms": 119.57,
+          "first_relevant_rank": null,
+          "reciprocal_rank": 0.0,
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "hit_at_5": false,
+          "tokens_to_localize": 2053,
+          "tool_calls_to_localize": 6
+        },
+        {
+          "id": "t15",
+          "category": "cross_lang_protocol",
+          "task": "cross-language subprocess spawn and HTTP route edge extraction",
+          "relevant_paths": [
+            "src/cross_language/mod.rs",
+            "src/cross_language/http_route.rs",
+            "src/cross_language/http_client.rs"
+          ],
+          "paths": [
+            "src/cross_language/http_route.rs",
+            "tests/cross_language_http_route_templates.rs",
+            "src/cross_language/http_client.rs",
+            "src/cross_language/js_subprocess.rs",
+            "src/cross_language/python_subprocess.rs"
+          ],
+          "elapsed_ms": 119.1,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 597,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t16",
+          "category": "knowledge_graph",
+          "task": "compiled markdown wiki SPARQL explain and adaptive search",
+          "relevant_paths": [
+            "src/knowledge.rs",
+            "src/knowledge_explain.rs",
+            "crates/leio-knowledge-core/src/lib.rs",
+            "crates/leio-knowledge-core/src/sparql.rs"
+          ],
+          "paths": [
+            "src/search.rs",
+            "crates/leio-knowledge-core/src/sparql.rs",
+            "src/explain_stdin.rs",
+            "tests/doctor_explain.rs",
+            "tests/explain_stdin.rs"
+          ],
+          "elapsed_ms": 116.53,
+          "first_relevant_rank": 2,
+          "reciprocal_rank": 0.5,
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 1030,
+          "tool_calls_to_localize": 3
+        },
+        {
+          "id": "t17",
+          "category": "knowledge_graph",
+          "task": "code graph N-Quads export and caller callee query cache",
+          "relevant_paths": [
+            "src/code_graph.rs",
+            "src/graph_query.rs"
+          ],
+          "paths": [
+            "src/graph_query.rs",
+            "src/code_graph.rs",
+            "src/export.rs",
+            "src/query.rs",
+            "mcp/export-paths.test.js"
+          ],
+          "elapsed_ms": 136.71,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 571,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t18",
+          "category": "knowledge_graph",
+          "task": "persistent navigation cursor goto related and lattice alignment",
+          "relevant_paths": [
+            "src/nav.rs"
+          ],
+          "paths": [
+            "src/lattice.rs",
+            "tests/test_navigation_examples.py",
+            "src/nav.rs"
+          ],
+          "elapsed_ms": 124.83,
+          "first_relevant_rank": 3,
+          "reciprocal_rank": 0.3333333333333333,
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 1442,
+          "tool_calls_to_localize": 4
+        },
+        {
+          "id": "t19",
+          "category": "knowledge_graph",
+          "task": "zero-copy mmap Arrow node store and BGE-M3 SIMD cosine reranking",
+          "relevant_paths": [
+            "src/local_nodes.rs",
+            "src/arrow_ipc.rs"
+          ],
+          "paths": [
+            "crates/leio-knowledge-core/src/store.rs",
+            "src/node_rows.rs",
+            "tests/store_from_documents.rs",
+            "src/node_search.rs",
+            "crates/leio-harness/src/arrow_events.rs"
+          ],
+          "elapsed_ms": 124.39,
+          "first_relevant_rank": null,
+          "reciprocal_rank": 0.0,
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "hit_at_5": false,
+          "tokens_to_localize": 2387,
+          "tool_calls_to_localize": 6
+        },
+        {
+          "id": "t20",
+          "category": "knowledge_graph",
+          "task": "audit SARIF 2.1.0 report generation and strict doctor exit codes",
+          "relevant_paths": [
+            "src/audit.rs",
+            "src/doctors/mod.rs"
+          ],
+          "paths": [
+            "tests/generic_doctor_pack.rs",
+            "src/audit.rs",
+            "src/doctors/repo_hygiene.rs",
+            "tests/generic_doctors.rs",
+            "tests/skill_contract_doctor.rs"
+          ],
+          "elapsed_ms": 117.61,
+          "first_relevant_rank": 2,
+          "reciprocal_rank": 0.5,
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 1032,
+          "tool_calls_to_localize": 3
+        },
+        {
+          "id": "t21",
+          "category": "multi_agent_harness",
+          "task": "persist workflow approval retry revision inputs",
+          "relevant_paths": [
+            "crates/leio-harness/src/workflow.rs"
+          ],
+          "paths": [
+            "mcp/workflow.js",
+            "crates/leio-harness/src/workflow.rs",
+            "crates/leio-harness/tests/workflow.rs",
+            "mcp/workflow.test.js",
+            "scripts/verify_workflow_jsonld.py"
+          ],
+          "elapsed_ms": 109.97,
+          "first_relevant_rank": 2,
+          "reciprocal_rank": 0.5,
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 1033,
+          "tool_calls_to_localize": 3
+        },
+        {
+          "id": "t22",
+          "category": "multi_agent_harness",
+          "task": "local deployment verify revision rollback artifact",
+          "relevant_paths": [
+            "crates/leio-harness/src/delivery.rs"
+          ],
+          "paths": [
+            "scripts/verify_release_artifact.py",
+            "scripts/verify-stdio.mjs",
+            "scripts/harness-verify.sh",
+            "tests/test_release_artifact.py",
+            "scripts/verify_delivery_jsonld.py"
+          ],
+          "elapsed_ms": 106.72,
+          "first_relevant_rank": null,
+          "reciprocal_rank": 0.0,
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "hit_at_5": false,
+          "tokens_to_localize": 2385,
+          "tool_calls_to_localize": 6
+        },
+        {
+          "id": "t23",
+          "category": "multi_agent_harness",
+          "task": "GEPA spherical slerp trust-region mutation and Pareto frontier",
+          "relevant_paths": [
+            "crates/leio-harness/src/gepa.rs"
+          ],
+          "paths": [
+            "crates/leio-harness/src/gepa.rs"
+          ],
+          "elapsed_ms": 109.19,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 511,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t24",
+          "category": "multi_agent_harness",
+          "task": "SIGReg sliced Epps-Pulley isotropy score and directional collapse",
+          "relevant_paths": [
+            "crates/leio-harness/src/sigreg.rs"
+          ],
+          "paths": [
+            "crates/leio-harness/src/sigreg.rs"
+          ],
+          "elapsed_ms": 109.94,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 513,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t25",
+          "category": "multi_agent_harness",
+          "task": "Arrow Flight do_exchange semantic embedding bus publish and match",
+          "relevant_paths": [
+            "crates/leio-harness/src/bus.rs"
+          ],
+          "paths": [
+            "crates/leio-harness/src/bus.rs",
+            "crates/leio-harness/src/managed_bus.rs",
+            "crates/leio-harness/src/bus_client.rs",
+            "crates/leio-harness/tests/default_bus.rs",
+            ".github/workflows/publish-public.yml"
+          ],
+          "elapsed_ms": 111.86,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 598,
+          "tool_calls_to_localize": 2
+        }
+      ]
+    },
+    "ast_symbol_only": {
+      "label": "AST Symbol-Only (Repo-Map/LSP style)",
+      "task_count": 25,
+      "mrr": 0.7367,
+      "hit_at_1": 0.68,
+      "hit_at_3": 0.8,
+      "hit_at_5": 0.84,
+      "mean_tokens_to_localize": 1013.6,
+      "mean_tool_calls": 2.96,
+      "median_latency_ms": 106.95,
+      "by_category": {
+        "cross_lang_protocol": {
+          "count": 5,
+          "mrr": 0.85,
+          "hit_at_1": 0.8,
+          "hit_at_3": 0.8
+        },
+        "infra_topology": {
+          "count": 5,
+          "mrr": 0.4,
+          "hit_at_1": 0.4,
+          "hit_at_3": 0.4
+        },
+        "knowledge_graph": {
+          "count": 5,
+          "mrr": 0.8667,
+          "hit_at_1": 0.8,
+          "hit_at_3": 1.0
+        },
+        "multi_agent_harness": {
+          "count": 5,
+          "mrr": 0.7,
+          "hit_at_1": 0.6,
+          "hit_at_3": 0.8
+        },
+        "symbol_module": {
+          "count": 5,
+          "mrr": 0.8667,
+          "hit_at_1": 0.8,
+          "hit_at_3": 1.0
+        }
+      },
+      "results": [
+        {
+          "id": "t01",
+          "category": "symbol_module",
+          "task": "context file ranking scoring exact identifier relevance",
+          "relevant_paths": [
+            "src/context.rs"
+          ],
+          "paths": [
+            "src/context.rs",
+            "tests/export_formal_context_stream.rs",
+            "scripts/benchmark_context.py",
+            "tests/test_context_benchmark.py",
+            "src/doctors/orphan_files.rs"
+          ],
+          "elapsed_ms": 109.11,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 584,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t02",
+          "category": "symbol_module",
+          "task": "update installed CLI and refresh plugin caches",
+          "relevant_paths": [
+            "src/update.rs"
+          ],
+          "paths": [
+            "tests/test_install_codex_plugin.py",
+            "scripts/install_codex_plugin.py",
+            "src/update.rs",
+            "scripts/package_codex_plugin.py",
+            "tests/test_plugin_mcp_launch.py"
+          ],
+          "elapsed_ms": 105.25,
+          "first_relevant_rank": 3,
+          "reciprocal_rank": 0.3333333333333333,
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 1483,
+          "tool_calls_to_localize": 4
+        },
+        {
+          "id": "t03",
+          "category": "symbol_module",
+          "task": "formal concept analysis lattice induction Galois cover",
+          "relevant_paths": [
+            "src/fca.rs",
+            "src/lattice.rs"
+          ],
+          "paths": [
+            "src/lattice.rs",
+            "tests/export_formal_context_stream.rs",
+            "tests/diagnostics_format.rs",
+            "crates/leio-harness/tests/cli_coverage.rs",
+            "tests/language_discovery.rs"
+          ],
+          "elapsed_ms": 103.75,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 586,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t04",
+          "category": "symbol_module",
+          "task": "incremental filesystem watcher debounce reindex loop",
+          "relevant_paths": [
+            "src/watcher.rs"
+          ],
+          "paths": [
+            "src/watcher.rs",
+            "tests/watch_smoke.rs",
+            "mcp/watch-state.js",
+            "mcp/watch-state.test.js",
+            "src/doctors/orphan_files.rs"
+          ],
+          "elapsed_ms": 109.82,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 575,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t05",
+          "category": "symbol_module",
+          "task": "git history co-edit playbook counters and doctor boosts",
+          "relevant_paths": [
+            "src/playbook.rs"
+          ],
+          "paths": [
+            "src/playbook.rs",
+            "tests/local_doctor_packs.rs",
+            "src/doctors/local_packs.rs",
+            "tests/doctor_explain.rs",
+            "tests/generic_doctor_pack.rs"
+          ],
+          "elapsed_ms": 108.64,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 580,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t06",
+          "category": "infra_topology",
+          "task": "fix Apps SDK Docker smoke",
+          "relevant_paths": [
+            "apps-sdk/scripts/smoke-docker.sh",
+            "apps-sdk/smoke.mjs"
+          ],
+          "paths": [
+            "apps-sdk/server.js",
+            "apps-sdk/runtime-contract.test.js",
+            "apps-sdk/auth-summary.mjs",
+            "apps-sdk/keycloak/chatgpt-client-config.mjs",
+            "tests/test_apps_sdk_start_local.py"
+          ],
+          "elapsed_ms": 101.73,
+          "first_relevant_rank": null,
+          "reciprocal_rank": 0.0,
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "hit_at_5": false,
+          "tokens_to_localize": 2381,
+          "tool_calls_to_localize": 6
+        },
+        {
+          "id": "t07",
+          "category": "infra_topology",
+          "task": "session startup inject canonical skill instructions",
+          "relevant_paths": [
+            "hooks/session-context.sh"
+          ],
+          "paths": [
+            "tests/test_instruction_distribution.py",
+            "src/doctors/skill_contract.rs",
+            "tests/skill_contract_doctor.rs",
+            "tests/skill_runbook_safety.rs",
+            "mcp/startup-resilience.test.js"
+          ],
+          "elapsed_ms": 104.06,
+          "first_relevant_rank": null,
+          "reciprocal_rank": 0.0,
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "hit_at_5": false,
+          "tokens_to_localize": 2345,
+          "tool_calls_to_localize": 6
+        },
+        {
+          "id": "t08",
+          "category": "infra_topology",
+          "task": "Keycloak realm OAuth client configuration for ChatGPT app",
+          "relevant_paths": [
+            "apps-sdk/keycloak/configure-app-client.mjs",
+            "apps-sdk/keycloak/chatgpt-client-config.mjs"
+          ],
+          "paths": [
+            "apps-sdk/keycloak/chatgpt-client-config.mjs",
+            "apps-sdk/keycloak/realm-contract.test.mjs",
+            "apps-sdk/keycloak/configure-app-client.mjs",
+            "apps-sdk/keycloak/human-login.mjs",
+            "apps-sdk/keycloak/import-realm.mjs"
+          ],
+          "elapsed_ms": 106.95,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 599,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t09",
+          "category": "infra_topology",
+          "task": "stdio MCP bootstrap script stripped PATH cargo binary",
+          "relevant_paths": [
+            "scripts/launch-stdio-mcp.sh"
+          ],
+          "paths": [
+            "mcp/resolve-binary.js",
+            "mcp/resolve-binary.test.js",
+            "mcp/index.js",
+            "mcp/watch-state.js",
+            "mcp/install-binary.mjs"
+          ],
+          "elapsed_ms": 115.94,
+          "first_relevant_rank": null,
+          "reciprocal_rank": 0.0,
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "hit_at_5": false,
+          "tokens_to_localize": 2374,
+          "tool_calls_to_localize": 6
+        },
+        {
+          "id": "t10",
+          "category": "infra_topology",
+          "task": "register MCP server and default skill across agent hosts",
+          "relevant_paths": [
+            "packaging/register-mcp.js"
+          ],
+          "paths": [
+            "packaging/register-mcp.js",
+            "tests/test_agent_routing_home.py",
+            "apps-sdk/server.js",
+            "packaging/register-mcp.test.js",
+            "src/doctors/skill_contract.rs"
+          ],
+          "elapsed_ms": 105.17,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 584,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t11",
+          "category": "cross_lang_protocol",
+          "task": "MCP binary resolution installed cargo executable",
+          "relevant_paths": [
+            "mcp/resolve-binary.js"
+          ],
+          "paths": [
+            "mcp/resolve-binary.js",
+            "mcp/resolve-binary.test.js",
+            "mcp/install-binary.mjs",
+            "tests/test_plugin_mcp_launch.py",
+            "mcp/index.js"
+          ],
+          "elapsed_ms": 102.78,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 576,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t12",
+          "category": "cross_lang_protocol",
+          "task": "compact editing packet files_to_read token budget compression",
+          "relevant_paths": [
+            "mcp/compact.js"
+          ],
+          "paths": [
+            "mcp/compact.js",
+            "mcp/compact.test.js",
+            "src/doctors/orphan_files.rs",
+            "tests/generic_doctor_pack.rs",
+            "tests/test_evaluate_retrieval.py"
+          ],
+          "elapsed_ms": 108.68,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 581,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t13",
+          "category": "cross_lang_protocol",
+          "task": "MCP 2025-11-25 protocol version handshake and server discovery",
+          "relevant_paths": [
+            "mcp/mcp-spec-2025-11-25.js"
+          ],
+          "paths": [
+            "mcp/mcp-spec-2025-11-25.js",
+            "mcp/mcp-spec-2025-11-25.test.js",
+            "apps-sdk/server.js",
+            "src/doctors/version_manifest.rs",
+            "apps-sdk/server-health.test.js"
+          ],
+          "elapsed_ms": 108.4,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 586,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t14",
+          "category": "cross_lang_protocol",
+          "task": "JSON-LD W3C PROV provenance event journal and URI mapping",
+          "relevant_paths": [
+            "src/jsonld.rs"
+          ],
+          "paths": [
+            "src/doctors/vendored_crate_provenance.rs",
+            "tests/jsonld_output.rs",
+            "tests/checkout_events.rs",
+            "src/jsonld.rs",
+            "crates/leio-harness/src/arrow_events.rs"
+          ],
+          "elapsed_ms": 105.92,
+          "first_relevant_rank": 4,
+          "reciprocal_rank": 0.25,
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "hit_at_5": true,
+          "tokens_to_localize": 1935,
+          "tool_calls_to_localize": 5
+        },
+        {
+          "id": "t15",
+          "category": "cross_lang_protocol",
+          "task": "cross-language subprocess spawn and HTTP route edge extraction",
+          "relevant_paths": [
+            "src/cross_language/mod.rs",
+            "src/cross_language/http_route.rs",
+            "src/cross_language/http_client.rs"
+          ],
+          "paths": [
+            "src/cross_language/http_route.rs",
+            "tests/cross_language_http_route_templates.rs",
+            "src/cross_language/mod.rs",
+            "src/cross_language/http_client.rs",
+            "src/cross_language/js_subprocess.rs"
+          ],
+          "elapsed_ms": 108.8,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 594,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t16",
+          "category": "knowledge_graph",
+          "task": "compiled markdown wiki SPARQL explain and adaptive search",
+          "relevant_paths": [
+            "src/knowledge.rs",
+            "src/knowledge_explain.rs",
+            "crates/leio-knowledge-core/src/lib.rs",
+            "crates/leio-knowledge-core/src/sparql.rs"
+          ],
+          "paths": [
+            "crates/leio-knowledge-core/src/sparql.rs",
+            "src/search.rs",
+            "tests/doctor_explain.rs",
+            "tests/explain_stdin.rs",
+            "src/knowledge_explain.rs"
+          ],
+          "elapsed_ms": 116.86,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 581,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t17",
+          "category": "knowledge_graph",
+          "task": "code graph N-Quads export and caller callee query cache",
+          "relevant_paths": [
+            "src/code_graph.rs",
+            "src/graph_query.rs"
+          ],
+          "paths": [
+            "src/graph_query.rs",
+            "src/code_graph.rs",
+            "tests/export_formal_context_stream.rs",
+            "src/export.rs",
+            "src/query.rs"
+          ],
+          "elapsed_ms": 116.16,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 574,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t18",
+          "category": "knowledge_graph",
+          "task": "persistent navigation cursor goto related and lattice alignment",
+          "relevant_paths": [
+            "src/nav.rs"
+          ],
+          "paths": [
+            "src/lattice.rs",
+            "tests/test_navigation_examples.py",
+            "src/nav.rs",
+            "tests/cli_surface.rs",
+            "mcp/tools.test.js"
+          ],
+          "elapsed_ms": 104.82,
+          "first_relevant_rank": 3,
+          "reciprocal_rank": 0.3333333333333333,
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 1475,
+          "tool_calls_to_localize": 4
+        },
+        {
+          "id": "t19",
+          "category": "knowledge_graph",
+          "task": "zero-copy mmap Arrow node store and BGE-M3 SIMD cosine reranking",
+          "relevant_paths": [
+            "src/local_nodes.rs",
+            "src/arrow_ipc.rs"
+          ],
+          "paths": [
+            "src/local_nodes.rs",
+            "crates/leio-knowledge-core/src/store.rs",
+            "src/node_rows.rs",
+            "tests/store_from_documents.rs",
+            "src/node_search.rs"
+          ],
+          "elapsed_ms": 106.19,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 582,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t20",
+          "category": "knowledge_graph",
+          "task": "audit SARIF 2.1.0 report generation and strict doctor exit codes",
+          "relevant_paths": [
+            "src/audit.rs",
+            "src/doctors/mod.rs"
+          ],
+          "paths": [
+            "src/audit.rs",
+            "tests/generic_doctor_pack.rs",
+            "src/doctors/repo_hygiene.rs",
+            "tests/local_doctor_packs.rs",
+            "tests/test_check_doc_links.py"
+          ],
+          "elapsed_ms": 106.21,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 583,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t21",
+          "category": "multi_agent_harness",
+          "task": "persist workflow approval retry revision inputs",
+          "relevant_paths": [
+            "crates/leio-harness/src/workflow.rs"
+          ],
+          "paths": [
+            "crates/leio-harness/tests/workflow.rs",
+            "crates/leio-harness/src/workflow.rs",
+            "tests/test_navigation_examples.py",
+            "mcp/workflow.js",
+            "tests/local_doctor_packs.rs"
+          ],
+          "elapsed_ms": 107.69,
+          "first_relevant_rank": 2,
+          "reciprocal_rank": 0.5,
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 1035,
+          "tool_calls_to_localize": 3
+        },
+        {
+          "id": "t22",
+          "category": "multi_agent_harness",
+          "task": "local deployment verify revision rollback artifact",
+          "relevant_paths": [
+            "crates/leio-harness/src/delivery.rs"
+          ],
+          "paths": [
+            "scripts/verify_release_artifact.py",
+            "src/doctors/local_packs.rs",
+            "tests/test_release_artifact.py",
+            "tests/local_doctor_packs.rs",
+            "src/deploy_support.rs"
+          ],
+          "elapsed_ms": 103.85,
+          "first_relevant_rank": null,
+          "reciprocal_rank": 0.0,
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "hit_at_5": false,
+          "tokens_to_localize": 2383,
+          "tool_calls_to_localize": 6
+        },
+        {
+          "id": "t23",
+          "category": "multi_agent_harness",
+          "task": "GEPA spherical slerp trust-region mutation and Pareto frontier",
+          "relevant_paths": [
+            "crates/leio-harness/src/gepa.rs"
+          ],
+          "paths": [
+            "crates/leio-harness/src/gepa.rs",
+            "crates/leio-harness/src/lib.rs",
+            "crates/leio-harness/src/main.rs",
+            "crates/leio-harness/tests/runtime.rs",
+            "src/capabilities.rs"
+          ],
+          "elapsed_ms": 104.85,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 588,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t24",
+          "category": "multi_agent_harness",
+          "task": "SIGReg sliced Epps-Pulley isotropy score and directional collapse",
+          "relevant_paths": [
+            "crates/leio-harness/src/sigreg.rs"
+          ],
+          "paths": [
+            "crates/leio-harness/src/sigreg.rs",
+            "src/context.rs",
+            "scripts/benchmark_paper_ablations.py",
+            "src/jsonld.rs",
+            "src/knowledge.rs"
+          ],
+          "elapsed_ms": 112.19,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 580,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t25",
+          "category": "multi_agent_harness",
+          "task": "Arrow Flight do_exchange semantic embedding bus publish and match",
+          "relevant_paths": [
+            "crates/leio-harness/src/bus.rs"
+          ],
+          "paths": [
+            "crates/leio-harness/src/bus.rs",
+            "crates/leio-harness/src/bus_client.rs",
+            "crates/leio-harness/tests/default_bus.rs",
+            "crates/leio-harness/src/arrow_events.rs",
+            "tests/test_public_export.py"
+          ],
+          "elapsed_ms": 111.35,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 596,
+          "tool_calls_to_localize": 2
+        }
+      ]
+    },
+    "naive_rrf": {
+      "label": "Naive 3-Layer RRF (v2.6.2)",
+      "task_count": 25,
+      "mrr": 0.6847,
+      "hit_at_1": 0.52,
+      "hit_at_3": 0.84,
+      "hit_at_5": 0.92,
+      "mean_tokens_to_localize": 1018.1,
+      "mean_tool_calls": 3.0,
+      "median_latency_ms": 138.68,
+      "by_category": {
+        "cross_lang_protocol": {
+          "count": 5,
+          "mrr": 0.9,
+          "hit_at_1": 0.8,
+          "hit_at_3": 1.0
+        },
+        "infra_topology": {
+          "count": 5,
+          "mrr": 0.55,
+          "hit_at_1": 0.4,
+          "hit_at_3": 0.6
+        },
+        "knowledge_graph": {
+          "count": 5,
+          "mrr": 0.6667,
+          "hit_at_1": 0.4,
+          "hit_at_3": 1.0
+        },
+        "multi_agent_harness": {
+          "count": 5,
+          "mrr": 0.5667,
+          "hit_at_1": 0.4,
+          "hit_at_3": 0.8
+        },
+        "symbol_module": {
+          "count": 5,
+          "mrr": 0.74,
+          "hit_at_1": 0.6,
+          "hit_at_3": 0.8
+        }
+      },
+      "results": [
+        {
+          "id": "t01",
+          "category": "symbol_module",
+          "task": "context file ranking scoring exact identifier relevance",
+          "relevant_paths": [
+            "src/context.rs"
+          ],
+          "paths": [
+            "src/context.rs",
+            "src/search.rs",
+            "apps-sdk/keycloak/configure-app-client.mjs",
+            "tests/export_formal_context_stream.rs",
+            "scripts/benchmark_context.py"
+          ],
+          "elapsed_ms": 142.58,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 583,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t02",
+          "category": "symbol_module",
+          "task": "update installed CLI and refresh plugin caches",
+          "relevant_paths": [
+            "src/update.rs"
+          ],
+          "paths": [
+            "tests/test_plugin_mcp_launch.py",
+            "apps-sdk/keycloak/configure-app-client.mjs",
+            "tests/test_install_codex_plugin.py",
+            "scripts/install_codex_plugin.py",
+            "src/update.rs"
+          ],
+          "elapsed_ms": 136.34,
+          "first_relevant_rank": 5,
+          "reciprocal_rank": 0.2,
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "hit_at_5": true,
+          "tokens_to_localize": 2385,
+          "tool_calls_to_localize": 6
+        },
+        {
+          "id": "t03",
+          "category": "symbol_module",
+          "task": "formal concept analysis lattice induction Galois cover",
+          "relevant_paths": [
+            "src/fca.rs",
+            "src/lattice.rs"
+          ],
+          "paths": [
+            "src/lattice.rs",
+            "tests/export_formal_context_stream.rs",
+            "tests/diagnostics_format.rs",
+            "crates/leio-harness/tests/cli_coverage.rs",
+            "apps-sdk/auth.js"
+          ],
+          "elapsed_ms": 137.68,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 583,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t04",
+          "category": "symbol_module",
+          "task": "incremental filesystem watcher debounce reindex loop",
+          "relevant_paths": [
+            "src/watcher.rs"
+          ],
+          "paths": [
+            "src/watcher.rs",
+            "tests/watch_smoke.rs",
+            "src/indexer.rs",
+            "apps-sdk/keycloak/configure-app-client.mjs",
+            "apps-sdk/keycloak/import-realm.mjs"
+          ],
+          "elapsed_ms": 138.75,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 580,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t05",
+          "category": "symbol_module",
+          "task": "git history co-edit playbook counters and doctor boosts",
+          "relevant_paths": [
+            "src/playbook.rs"
+          ],
+          "paths": [
+            "tools/leio-self-doctors/src/doctors/self_contract.rs",
+            "src/playbook.rs",
+            "tests/local_doctor_packs.rs",
+            "apps-sdk/server.js",
+            "apps-sdk/entrypoint.sh"
+          ],
+          "elapsed_ms": 174.11,
+          "first_relevant_rank": 2,
+          "reciprocal_rank": 0.5,
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 1033,
+          "tool_calls_to_localize": 3
+        },
+        {
+          "id": "t06",
+          "category": "infra_topology",
+          "task": "fix Apps SDK Docker smoke",
+          "relevant_paths": [
+            "apps-sdk/scripts/smoke-docker.sh",
+            "apps-sdk/smoke.mjs"
+          ],
+          "paths": [
+            "apps-sdk/server.js",
+            "apps-sdk/auth-summary.mjs",
+            "tests/test_apps_sdk_start_local.py",
+            "apps-sdk/scripts/smoke-docker.sh",
+            "apps-sdk/smoke.mjs"
+          ],
+          "elapsed_ms": 141.31,
+          "first_relevant_rank": 4,
+          "reciprocal_rank": 0.25,
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "hit_at_5": true,
+          "tokens_to_localize": 1924,
+          "tool_calls_to_localize": 5
+        },
+        {
+          "id": "t07",
+          "category": "infra_topology",
+          "task": "session startup inject canonical skill instructions",
+          "relevant_paths": [
+            "hooks/session-context.sh"
+          ],
+          "paths": [
+            "tests/test_instruction_distribution.py",
+            "hooks/session-context.sh",
+            "tests/cli_surface.rs",
+            "src/query.rs",
+            "mcp/index.js"
+          ],
+          "elapsed_ms": 138.7,
+          "first_relevant_rank": 2,
+          "reciprocal_rank": 0.5,
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 676,
+          "tool_calls_to_localize": 3
+        },
+        {
+          "id": "t08",
+          "category": "infra_topology",
+          "task": "Keycloak realm OAuth client configuration for ChatGPT app",
+          "relevant_paths": [
+            "apps-sdk/keycloak/configure-app-client.mjs",
+            "apps-sdk/keycloak/chatgpt-client-config.mjs"
+          ],
+          "paths": [
+            "apps-sdk/keycloak/configure-app-client.mjs",
+            "apps-sdk/keycloak/human-login.mjs",
+            "apps-sdk/keycloak/import-realm.mjs",
+            "apps-sdk/keycloak/configure-dcr.mjs",
+            "apps-sdk/keycloak/create-dev-user.mjs"
+          ],
+          "elapsed_ms": 142.7,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 596,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t09",
+          "category": "infra_topology",
+          "task": "stdio MCP bootstrap script stripped PATH cargo binary",
+          "relevant_paths": [
+            "scripts/launch-stdio-mcp.sh"
+          ],
+          "paths": [
+            "mcp/resolve-binary.js",
+            "mcp/harness-tasks.test.js",
+            "mcp/install-binary.mjs",
+            "apps-sdk/scripts/start-local.sh",
+            "mcp/tasks.test.js"
+          ],
+          "elapsed_ms": 142.53,
+          "first_relevant_rank": null,
+          "reciprocal_rank": 0.0,
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "hit_at_5": false,
+          "tokens_to_localize": 2378,
+          "tool_calls_to_localize": 6
+        },
+        {
+          "id": "t10",
+          "category": "infra_topology",
+          "task": "register MCP server and default skill across agent hosts",
+          "relevant_paths": [
+            "packaging/register-mcp.js"
+          ],
+          "paths": [
+            "packaging/register-mcp.js",
+            "apps-sdk/server.js",
+            "tests/test_agent_routing_home.py",
+            "packaging/register-mcp.test.js",
+            "src/doctors/skill_contract.rs"
+          ],
+          "elapsed_ms": 143.13,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 584,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t11",
+          "category": "cross_lang_protocol",
+          "task": "MCP binary resolution installed cargo executable",
+          "relevant_paths": [
+            "mcp/resolve-binary.js"
+          ],
+          "paths": [
+            "mcp/resolve-binary.js",
+            "mcp/install-binary.mjs",
+            "mcp/harness-tasks.test.js",
+            "mcp/harness-tasks.js",
+            "mcp/tools.test.js"
+          ],
+          "elapsed_ms": 138.57,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 574,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t12",
+          "category": "cross_lang_protocol",
+          "task": "compact editing packet files_to_read token budget compression",
+          "relevant_paths": [
+            "mcp/compact.js"
+          ],
+          "paths": [
+            "tests/generic_doctor_pack.rs",
+            "mcp/compact.js",
+            "src/indexer.rs",
+            "mcp/compact.test.js",
+            "apps-sdk/server.js"
+          ],
+          "elapsed_ms": 141.43,
+          "first_relevant_rank": 2,
+          "reciprocal_rank": 0.5,
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 1025,
+          "tool_calls_to_localize": 3
+        },
+        {
+          "id": "t13",
+          "category": "cross_lang_protocol",
+          "task": "MCP 2025-11-25 protocol version handshake and server discovery",
+          "relevant_paths": [
+            "mcp/mcp-spec-2025-11-25.js"
+          ],
+          "paths": [
+            "mcp/mcp-spec-2025-11-25.js",
+            "apps-sdk/server.js",
+            "packaging/register-mcp.js",
+            "mcp/mcp-spec-2025-11-25.test.js",
+            "apps-sdk/auth.js"
+          ],
+          "elapsed_ms": 138.98,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 581,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t14",
+          "category": "cross_lang_protocol",
+          "task": "JSON-LD W3C PROV provenance event journal and URI mapping",
+          "relevant_paths": [
+            "src/jsonld.rs"
+          ],
+          "paths": [
+            "src/jsonld.rs",
+            "src/doctors/vendored_crate_provenance.rs",
+            "apps-sdk/auth-summary.mjs",
+            "apps-sdk/keycloak/configure-app-client.mjs",
+            "apps-sdk/keycloak/human-login.mjs"
+          ],
+          "elapsed_ms": 137.56,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 589,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t15",
+          "category": "cross_lang_protocol",
+          "task": "cross-language subprocess spawn and HTTP route edge extraction",
+          "relevant_paths": [
+            "src/cross_language/mod.rs",
+            "src/cross_language/http_route.rs",
+            "src/cross_language/http_client.rs"
+          ],
+          "paths": [
+            "src/cross_language/http_route.rs",
+            "tests/cross_language_http_route_templates.rs",
+            "src/cross_language/mod.rs",
+            "src/cross_language/js_subprocess.rs",
+            "src/cross_language/python_subprocess.rs"
+          ],
+          "elapsed_ms": 138.68,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 595,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t16",
+          "category": "knowledge_graph",
+          "task": "compiled markdown wiki SPARQL explain and adaptive search",
+          "relevant_paths": [
+            "src/knowledge.rs",
+            "src/knowledge_explain.rs",
+            "crates/leio-knowledge-core/src/lib.rs",
+            "crates/leio-knowledge-core/src/sparql.rs"
+          ],
+          "paths": [
+            "crates/leio-knowledge-core/src/sparql.rs",
+            "src/search.rs",
+            "src/query.rs",
+            "src/knowledge_explain.rs",
+            "tests/explain_values.rs"
+          ],
+          "elapsed_ms": 141.24,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 578,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t17",
+          "category": "knowledge_graph",
+          "task": "code graph N-Quads export and caller callee query cache",
+          "relevant_paths": [
+            "src/code_graph.rs",
+            "src/graph_query.rs"
+          ],
+          "paths": [
+            "tests/export_formal_context_stream.rs",
+            "src/graph_query.rs",
+            "src/code_graph.rs",
+            "src/export.rs",
+            "src/query.rs"
+          ],
+          "elapsed_ms": 135.03,
+          "first_relevant_rank": 2,
+          "reciprocal_rank": 0.5,
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 1024,
+          "tool_calls_to_localize": 3
+        },
+        {
+          "id": "t18",
+          "category": "knowledge_graph",
+          "task": "persistent navigation cursor goto related and lattice alignment",
+          "relevant_paths": [
+            "src/nav.rs"
+          ],
+          "paths": [
+            "src/lattice.rs",
+            "tests/test_navigation_examples.py",
+            "src/nav.rs",
+            "mcp/index.js",
+            "tests/cli_surface.rs"
+          ],
+          "elapsed_ms": 135.72,
+          "first_relevant_rank": 3,
+          "reciprocal_rank": 0.3333333333333333,
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 1474,
+          "tool_calls_to_localize": 4
+        },
+        {
+          "id": "t19",
+          "category": "knowledge_graph",
+          "task": "zero-copy mmap Arrow node store and BGE-M3 SIMD cosine reranking",
+          "relevant_paths": [
+            "src/local_nodes.rs",
+            "src/arrow_ipc.rs"
+          ],
+          "paths": [
+            "src/local_nodes.rs",
+            "crates/leio-knowledge-core/src/store.rs",
+            "src/node_rows.rs",
+            "tests/store_from_documents.rs",
+            "src/node_search.rs"
+          ],
+          "elapsed_ms": 142.06,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 582,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t20",
+          "category": "knowledge_graph",
+          "task": "audit SARIF 2.1.0 report generation and strict doctor exit codes",
+          "relevant_paths": [
+            "src/audit.rs",
+            "src/doctors/mod.rs"
+          ],
+          "paths": [
+            "tools/leio-self-doctors/src/doctors/self_contract.rs",
+            "src/audit.rs",
+            "tests/generic_doctor_pack.rs",
+            "src/doctors/repo_hygiene.rs",
+            "tests/local_doctor_packs.rs"
+          ],
+          "elapsed_ms": 136.39,
+          "first_relevant_rank": 2,
+          "reciprocal_rank": 0.5,
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 1039,
+          "tool_calls_to_localize": 3
+        },
+        {
+          "id": "t21",
+          "category": "multi_agent_harness",
+          "task": "persist workflow approval retry revision inputs",
+          "relevant_paths": [
+            "crates/leio-harness/src/workflow.rs"
+          ],
+          "paths": [
+            "crates/leio-harness/tests/workflow.rs",
+            "crates/leio-harness/src/workflow.rs",
+            "apps-sdk/server.js",
+            "src/node_rows.rs",
+            ".github/workflows/binary-release.yml"
+          ],
+          "elapsed_ms": 132.21,
+          "first_relevant_rank": 2,
+          "reciprocal_rank": 0.5,
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 1033,
+          "tool_calls_to_localize": 3
+        },
+        {
+          "id": "t22",
+          "category": "multi_agent_harness",
+          "task": "local deployment verify revision rollback artifact",
+          "relevant_paths": [
+            "crates/leio-harness/src/delivery.rs"
+          ],
+          "paths": [
+            "scripts/verify_release_artifact.py",
+            "src/doctors/local_packs.rs",
+            "tests/test_release_artifact.py",
+            "tests/local_doctor_packs.rs",
+            "src/node_rows.rs"
+          ],
+          "elapsed_ms": 132.21,
+          "first_relevant_rank": null,
+          "reciprocal_rank": 0.0,
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "hit_at_5": false,
+          "tokens_to_localize": 2382,
+          "tool_calls_to_localize": 6
+        },
+        {
+          "id": "t23",
+          "category": "multi_agent_harness",
+          "task": "GEPA spherical slerp trust-region mutation and Pareto frontier",
+          "relevant_paths": [
+            "crates/leio-harness/src/gepa.rs"
+          ],
+          "paths": [
+            "crates/leio-harness/src/gepa.rs",
+            "src/doctors/native.rs",
+            "crates/leio-harness/src/shm.rs",
+            "crates/leio-harness/src/lib.rs",
+            "crates/leio-harness/src/main.rs"
+          ],
+          "elapsed_ms": 133.14,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 587,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t24",
+          "category": "multi_agent_harness",
+          "task": "SIGReg sliced Epps-Pulley isotropy score and directional collapse",
+          "relevant_paths": [
+            "crates/leio-harness/src/sigreg.rs"
+          ],
+          "paths": [
+            "crates/leio-harness/src/sigreg.rs",
+            "src/jsonld.rs",
+            "mcp/resolve-binary.js",
+            "src/doctors/native.rs",
+            "src/update.rs"
+          ],
+          "elapsed_ms": 136.23,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 578,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t25",
+          "category": "multi_agent_harness",
+          "task": "Arrow Flight do_exchange semantic embedding bus publish and match",
+          "relevant_paths": [
+            "crates/leio-harness/src/bus.rs"
+          ],
+          "paths": [
+            "src/embed.rs",
+            "crates/leio-harness/src/embed.rs",
+            "crates/leio-harness/src/bus.rs",
+            "crates/leio-harness/src/managed_bus.rs",
+            "crates/leio-harness/src/bus_client.rs"
+          ],
+          "elapsed_ms": 136.97,
+          "first_relevant_rank": 3,
+          "reciprocal_rank": 0.3333333333333333,
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 1490,
+          "tool_calls_to_localize": 4
+        }
+      ]
+    },
+    "no_playbook": {
+      "label": "LEIO v2.6.5 (w/o ACE Playbook)",
+      "task_count": 25,
+      "mrr": 0.98,
+      "hit_at_1": 0.96,
+      "hit_at_3": 1.0,
+      "hit_at_5": 1.0,
+      "mean_tokens_to_localize": 586.7,
+      "mean_tool_calls": 2.04,
+      "median_latency_ms": 136.75,
+      "by_category": {
+        "cross_lang_protocol": {
+          "count": 5,
+          "mrr": 0.9,
+          "hit_at_1": 0.8,
+          "hit_at_3": 1.0
+        },
+        "infra_topology": {
+          "count": 5,
+          "mrr": 1.0,
+          "hit_at_1": 1.0,
+          "hit_at_3": 1.0
+        },
+        "knowledge_graph": {
+          "count": 5,
+          "mrr": 1.0,
+          "hit_at_1": 1.0,
+          "hit_at_3": 1.0
+        },
+        "multi_agent_harness": {
+          "count": 5,
+          "mrr": 1.0,
+          "hit_at_1": 1.0,
+          "hit_at_3": 1.0
+        },
+        "symbol_module": {
+          "count": 5,
+          "mrr": 1.0,
+          "hit_at_1": 1.0,
+          "hit_at_3": 1.0
+        }
+      },
+      "results": [
+        {
+          "id": "t01",
+          "category": "symbol_module",
+          "task": "context file ranking scoring exact identifier relevance",
+          "relevant_paths": [
+            "src/context.rs"
+          ],
+          "paths": [
+            "src/context.rs",
+            "scripts/benchmark_context.py",
+            "src/doctors/orphan_files.rs",
+            "src/nav.rs",
+            "apps-sdk/keycloak/configure-app-client.mjs"
+          ],
+          "elapsed_ms": 138.48,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 580,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t02",
+          "category": "symbol_module",
+          "task": "update installed CLI and refresh plugin caches",
+          "relevant_paths": [
+            "src/update.rs"
+          ],
+          "paths": [
+            "src/update.rs",
+            "scripts/install_codex_plugin.py",
+            "apps-sdk/keycloak/configure-app-client.mjs",
+            "mcp/install-root.js",
+            "apps-sdk/keycloak/chatgpt-client-config.mjs"
+          ],
+          "elapsed_ms": 134.42,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 585,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t03",
+          "category": "symbol_module",
+          "task": "formal concept analysis lattice induction Galois cover",
+          "relevant_paths": [
+            "src/fca.rs",
+            "src/lattice.rs"
+          ],
+          "paths": [
+            "src/lattice.rs",
+            "src/fca.rs",
+            "src/knowledge_graph.rs",
+            "tests/export_formal_context_stream.rs",
+            "src/lib.rs"
+          ],
+          "elapsed_ms": 135.87,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 573,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t04",
+          "category": "symbol_module",
+          "task": "incremental filesystem watcher debounce reindex loop",
+          "relevant_paths": [
+            "src/watcher.rs"
+          ],
+          "paths": [
+            "src/watcher.rs",
+            "mcp/watch-state.js",
+            "src/doctors/orphan_files.rs",
+            ".github/workflows/watch-linux.yml",
+            "src/code_graph.rs"
+          ],
+          "elapsed_ms": 132.47,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 576,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t05",
+          "category": "symbol_module",
+          "task": "git history co-edit playbook counters and doctor boosts",
+          "relevant_paths": [
+            "src/playbook.rs"
+          ],
+          "paths": [
+            "src/playbook.rs",
+            "scripts/doctor_warning_ledger.py",
+            "src/doctors/local_packs.rs",
+            "src/doctors/mod.rs",
+            "src/doctors/repo_hygiene.rs"
+          ],
+          "elapsed_ms": 136.71,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 579,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t06",
+          "category": "infra_topology",
+          "task": "fix Apps SDK Docker smoke",
+          "relevant_paths": [
+            "apps-sdk/scripts/smoke-docker.sh",
+            "apps-sdk/smoke.mjs"
+          ],
+          "paths": [
+            "apps-sdk/scripts/smoke-docker.sh",
+            "apps-sdk/smoke.mjs",
+            "apps-sdk/keycloak/docker-compose.yml",
+            "apps-sdk/Dockerfile",
+            "apps-sdk/keycloak/Dockerfile"
+          ],
+          "elapsed_ms": 134.35,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 576,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t07",
+          "category": "infra_topology",
+          "task": "session startup inject canonical skill instructions",
+          "relevant_paths": [
+            "hooks/session-context.sh"
+          ],
+          "paths": [
+            "hooks/session-context.sh",
+            "src/doctors/skill_contract.rs",
+            "mcp/index.js",
+            "packaging/register-mcp.js",
+            "apps-sdk/scripts/start-local.sh"
+          ],
+          "elapsed_ms": 133.13,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 273,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t08",
+          "category": "infra_topology",
+          "task": "Keycloak realm OAuth client configuration for ChatGPT app",
+          "relevant_paths": [
+            "apps-sdk/keycloak/configure-app-client.mjs",
+            "apps-sdk/keycloak/chatgpt-client-config.mjs"
+          ],
+          "paths": [
+            "apps-sdk/keycloak/configure-app-client.mjs",
+            "apps-sdk/keycloak/chatgpt-client-config.mjs",
+            "apps-sdk/keycloak/configure-dcr.mjs",
+            "apps-sdk/keycloak/realm/leio-code-realm.json",
+            "apps-sdk/keycloak/get-service-token.sh"
+          ],
+          "elapsed_ms": 136.91,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 601,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t09",
+          "category": "infra_topology",
+          "task": "stdio MCP bootstrap script stripped PATH cargo binary",
+          "relevant_paths": [
+            "scripts/launch-stdio-mcp.sh"
+          ],
+          "paths": [
+            "scripts/launch-stdio-mcp.sh",
+            "apps-sdk/scripts/start-local.sh",
+            "mcp/index.js",
+            "mcp/resolve-binary.js",
+            "src/cross_language/binaries.rs"
+          ],
+          "elapsed_ms": 138.4,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 580,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t10",
+          "category": "infra_topology",
+          "task": "register MCP server and default skill across agent hosts",
+          "relevant_paths": [
+            "packaging/register-mcp.js"
+          ],
+          "paths": [
+            "packaging/register-mcp.js",
+            "apps-sdk/server.js",
+            "mcp/index.js",
+            "mcp/mcp-spec-2025-11-25.js",
+            "apps-sdk/.env.example"
+          ],
+          "elapsed_ms": 138.21,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 576,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t11",
+          "category": "cross_lang_protocol",
+          "task": "MCP binary resolution installed cargo executable",
+          "relevant_paths": [
+            "mcp/resolve-binary.js"
+          ],
+          "paths": [
+            "mcp/resolve-binary.js",
+            "mcp/index.js",
+            "mcp/install-binary.mjs",
+            "apps-sdk/scripts/start-local.sh",
+            "tools/leio-self-doctors/src/doctors/self_contract.rs"
+          ],
+          "elapsed_ms": 131.85,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 583,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t12",
+          "category": "cross_lang_protocol",
+          "task": "compact editing packet files_to_read token budget compression",
+          "relevant_paths": [
+            "mcp/compact.js"
+          ],
+          "paths": [
+            "mcp/compact.js",
+            "src/doctors/orphan_files.rs",
+            "apps-sdk/server.js",
+            "apps-sdk/keycloak/configure-app-client.mjs",
+            "apps-sdk/keycloak/import-realm.mjs"
+          ],
+          "elapsed_ms": 146.68,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 585,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t13",
+          "category": "cross_lang_protocol",
+          "task": "MCP 2025-11-25 protocol version handshake and server discovery",
+          "relevant_paths": [
+            "mcp/mcp-spec-2025-11-25.js"
+          ],
+          "paths": [
+            "mcp/mcp-spec-2025-11-25.js",
+            "apps-sdk/server.js",
+            "mcp/index.js",
+            "apps-sdk/.env.example",
+            "scripts/package_desktop_mcpb.sh"
+          ],
+          "elapsed_ms": 151.61,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 579,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t14",
+          "category": "cross_lang_protocol",
+          "task": "JSON-LD W3C PROV provenance event journal and URI mapping",
+          "relevant_paths": [
+            "src/jsonld.rs"
+          ],
+          "paths": [
+            "src/jsonld.rs",
+            "src/doctors/vendored_crate_provenance.rs",
+            "crates/leio-harness/src/arrow_events.rs",
+            "src/jsonc.rs",
+            "apps-sdk/tool-name-map.js"
+          ],
+          "elapsed_ms": 158.12,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 583,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t15",
+          "category": "cross_lang_protocol",
+          "task": "cross-language subprocess spawn and HTTP route edge extraction",
+          "relevant_paths": [
+            "src/cross_language/mod.rs",
+            "src/cross_language/http_route.rs",
+            "src/cross_language/http_client.rs"
+          ],
+          "paths": [
+            "src/model.rs",
+            "src/cross_language/mod.rs",
+            "src/cross_language/http_route.rs",
+            "src/cross_language/js_subprocess.rs",
+            "src/cross_language/http_client.rs"
+          ],
+          "elapsed_ms": 172.14,
+          "first_relevant_rank": 2,
+          "reciprocal_rank": 0.5,
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 1036,
+          "tool_calls_to_localize": 3
+        },
+        {
+          "id": "t16",
+          "category": "knowledge_graph",
+          "task": "compiled markdown wiki SPARQL explain and adaptive search",
+          "relevant_paths": [
+            "src/knowledge.rs",
+            "src/knowledge_explain.rs",
+            "crates/leio-knowledge-core/src/lib.rs",
+            "crates/leio-knowledge-core/src/sparql.rs"
+          ],
+          "paths": [
+            "src/knowledge_explain.rs",
+            "crates/leio-knowledge-core/src/sparql.rs",
+            "src/search.rs",
+            "src/knowledge.rs",
+            "src/query.rs"
+          ],
+          "elapsed_ms": 154.96,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 577,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t17",
+          "category": "knowledge_graph",
+          "task": "code graph N-Quads export and caller callee query cache",
+          "relevant_paths": [
+            "src/code_graph.rs",
+            "src/graph_query.rs"
+          ],
+          "paths": [
+            "src/graph_query.rs",
+            "src/code_graph.rs",
+            "src/query.rs",
+            "scripts/verify-stdio.mjs",
+            "src/knowledge_graph.rs"
+          ],
+          "elapsed_ms": 135.58,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 573,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t18",
+          "category": "knowledge_graph",
+          "task": "persistent navigation cursor goto related and lattice alignment",
+          "relevant_paths": [
+            "src/nav.rs"
+          ],
+          "paths": [
+            "src/nav.rs",
+            "src/lattice.rs",
+            "src/knowledge_graph.rs",
+            "mcp/workflow.js",
+            "src/category.rs"
+          ],
+          "elapsed_ms": 134.52,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 571,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t19",
+          "category": "knowledge_graph",
+          "task": "zero-copy mmap Arrow node store and BGE-M3 SIMD cosine reranking",
+          "relevant_paths": [
+            "src/local_nodes.rs",
+            "src/arrow_ipc.rs"
+          ],
+          "paths": [
+            "src/local_nodes.rs",
+            "crates/leio-harness/src/arrow_events.rs",
+            "src/node_search.rs",
+            "src/node_rows.rs",
+            "crates/leio-knowledge-core/src/store.rs"
+          ],
+          "elapsed_ms": 137.67,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 585,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t20",
+          "category": "knowledge_graph",
+          "task": "audit SARIF 2.1.0 report generation and strict doctor exit codes",
+          "relevant_paths": [
+            "src/audit.rs",
+            "src/doctors/mod.rs"
+          ],
+          "paths": [
+            "src/audit.rs",
+            "src/doctors/repo_hygiene.rs",
+            "src/diagnostics.rs",
+            "src/doctors/mod.rs",
+            "src/main.rs"
+          ],
+          "elapsed_ms": 137.83,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 574,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t21",
+          "category": "multi_agent_harness",
+          "task": "persist workflow approval retry revision inputs",
+          "relevant_paths": [
+            "crates/leio-harness/src/workflow.rs"
+          ],
+          "paths": [
+            "crates/leio-harness/src/workflow.rs",
+            "apps-sdk/server.js",
+            ".github/workflows/binary-release.yml",
+            "mcp/workflow.js",
+            "scripts/verify_workflow_jsonld.py"
+          ],
+          "elapsed_ms": 131.21,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 582,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t22",
+          "category": "multi_agent_harness",
+          "task": "local deployment verify revision rollback artifact",
+          "relevant_paths": [
+            "crates/leio-harness/src/delivery.rs"
+          ],
+          "paths": [
+            "crates/leio-harness/src/delivery.rs",
+            "scripts/verify_release_artifact.py",
+            "src/doctors/local_packs.rs",
+            "src/deploy_support.rs",
+            "src/local_nodes.rs"
+          ],
+          "elapsed_ms": 130.05,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 582,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t23",
+          "category": "multi_agent_harness",
+          "task": "GEPA spherical slerp trust-region mutation and Pareto frontier",
+          "relevant_paths": [
+            "crates/leio-harness/src/gepa.rs"
+          ],
+          "paths": [
+            "crates/leio-harness/src/gepa.rs",
+            "src/doctors/native.rs",
+            "apps-sdk/scripts/deploy-fly.sh",
+            "apps-sdk/keycloak/deploy-fly.sh",
+            "crates/leio-harness/src/lib.rs"
+          ],
+          "elapsed_ms": 136.75,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 587,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t24",
+          "category": "multi_agent_harness",
+          "task": "SIGReg sliced Epps-Pulley isotropy score and directional collapse",
+          "relevant_paths": [
+            "crates/leio-harness/src/sigreg.rs"
+          ],
+          "paths": [
+            "crates/leio-harness/src/sigreg.rs",
+            "src/local_nodes.rs",
+            "src/jsonld.rs",
+            "crates/leio-harness/src/main.rs",
+            "crates/leio-harness/src/lib.rs"
+          ],
+          "elapsed_ms": 139.18,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 584,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t25",
+          "category": "multi_agent_harness",
+          "task": "Arrow Flight do_exchange semantic embedding bus publish and match",
+          "relevant_paths": [
+            "crates/leio-harness/src/bus.rs"
+          ],
+          "paths": [
+            "crates/leio-harness/src/bus.rs",
+            "crates/leio-harness/src/bus_client.rs",
+            "crates/leio-harness/src/lib.rs",
+            "crates/leio-harness/src/embed.rs",
+            "src/embed.rs"
+          ],
+          "elapsed_ms": 135.34,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 588,
+          "tool_calls_to_localize": 2
+        }
+      ]
+    },
+    "full": {
+      "label": "LEIO Code v2.6.5 (Full Hybrid)",
+      "task_count": 25,
+      "mrr": 0.98,
+      "hit_at_1": 0.96,
+      "hit_at_3": 1.0,
+      "hit_at_5": 1.0,
+      "mean_tokens_to_localize": 586.6,
+      "mean_tool_calls": 2.04,
+      "median_latency_ms": 145.27,
+      "by_category": {
+        "cross_lang_protocol": {
+          "count": 5,
+          "mrr": 0.9,
+          "hit_at_1": 0.8,
+          "hit_at_3": 1.0
+        },
+        "infra_topology": {
+          "count": 5,
+          "mrr": 1.0,
+          "hit_at_1": 1.0,
+          "hit_at_3": 1.0
+        },
+        "knowledge_graph": {
+          "count": 5,
+          "mrr": 1.0,
+          "hit_at_1": 1.0,
+          "hit_at_3": 1.0
+        },
+        "multi_agent_harness": {
+          "count": 5,
+          "mrr": 1.0,
+          "hit_at_1": 1.0,
+          "hit_at_3": 1.0
+        },
+        "symbol_module": {
+          "count": 5,
+          "mrr": 1.0,
+          "hit_at_1": 1.0,
+          "hit_at_3": 1.0
+        }
+      },
+      "results": [
+        {
+          "id": "t01",
+          "category": "symbol_module",
+          "task": "context file ranking scoring exact identifier relevance",
+          "relevant_paths": [
+            "src/context.rs"
+          ],
+          "paths": [
+            "src/context.rs",
+            "scripts/benchmark_context.py",
+            "src/doctors/orphan_files.rs",
+            "src/nav.rs",
+            "apps-sdk/keycloak/configure-app-client.mjs"
+          ],
+          "elapsed_ms": 146.1,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 580,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t02",
+          "category": "symbol_module",
+          "task": "update installed CLI and refresh plugin caches",
+          "relevant_paths": [
+            "src/update.rs"
+          ],
+          "paths": [
+            "src/update.rs",
+            "scripts/install_codex_plugin.py",
+            "apps-sdk/keycloak/configure-app-client.mjs",
+            "mcp/install-root.js",
+            "apps-sdk/keycloak/chatgpt-client-config.mjs"
+          ],
+          "elapsed_ms": 142.52,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 585,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t03",
+          "category": "symbol_module",
+          "task": "formal concept analysis lattice induction Galois cover",
+          "relevant_paths": [
+            "src/fca.rs",
+            "src/lattice.rs"
+          ],
+          "paths": [
+            "src/lattice.rs",
+            "src/fca.rs",
+            "src/knowledge_graph.rs",
+            "tests/export_formal_context_stream.rs",
+            "src/export.rs"
+          ],
+          "elapsed_ms": 146.14,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 574,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t04",
+          "category": "symbol_module",
+          "task": "incremental filesystem watcher debounce reindex loop",
+          "relevant_paths": [
+            "src/watcher.rs"
+          ],
+          "paths": [
+            "src/watcher.rs",
+            "mcp/watch-state.js",
+            "src/doctors/orphan_files.rs",
+            ".github/workflows/watch-linux.yml",
+            "src/code_graph.rs"
+          ],
+          "elapsed_ms": 139.31,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 576,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t05",
+          "category": "symbol_module",
+          "task": "git history co-edit playbook counters and doctor boosts",
+          "relevant_paths": [
+            "src/playbook.rs"
+          ],
+          "paths": [
+            "src/playbook.rs",
+            "scripts/doctor_warning_ledger.py",
+            "src/doctors/local_packs.rs",
+            "src/doctors/mod.rs",
+            "src/doctors/repo_hygiene.rs"
+          ],
+          "elapsed_ms": 145.27,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 579,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t06",
+          "category": "infra_topology",
+          "task": "fix Apps SDK Docker smoke",
+          "relevant_paths": [
+            "apps-sdk/scripts/smoke-docker.sh",
+            "apps-sdk/smoke.mjs"
+          ],
+          "paths": [
+            "apps-sdk/scripts/smoke-docker.sh",
+            "apps-sdk/smoke.mjs",
+            "apps-sdk/keycloak/docker-compose.yml",
+            "apps-sdk/Dockerfile",
+            "apps-sdk/keycloak/Dockerfile"
+          ],
+          "elapsed_ms": 140.27,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 576,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t07",
+          "category": "infra_topology",
+          "task": "session startup inject canonical skill instructions",
+          "relevant_paths": [
+            "hooks/session-context.sh"
+          ],
+          "paths": [
+            "hooks/session-context.sh",
+            "src/doctors/skill_contract.rs",
+            "mcp/index.js",
+            "packaging/register-mcp.js",
+            "apps-sdk/scripts/start-local.sh"
+          ],
+          "elapsed_ms": 142.8,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 273,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t08",
+          "category": "infra_topology",
+          "task": "Keycloak realm OAuth client configuration for ChatGPT app",
+          "relevant_paths": [
+            "apps-sdk/keycloak/configure-app-client.mjs",
+            "apps-sdk/keycloak/chatgpt-client-config.mjs"
+          ],
+          "paths": [
+            "apps-sdk/keycloak/configure-app-client.mjs",
+            "apps-sdk/keycloak/chatgpt-client-config.mjs",
+            "apps-sdk/keycloak/configure-dcr.mjs",
+            "apps-sdk/keycloak/realm/leio-code-realm.json",
+            "apps-sdk/keycloak/get-service-token.sh"
+          ],
+          "elapsed_ms": 148.15,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 601,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t09",
+          "category": "infra_topology",
+          "task": "stdio MCP bootstrap script stripped PATH cargo binary",
+          "relevant_paths": [
+            "scripts/launch-stdio-mcp.sh"
+          ],
+          "paths": [
+            "scripts/launch-stdio-mcp.sh",
+            "apps-sdk/scripts/start-local.sh",
+            "mcp/index.js",
+            "mcp/resolve-binary.js",
+            "src/cross_language/binaries.rs"
+          ],
+          "elapsed_ms": 143.84,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 580,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t10",
+          "category": "infra_topology",
+          "task": "register MCP server and default skill across agent hosts",
+          "relevant_paths": [
+            "packaging/register-mcp.js"
+          ],
+          "paths": [
+            "packaging/register-mcp.js",
+            "apps-sdk/server.js",
+            "mcp/index.js",
+            "mcp/mcp-spec-2025-11-25.js",
+            "apps-sdk/.env.example"
+          ],
+          "elapsed_ms": 141.97,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 576,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t11",
+          "category": "cross_lang_protocol",
+          "task": "MCP binary resolution installed cargo executable",
+          "relevant_paths": [
+            "mcp/resolve-binary.js"
+          ],
+          "paths": [
+            "mcp/resolve-binary.js",
+            "mcp/index.js",
+            "mcp/install-binary.mjs",
+            "apps-sdk/scripts/start-local.sh",
+            "tools/leio-self-doctors/src/doctors/self_contract.rs"
+          ],
+          "elapsed_ms": 138.81,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 583,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t12",
+          "category": "cross_lang_protocol",
+          "task": "compact editing packet files_to_read token budget compression",
+          "relevant_paths": [
+            "mcp/compact.js"
+          ],
+          "paths": [
+            "mcp/compact.js",
+            "src/doctors/orphan_files.rs",
+            "apps-sdk/server.js",
+            "apps-sdk/keycloak/configure-app-client.mjs",
+            "apps-sdk/keycloak/import-realm.mjs"
+          ],
+          "elapsed_ms": 148.58,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 585,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t13",
+          "category": "cross_lang_protocol",
+          "task": "MCP 2025-11-25 protocol version handshake and server discovery",
+          "relevant_paths": [
+            "mcp/mcp-spec-2025-11-25.js"
+          ],
+          "paths": [
+            "mcp/mcp-spec-2025-11-25.js",
+            "apps-sdk/server.js",
+            "mcp/index.js",
+            "apps-sdk/.env.example",
+            "scripts/package_desktop_mcpb.sh"
+          ],
+          "elapsed_ms": 149.19,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 579,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t14",
+          "category": "cross_lang_protocol",
+          "task": "JSON-LD W3C PROV provenance event journal and URI mapping",
+          "relevant_paths": [
+            "src/jsonld.rs"
+          ],
+          "paths": [
+            "src/jsonld.rs",
+            "src/doctors/vendored_crate_provenance.rs",
+            "crates/leio-harness/src/arrow_events.rs",
+            "src/jsonc.rs",
+            "apps-sdk/tool-name-map.js"
+          ],
+          "elapsed_ms": 147.5,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 583,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t15",
+          "category": "cross_lang_protocol",
+          "task": "cross-language subprocess spawn and HTTP route edge extraction",
+          "relevant_paths": [
+            "src/cross_language/mod.rs",
+            "src/cross_language/http_route.rs",
+            "src/cross_language/http_client.rs"
+          ],
+          "paths": [
+            "src/model.rs",
+            "src/cross_language/mod.rs",
+            "src/cross_language/http_route.rs",
+            "src/cross_language/js_subprocess.rs",
+            "src/cross_language/http_client.rs"
+          ],
+          "elapsed_ms": 155.96,
+          "first_relevant_rank": 2,
+          "reciprocal_rank": 0.5,
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 1036,
+          "tool_calls_to_localize": 3
+        },
+        {
+          "id": "t16",
+          "category": "knowledge_graph",
+          "task": "compiled markdown wiki SPARQL explain and adaptive search",
+          "relevant_paths": [
+            "src/knowledge.rs",
+            "src/knowledge_explain.rs",
+            "crates/leio-knowledge-core/src/lib.rs",
+            "crates/leio-knowledge-core/src/sparql.rs"
+          ],
+          "paths": [
+            "src/knowledge_explain.rs",
+            "crates/leio-knowledge-core/src/sparql.rs",
+            "src/search.rs",
+            "src/knowledge.rs",
+            "src/query.rs"
+          ],
+          "elapsed_ms": 138.17,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 577,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t17",
+          "category": "knowledge_graph",
+          "task": "code graph N-Quads export and caller callee query cache",
+          "relevant_paths": [
+            "src/code_graph.rs",
+            "src/graph_query.rs"
+          ],
+          "paths": [
+            "src/graph_query.rs",
+            "src/code_graph.rs",
+            "src/query.rs",
+            "scripts/verify-stdio.mjs",
+            "src/knowledge_graph.rs"
+          ],
+          "elapsed_ms": 170.47,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 573,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t18",
+          "category": "knowledge_graph",
+          "task": "persistent navigation cursor goto related and lattice alignment",
+          "relevant_paths": [
+            "src/nav.rs"
+          ],
+          "paths": [
+            "src/nav.rs",
+            "src/lattice.rs",
+            "src/knowledge_graph.rs",
+            "mcp/workflow.js",
+            "src/category.rs"
+          ],
+          "elapsed_ms": 135.22,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 571,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t19",
+          "category": "knowledge_graph",
+          "task": "zero-copy mmap Arrow node store and BGE-M3 SIMD cosine reranking",
+          "relevant_paths": [
+            "src/local_nodes.rs",
+            "src/arrow_ipc.rs"
+          ],
+          "paths": [
+            "src/local_nodes.rs",
+            "crates/leio-harness/src/arrow_events.rs",
+            "src/node_search.rs",
+            "src/node_rows.rs",
+            "crates/leio-knowledge-core/src/store.rs"
+          ],
+          "elapsed_ms": 170.76,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 585,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t20",
+          "category": "knowledge_graph",
+          "task": "audit SARIF 2.1.0 report generation and strict doctor exit codes",
+          "relevant_paths": [
+            "src/audit.rs",
+            "src/doctors/mod.rs"
+          ],
+          "paths": [
+            "src/audit.rs",
+            "src/doctors/repo_hygiene.rs",
+            "src/diagnostics.rs",
+            "src/doctors/mod.rs",
+            "src/main.rs"
+          ],
+          "elapsed_ms": 146.35,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 574,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t21",
+          "category": "multi_agent_harness",
+          "task": "persist workflow approval retry revision inputs",
+          "relevant_paths": [
+            "crates/leio-harness/src/workflow.rs"
+          ],
+          "paths": [
+            "crates/leio-harness/src/workflow.rs",
+            "apps-sdk/server.js",
+            ".github/workflows/binary-release.yml",
+            "mcp/workflow.js",
+            "scripts/verify_workflow_jsonld.py"
+          ],
+          "elapsed_ms": 148.25,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 582,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t22",
+          "category": "multi_agent_harness",
+          "task": "local deployment verify revision rollback artifact",
+          "relevant_paths": [
+            "crates/leio-harness/src/delivery.rs"
+          ],
+          "paths": [
+            "crates/leio-harness/src/delivery.rs",
+            "scripts/verify_release_artifact.py",
+            "src/doctors/local_packs.rs",
+            "src/deploy_support.rs",
+            "src/local_nodes.rs"
+          ],
+          "elapsed_ms": 145.37,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 582,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t23",
+          "category": "multi_agent_harness",
+          "task": "GEPA spherical slerp trust-region mutation and Pareto frontier",
+          "relevant_paths": [
+            "crates/leio-harness/src/gepa.rs"
+          ],
+          "paths": [
+            "crates/leio-harness/src/gepa.rs",
+            "src/doctors/native.rs",
+            "apps-sdk/scripts/deploy-fly.sh",
+            "apps-sdk/keycloak/deploy-fly.sh",
+            "crates/leio-harness/src/lib.rs"
+          ],
+          "elapsed_ms": 140.63,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 587,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t24",
+          "category": "multi_agent_harness",
+          "task": "SIGReg sliced Epps-Pulley isotropy score and directional collapse",
+          "relevant_paths": [
+            "crates/leio-harness/src/sigreg.rs"
+          ],
+          "paths": [
+            "crates/leio-harness/src/sigreg.rs",
+            "src/local_nodes.rs",
+            "src/jsonld.rs",
+            "src/context.rs",
+            "crates/leio-harness/src/main.rs"
+          ],
+          "elapsed_ms": 142.55,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 580,
+          "tool_calls_to_localize": 2
+        },
+        {
+          "id": "t25",
+          "category": "multi_agent_harness",
+          "task": "Arrow Flight do_exchange semantic embedding bus publish and match",
+          "relevant_paths": [
+            "crates/leio-harness/src/bus.rs"
+          ],
+          "paths": [
+            "crates/leio-harness/src/bus.rs",
+            "crates/leio-harness/src/bus_client.rs",
+            "crates/leio-harness/src/lib.rs",
+            "crates/leio-harness/src/embed.rs",
+            "src/embed.rs"
+          ],
+          "elapsed_ms": 141.07,
+          "first_relevant_rank": 1,
+          "reciprocal_rank": 1.0,
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "hit_at_5": true,
+          "tokens_to_localize": 588,
+          "tool_calls_to_localize": 2
+        }
+      ]
+    }
+  },
+  "co_edit_partner_evaluation": {
+    "no_playbook": {
+      "coupled_task_count": 6,
+      "partner_hit_at_6": 0.1667
+    },
+    "full": {
+      "coupled_task_count": 6,
+      "partner_hit_at_6": 1.0
+    }
+  },
+  "harness_evaluation": {
+    "sigreg_collapsed_population": {
+      "score": 3.5042941570281982,
+      "threshold": 2.0,
+      "isotropic": false,
+      "population": 8
+    },
+    "sigreg_isotropic_population": {
+      "score": 0.3427264392375946,
+      "threshold": 2.0,
+      "isotropic": true,
+      "population": 8
+    },
+    "model_sweep_40lane": {
+      "total_lanes": 40,
+      "models_evaluated": 0,
+      "by_model": {}
+    }
+  }
+}

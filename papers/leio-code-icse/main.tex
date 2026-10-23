@@ -1,0 +1,362 @@
+\documentclass[11pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsfonts,amsthm}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{microtype}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!60!black,
+    citecolor=blue!60!black,
+    urlcolor=blue!60!black
+}
+
+\newtheorem{definition}{Definition}
+\newtheorem{proposition}{Proposition}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}{Lemma}
+
+\title{\textbf{Beyond the Call Graph: Infrastructure-Aware Code Graphs, Formal Concept Lattices, and Executable Drift Contracts for Coding Agents}}
+
+\author{
+  \textbf{LEIO Research Group} \\
+  Autonomous Software Engineering \& Systems Verification Lab \\
+  \texttt{leio-code v2.6.5}
+}
+
+\date{October 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Repository-level coding agents spend $60\text{--}80\%$ of their interaction turns and token budgets executing iterative lexical searches (\texttt{grep}/\texttt{rg}) and partial file reads to reconstruct software architecture. Existing repository indexing tools—such as AST symbol maps (RepoMap) and Language Server Protocol (LSP) call graphs—capture intra-language syntax but are structurally blind to \emph{operational topology}: environment variable contracts across code and deployment manifests, Redis key namespace lifecycles, HTTP/MCP route tables, Docker and systemd service wiring, and cross-language subprocess boundaries. Furthermore, when combining lexical, structural, and configuration retrieval signals, we show that naive multi-channel Reciprocal Rank Fusion (RRF) suffers from \emph{single-token channel amplification}, where monolithic ``god files'' and test fixtures outrank cohesive implementation modules.
+
+We present \textsc{LEIO Code}, a deterministic, sub-second repository intelligence engine implemented in Rust that unifies AST call/import graphs, operational infrastructure topology, Formal Concept Analysis (FCA) Galois lattices, fail-closed Oxigraph SPARQL grounding, and 102 executable architectural drift contracts (\emph{doctors}) behind a versioned JSON and Model Context Protocol (MCP) surface. To rank task-relevant context bundles accurately in a single call, we introduce \emph{Coverage-Calibrated Multi-Faceted RRF} augmented with an evolving Git co-edit playbook (ACE). Evaluated on our 349-file polyglot repository ($8{,}343$ formal objects, $4{,}061$ attributes, $67{,}642$ structural incidences, and $2{,}474$ closed Galois concepts induced in $593\,\text{ms}$), \textsc{LEIO Code} achieves $\text{MRR} = 0.9800$, $\text{Hit@1} = 96.0\%$, and $\text{Hit@3} = 100.0\%$ across a 25-task multi-category benchmark, outperforming lexical \texttt{ripgrep} ($\text{MRR} = 0.3193$, $\text{Hit@1} = 20.0\%$), AST-only RepoMap ($\text{MRR} = 0.7367$, $\text{Hit@1} = 68.0\%$), and naive 3-layer RRF ($\text{MRR} = 0.6847$, $\text{Hit@1} = 52.0\%$), while reducing localization token consumption by $29.4\times$ ($17{,}261 \to 587$ tokens) and agent tool calls by $3.45\times$. On coupled cross-layer edits, the ACE co-edit playbook lifts unindexed manifest/documentation partner recall ($\text{Recall@6}$) from $16.7\%$ to $100.0\%$.
+\end{abstract}
+
+\section{Introduction}
+
+Modern autonomous coding agents (e.g., Claude Code, Codex, Cursor, Gemini Antigravity, SWE-agent~\cite{yang2024sweagent}) operate in an iterative tool-use loop over a target software repository. Despite rapid advances in underlying foundation models, empirical analyses of repository-level benchmarks~\cite{jimenez2024swebench,xia2024agentless} reveal a persistent bottleneck: agents spend the majority of their tokens and wall-clock time on \emph{localization and orientation}. When issued a maintenance or debugging task, an agent typically invokes dozens of lexical \texttt{ripgrep} (\texttt{rg}) queries, inspects noisy keyword hits in documentation or test fixtures, and manually traces imports across files.
+
+To mitigate lexical thrashing, recent systems provide agents with AST-derived repository maps (e.g., Aider's Tree-sitter PageRank RepoMap~\cite{aider2024repomap}, LocAgent~\cite{chen2025locagent}, RepoGraph~\cite{ouyang2024repograph}, and CodexGraph~\cite{liu2024codexgraph}). While effective for pure intra-language symbol navigation, AST-only graphs fail on production systems engineering for four fundamental reasons:
+
+\begin{enumerate}
+    \item \textbf{Operational Topology Blindness:} Real-world failures frequently cross the boundary between application source code and operational infrastructure—such as an environment variable read via \texttt{std::env::var} in Rust that is missing from a \texttt{docker-compose.yml} or Cloud Run deployment script, a Redis key namespace written without a TTL (`SET` without `EX`), or a Node.js MCP wrapper spawning a Rust binary across a subprocess boundary. Pure AST/LSP graphs have no vertices or edges for these operational artifacts.
+    \item \textbf{Single-Token RRF Pollution in Multi-Layer Retrieval:} Combining path matching, AST symbol indexing, and operational config indexing via standard Reciprocal Rank Fusion (RRF)~\cite{cormack2009reciprocal} unexpectedly \emph{degrades} top-1 precision ($\text{Hit@1}$ drops from $68.0\%$ to $52.0\%$ in our ablation study). Because RRF rewards each active ranked list with $\frac{1}{k_0 + r}$, a monolithic ``god file'' or integration test that matches a single generic query token across all three channels outranks a focused production module that matches five distinct query tokens within the symbol channel.
+    \item \textbf{Absence of Formal Taxonomic and Ontological Grounding:} Vector rag over markdown documentation returns plausible text snippets even when no authoritative fact exists in the repository, inducing agent hallucinations on architectural invariants.
+    \item \textbf{Passive vs.\ Executable Architecture Contracts:} Architectural rules written in prose (\texttt{AGENTS.md}, \texttt{README.md}) decay silently unless paired with deterministic, structural static analyzers that verify cross-layer coherence on every edit.
+\end{enumerate}
+
+We address these challenges with \textsc{LEIO Code} (`v2.6.5`), an infrastructure-aware repository intelligence and formal verification substrate for coding agents. This paper makes five contributions:
+
+\begin{itemize}
+    \item \textbf{Heterogeneous Operational Code Graph (\S\ref{sec:graph}):} We formalize and implement a polyglot repository index (\texttt{RepoIndex}) spanning 11 vertex kinds and 12 cross-domain edge relations across Rust, Python, TypeScript/JavaScript, Go, Shell, Dockerfiles, Docker Compose, systemd units, and JSON/YAML schemas.
+    \item \textbf{In-Process Formal Concept Lattice \& Fail-Closed SPARQL (\S\ref{sec:fca}):} We map the repository's structural incidence matrix $(G, M, I)$ into a Galois concept lattice $\mathfrak{B}(G, M, I)$ via a native Rust \texttt{In-Close} bitset engine, verify category-theoretic functor coherence ($\mathcal{C}_{\text{functor}} = 1.000$) between wiki documentation hierarchies and code concepts, export an OWL TBox, and enforce fail-closed SPARQL grounding (\texttt{leio-knowledge-core}) that refuses to answer when variable bindings are empty.
+    \item \textbf{Coverage-Calibrated Multi-Faceted RRF \& ACE Playbook (\S\ref{sec:retrieval}):} We diagnose the single-token RRF amplification pathology and introduce a coverage-calibrated scoring formulation combining multi-symbol token union, BM25-style symbol-count damping, intent-gated config channels, production role priors, and an incremental Git co-edit playbook (\texttt{Playbook}).
+    \item \textbf{Executable Drift Contracts (\S\ref{sec:doctors}):} We ship 102 deterministic structural analyzers (\emph{doctors}) paired with commit-streak warning triage that detect cross-language and operational drift before tests run.
+    \item \textbf{Rigorous Empirical \& Ablation Evaluation (\S\ref{sec:eval}):} Across a 25-task multi-category benchmark and a 7-task golden retrieval suite, \textsc{LEIO Code} achieves $0.9800$ and $1.0000$ MRR respectively, cutting localization tokens by $29.4\times$.
+\end{itemize}
+
+\section{Heterogeneous Infrastructure-Aware Code Graph}
+\label{sec:graph}
+
+\begin{definition}[Heterogeneous Operational Repository Graph]
+A repository index is a typed, directed multigraph $\mathcal{G} = (V, E, \tau_V, \tau_E, \lambda)$ where each vertex $v \in V$ has kind $\tau_V(v) \in \mathcal{K}_V$, each directed edge $e = (u, v) \in E$ has relation type $\tau_E(e) \in \mathcal{K}_E$, and $\lambda(v)$ binds $v$ to a deterministic source span $(\text{path}, \text{line}_{\text{start}}, \text{line}_{\text{end}})$.
+\end{definition}
+
+Unlike AST-only graphs where $\mathcal{K}_V = \{\texttt{File}, \texttt{Symbol}\}$, \textsc{LEIO Code} defines 11 first-class vertex kinds partitioning syntax, runtime state, and deployment topology:
+\begin{align*}
+\mathcal{K}_V = \{&\texttt{File},\; \texttt{Symbol},\; \texttt{Import},\; \texttt{EnvVar},\; \texttt{RedisKey},\; \texttt{ApiRoute},\; \texttt{DockerService}, \\
+&\texttt{DeployTarget},\; \texttt{Cartridge},\; \texttt{SubprocessCaller},\; \texttt{Binary},\; \texttt{WikiSection}\}.
+\end{align*}
+Edges $\mathcal{K}_E$ capture both intra-language syntax and cross-layer operational couplings:
+\begin{itemize}
+    \item \textbf{Syntactic Call \& Import Resolution:} $\texttt{Calls}$, $\texttt{CalledBy}$, $\texttt{Imports}$, and workspace-resolved module edges $\texttt{ResolvedImports} / \texttt{ResolvedImportedBy}$ (resolving Rust \texttt{crate::}/\texttt{super::}/\texttt{mod}, TypeScript/JS relative paths and \texttt{package.json} workspaces, and Python package paths).
+    \item \textbf{Environment Contract Edges:} $\texttt{ReadsEnv}(u, e)$ when code symbol $u$ reads environment variable $e \in V_{\texttt{EnvVar}}$ (e.g., \texttt{std::env::var}, \texttt{os.getenv}, \texttt{process.env}), and $\texttt{DeclaresEnv}(s, e)$ when a Docker Compose service, Dockerfile, systemd unit, or `.env.example` declares $e$.
+    \item \textbf{Stateful Keyspace Edges:} $\texttt{ReadsRedisKey}$, $\texttt{WritesRedisKey}$, and $\texttt{SetsTtl}$ extracted from Redis command invocations (\texttt{GET}, \texttt{SET}, \texttt{SETEX}, \texttt{EXPIRE}, \texttt{HSET}, \texttt{DEL}), recording key prefix templates (e.g., \texttt{phone\_route:\{id\}}) and TTL presence.
+    \item \textbf{Service, Route, and Subprocess Edges:} $\texttt{ExposesRoute}$ (HTTP/axum/FastAPI/Express routes and MCP tool registrations), $\texttt{SpawnsBinary}$ (cross-language \texttt{Command::new} / \texttt{spawnSync} invocations linking JS/Python wrappers to Rust binaries), and $\texttt{DeploysService}$.
+\end{itemize}
+
+\section{Formal Concept Lattice, Functor Coherence, and Fail-Closed Grounding}
+\label{sec:fca}
+
+To support taxo-structural navigation and prevent hallucinated architectural explanations, \textsc{LEIO Code} transforms the repository graph $\mathcal{G}$ into a formal concept lattice and an RDF/OWL knowledge base.
+
+\subsection{Galois Concept Lattice Induction via Bitset \texttt{In-Close}}
+
+\begin{definition}[Repository Formal Context and Galois Lattice]
+Let $G$ be the set of repository objects (files, symbols, routes, services, and wiki sections), $M$ be the set of structural attributes (e.g., $\texttt{lang:rust}$, $\texttt{dir:src/doctors}$, $\texttt{calls:run\_gate}$, $\texttt{reads\_env:LEIO\_CODE\_BIN}$, $\texttt{kind:function}$), and $I \subseteq G \times M$ be the binary incidence relation. For $A \subseteq G$ and $B \subseteq M$, the Galois derivation operators are:
+\begin{equation}
+A' = \{m \in M \mid \forall g \in A,\, (g, m) \in I\}, \qquad B' = \{g \in G \mid \forall m \in B,\, (g, m) \in I\}.
+\end{equation}
+A pair $(A, B)$ is a \emph{formal concept} iff $A' = B$ and $B' = A$, where $A$ is the \emph{extent} and $B$ is the \emph{intent}. The set of all formal concepts $\mathfrak{B}(G, M, I)$ forms a complete lattice under the partial order $(A_1, B_1) \le (A_2, B_2) \iff A_1 \subseteq A_2 \iff B_2 \subseteq B_1$.
+\end{definition}
+
+In \texttt{src/fca.rs}, we implement a dependency-free, in-process Rust \texttt{In-Close} induction engine operating over packed 64-bit word bitsets (\texttt{BitSet}). Given the canonical sorted incidence pairs $I$, the engine computes all closed concepts $\mathfrak{B}(G, M, I)$, reduces the subconcept order $\le$ to its transitive reduction (Hasse cover links $c_1 \prec c_2$), assigns each object $g \in G$ to its most specific primary concept $\mu(g) = ( \{g\}'', \{g\}' )$, and computes a cryptographic incidence fingerprint:
+\begin{equation}
+\text{fp}(I) = \texttt{sha256:structural-incidence-v1:} \;\|\; \text{SHA256}\!\left(\bigoplus_{(g, m) \in I} |g|_{\text{le64}} \| g \| |m|_{\text{le64}} \| m\right).
+\end{equation}
+Because freshness is governed by $\text{fp}(I)$ rather than filesystem timestamps alone, a timestamp-only reindex never invalidates a structurally unchanged concept lattice.
+
+\subsection{Category-Theoretic Functor Coherence}
+
+We view the Hasse cover graph of $\mathfrak{B}(G, M, I)$ as a finite category $\mathcal{C}_{\text{lat}}$ whose objects are concepts and whose generating morphisms are $c_1 \xrightarrow{\texttt{subClassOf}} c_2$, with composition given by directed reachability. Simultaneously, markdown documentation headings inside the repository form a syntactic category $\mathcal{C}_{\text{wiki}}$ where nested sections satisfy $h_{\text{child}} \xrightarrow{\texttt{subClassOf}} h_{\text{parent}}$. Given an object alignment $F: \text{Obj}(\mathcal{C}_S) \to \text{Obj}(\mathcal{C}_T)$, \texttt{src/category.rs} evaluates functorial coherence:
+\begin{equation}
+\label{eq:functor-coherence}
+\text{Coherence}(F) = \frac{1}{|\text{Hom}_{\text{gen}}(\mathcal{C}_S)|} \sum_{(u \xrightarrow{\ell} v) \in \text{Hom}_{\text{gen}}(\mathcal{C}_S)} \mathbb{I}\bigl[\mathcal{C}_T.\text{reaches}(F(u), F(v), \ell) \lor \mathcal{C}_T.\text{reaches}(F(u), F(v), \texttt{subClassOf})\bigr].
+\end{equation}
+Both the lattice identity functor and the wiki-to-lattice alignment functor are persisted as verifiable witnesses inside \texttt{lattice.json} alongside an induced OWL 2 TBox (\texttt{induced.ttl}).
+
+\subsection{Fail-Closed SPARQL Grounding (\texttt{leio-knowledge-core})}
+
+All formal triples (code triples, OWL TBox cover axioms, and domain ontologies) are loaded into an in-process Oxigraph RDF store (\texttt{FormalStore}). When an agent queries \texttt{knowledge explain} or executes a SPARQL \texttt{SELECT}/\texttt{ASK} query $Q$, \texttt{sparql\_with\_store} enforces an \emph{anchored-or-refuse} contract:
+\begin{equation}
+\text{grounded}(Q, \mathcal{S}) =
+\begin{cases}
+\texttt{true}, & \text{if } |\text{Bindings}(Q, \mathcal{S})| \ge 1, \\
+\texttt{false} \text{ (Refusal Envelope)}, & \text{if } |\text{Bindings}(Q, \mathcal{S})| = 0 \text{ or } Q \text{ errors}.
+\end{cases}
+\end{equation}
+Empty bindings never fall back to generative guessing; the envelope returns $\texttt{meta.grounded} = \texttt{false}$ with explicit refusal diagnostics.
+
+\section{Coverage-Calibrated Multi-Faceted Retrieval and ACE Playbook}
+\label{sec:retrieval}
+
+When an agent invokes \texttt{leio\_code\_context(task)}, our goal is to return a compact, high-precision bundle containing the top-$K$ relevant files ($K=6$), focal symbols, verification commands, and architectural risk warnings in a single round-trip.
+
+\subsection{Why Naive Multi-Channel RRF Fails on Codebases}
+
+Suppose a task query $q$ is tokenized into informative query stems $T(q) = \{t_1, \dots, t_m\}$ (filtering stopwords and splitting snake/camelCase identifiers). A standard multi-layer retriever scores each file $f \in V_{\texttt{File}}$ across three channels—path lexical score $S_{\text{path}}(f, q)$, AST symbol score $S_{\text{sym}}(f, q)$, and operational config/env/Redis score $S_{\text{cfg}}(f, q)$—and combines their respective channel ranks $r_c(f) \in \{1, 2, \dots\}$ via Reciprocal Rank Fusion~\cite{cormack2009reciprocal}:
+\begin{equation}
+\label{eq:naive-rrf}
+\text{RRF}_{\text{naive}}(f, q) = \sum_{c \in \{\text{path}, \text{sym}, \text{cfg}\} : S_c(f, q) > 0} \frac{\alpha_{\text{RRF}}}{k_0 + r_c(f)}, \qquad (k_0 = 60,\; \alpha_{\text{RRF}} = 25{,}000).
+\end{equation}
+
+\begin{proposition}[Single-Token Multi-Channel RRF Amplification Pathology]
+\label{prop:rrf-pathology}
+Under Eq.~\eqref{eq:naive-rrf}, each active channel awards up to $\frac{\alpha_{\text{RRF}}}{k_0 + 1} \approx 409.8$ rank points regardless of how many distinct query tokens $t \in T(q)$ matched in that channel. Consequently, a monolithic file $f_{\text{god}}$ that matches a single generic token $t_1 \in T(q)$ in its path, one symbol name, and one environment variable string receives up to $3 \times 409.8 \approx 1{,}229$ RRF bonus points, outranking a focused implementation module $f^*$ that matches all $m \ge 4$ distinct query tokens exclusively within its AST symbol definitions ($1 \times 409.8$ RRF points).
+\end{proposition}
+
+Our empirical ablation (\S\ref{sec:eval}) confirms Proposition~\ref{prop:rrf-pathology} directly: adding naive 3-layer RRF to AST symbol scoring reduces $\text{Hit@1}$ from $68.0\%$ to $52.0\%$!
+
+\subsection{Coverage-Calibrated Multi-Faceted RRF}
+
+We resolve this pathology in \texttt{src/context.rs} through five principled mechanisms:
+
+\paragraph{1. Multi-Symbol Union Coverage \& Density Damping.}
+Rather than scoring a file solely by its single highest-scoring symbol ($\max_{s \in \text{sym}(f)} S(s, q)$), which penalizes cohesive modules whose responsibilities are distributed across helper functions (e.g., \texttt{deploy}, \texttt{verify\_revision}, \texttt{rollback} in \texttt{delivery.rs}), we compute the union of distinct query tokens matched across all non-test symbols in $f$:
+\begin{equation}
+U_{\text{sym}}(f, q) = \bigcup_{s \in \text{sym}_{\text{prod}}(f)} \{t \in T(q) \mid \text{match}(t, s)\},
+\end{equation}
+and apply a BM25-style symbol-count damping factor to non-stem symbol bonuses:
+\begin{equation}
+\delta_{\text{density}}(f) = \frac{100}{\max\bigl(100,\; 100 + \max(0, |\text{sym}(f)| - 20) \times 3\bigr)},
+\end{equation}
+preventing 150-symbol server entrypoints from accumulating accidental token hits.
+
+\paragraph{2. Morphological Prefix Matching and Module Entrypoint Stem Inheritance.}
+Identifier tokens use morphological prefix matching ($\ge 5$-char shared prefix when $\min(|a|, |b|) / \max(|a|, |b|) \ge 0.70$, aligning $\texttt{config} \leftrightarrow \texttt{configure}$ and $\texttt{valid} \leftrightarrow \texttt{validate}$). Module entrypoints ($\texttt{mod.rs}$, $\texttt{lib.rs}$, $\texttt{index.js}$, $\texttt{\_\_init\_\_.py}$) inherit their parent directory's stem tokens.
+
+\paragraph{3. Intent-Gated Config Channel and Single-Token Channel Collapse.}
+Let $U_{\text{all}}(f, q) = U_{\text{path}}(f, q) \cup U_{\text{sym}}(f, q) \cup U_{\text{cfg}}(f, q)$ be the total distinct query token coverage of file $f$. When $|T(q)| \ge 3$:
+\begin{itemize}
+    \item If $|U_{\text{all}}(f, q)| \le 1$ and $f$ has no exact multi-token needle match, we set $S_{\text{sym}}(f, q) \gets 0$ and $S_{\text{cfg}}(f, q) \gets 0$, collapsing multi-channel RRF amplification for single-token noise hits and applying a $0.35\times$ raw score discount.
+    \item If the query exhibits no configuration/environment/Redis intent ($\neg \text{wants\_config}(q)$) and $f$ is not a configuration file, we gate off $S_{\text{cfg}}(f, q) \gets 0$.
+\end{itemize}
+
+\paragraph{4. Production vs.\ Test Role Prior and Coverage Bonus.}
+Let $\mathbb{I}_{\text{test}}(f)$ indicate whether $f$ resides in a test directory/filename ($\texttt{tests/}$, $\texttt{*.test.*}$, $\texttt{*\_test.rs}$). When the query does not request tests ($\neg \text{wants\_tests}(q)$), test files receive a role penalty ($-700$) while files matching $c = |U_{\text{all}}(f, q)| \ge 2$ distinct query tokens receive a superlinear coverage bonus:
+\begin{equation}
+B_{\text{cov}}(f, q) = (260 c + 55 c^2) \cdot \bigl(1 - 0.65\,\mathbb{I}_{\text{test}}(f)\cdot \mathbb{I}[\neg \text{wants\_tests}(q)]\bigr).
+\end{equation}
+
+\paragraph{5. ACE Evolutionary Co-Edit Playbook (\texttt{src/playbook.rs}).}
+Coding tasks frequently require synchronized edits across a primary code module and an unindexed or weakly-matched partner (e.g., \texttt{mcp/tools.js} paired with \texttt{schema/leio-code-mcp-service-descriptor.json} or \texttt{docs/MCP-SURFACE-GAP.md}). \textsc{LEIO Code} mines incremental commit history (\texttt{git log --name-only}, ignoring single-file commits and mega-sweeps $>20$ files) to maintain a symmetric co-edit frequency matrix $C(f_a, f_b)$ and commit-revert outcome counters $(\text{helpfulness}, \text{harmfulness})$ in \texttt{.leio-code/playbook.json}. Given the top-1 ranked seed file $f_1$, its top co-edit partners $f_p$ with $C(f_1, f_p) \ge 4$ receive a bounded multiplicative-floor injection:
+\begin{equation}
+\Delta_{\text{pb}}(f_p \mid f_1) = \min\!\Bigl(S(f_1) - 1,\; \max\bigl(\lfloor 0.75\, S(f_1) \rfloor,\; 260 \min(C(f_1, f_p), 8)\bigr)\Bigr),
+\end{equation}
+lifting coupled manifest and documentation partners directly into the top-$6$ context bundle while strictly preserving $S(f_1) > S(f_p)$ (so $\text{Hit@1}$ is invariant).
+
+\section{Executable Architectural Drift Contracts (\emph{Doctors})}
+\label{sec:doctors}
+
+Prose instructions in \texttt{AGENTS.md} or \texttt{CLAUDE.md} cannot enforce repository invariants on their own. \textsc{LEIO Code} compiles architectural invariants into 102 deterministic static analyzers (\emph{doctors}) organized by repository profile. Representative doctors active on \texttt{leio-code} itself include:
+\begin{itemize}
+    \item \texttt{self-contract} \& \texttt{leio-release-coherence}: Verifies that CLI flags, MCP JSON schemas, descriptor manifests, and crate versions match across Rust, Node.js, and Python surfaces.
+    \item \texttt{env-contract}: Cross-checks every $e \in V_{\texttt{EnvVar}}$ read in source code against declared environment schemas and deployment manifests.
+    \item \texttt{redis-key-hygiene}: Flags Redis write operations lacking an associated TTL (`SET` without `EX`/`PX` or subsequent `EXPIRE`).
+    \item \texttt{orphan-files} \& \texttt{import-boundary}: Detects unreferenced source modules and illegal cross-layer imports over $\mathcal{G}$.
+    \item \texttt{vendored-crate-provenance} \& \texttt{rust-toolchain-pin-coherence}: Enforces cryptographic provenance and toolchain version alignment across workspace crates.
+\end{itemize}
+To prevent warning fatigue, \texttt{Playbook} tracks $(\texttt{fired\_count}, \texttt{resolved\_count}, \texttt{ignored\_count}, \texttt{streak\_commits})$ per doctor warning across Git commits, automatically surfacing high-resolution vs.\ ignored rules via \texttt{leio-code doctor triage}.
+
+\section{Experimental Evaluation}
+\label{sec:eval}
+
+We evaluate \textsc{LEIO Code} (`v2.6.5` release binary on macOS arm64) on the polyglot \texttt{leio-code} repository ($349$ indexed files across Rust, JavaScript/MJS, Python, JSON, and Bash; $1.7\,\text{MB}$ index; $80$ documentation files with $590$ wiki sections; $9{,}726$ RDF triples). All benchmarks and ablation scripts are reproducibly packaged in \texttt{scripts/benchmark\_paper\_ablations.py} and \texttt{scripts/evaluate\_retrieval.py}.
+
+\subsection{25-Task Multi-Category Retrieval and Component Ablation Study}
+
+We construct a 25-task evaluation suite (\texttt{benchmarks/paper-evaluation-suite.json}) stratified evenly across 5 software engineering categories (5 tasks each):
+(1) \emph{Symbol \& Module Localization} (\texttt{symbol\_module}),
+(2) \emph{Infrastructure \& Operational Topology} (\texttt{infra\_topology}),
+(3) \emph{Cross-Language \& Protocol Wiring} (\texttt{cross\_lang\_protocol}),
+(4) \emph{Formal Knowledge Graph \& Lattice} (\texttt{knowledge\_graph}), and
+(5) \emph{Multi-Agent Harness \& Evolution} (\texttt{multi\_agent\_harness}).
+
+We compare six retrieval configurations:
+\begin{enumerate}
+    \item \textbf{\texttt{rg\_lexical} (Ripgrep Lexical Baseline):} Standard agent keyword search ranking files by distinct query token hit count across the repository.
+    \item \textbf{\texttt{path\_only}:} \textsc{LEIO Code} using file path and directory stem scoring only ($S_{\text{sym}} = S_{\text{cfg}} = 0$, no RRF, no playbook).
+    \item \textbf{\texttt{ast\_symbol\_only} (RepoMap / LSP Baseline):} \textsc{LEIO Code} restricted to AST symbol definitions and call-graph proximity ($S_{\text{path}} = S_{\text{cfg}} = 0$, no RRF, no playbook).
+    \item \textbf{\texttt{naive\_rrf} (Pre-Calibration 3-Layer RRF):} Uncalibrated 3-layer Reciprocal Rank Fusion over path, single-best symbol, and config channels without coverage calibration or role priors.
+    \item \textbf{\texttt{no\_playbook}:} Full coverage-calibrated multi-faceted RRF with ACE co-edit playbook disabled.
+    \item \textbf{\texttt{full} (\textsc{LEIO Code v2.6.5}):} Complete coverage-calibrated multi-faceted RRF + ACE co-edit playbook.
+\end{enumerate}
+
+\begin{table}[t]
+\centering
+\caption{Main retrieval and localization efficiency results across the 25-task multi-category benchmark (\texttt{benchmarks/paper-evaluation-suite.json}) and 6-task coupled co-edit suite.}
+\label{tab:main-ablation}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{@{}lrrrrrrr@{}}
+\toprule
+\textbf{Retrieval Method} & \textbf{MRR} & \textbf{Hit@1} & \textbf{Hit@3} & \textbf{Hit@5} & \textbf{Partner@6} & \textbf{Mean Tokens} & \textbf{Tool Calls} \\
+\midrule
+1. \texttt{rg\_lexical} (Ripgrep Baseline) & $0.3193$ & $20.0\%$ & $40.0\%$ & $52.0\%$ & --- & $17{,}260.6$ & $7.04$ \\
+2. \texttt{path\_only} (Path Lexical Only) & $0.6747$ & $52.0\%$ & $84.0\%$ & $88.0\%$ & $16.7\%$ & $1{,}019.1$ & $3.04$ \\
+3. \texttt{ast\_symbol\_only} (RepoMap / AST) & $0.7367$ & $68.0\%$ & $80.0\%$ & $84.0\%$ & $16.7\%$ & $1{,}013.6$ & $2.96$ \\
+4. \texttt{naive\_rrf} (Uncalibrated 3-Layer RRF) & $0.6847$ & $52.0\%$ & $84.0\%$ & $92.0\%$ & $16.7\%$ & $1{,}018.1$ & $3.00$ \\
+5. \texttt{no\_playbook} (Calibrated RRF Only) & $\mathbf{0.9800}$ & $\mathbf{96.0\%}$ & $\mathbf{100.0\%}$ & $\mathbf{100.0\%}$ & $16.7\%$ & $586.7$ & $2.04$ \\
+\midrule
+\textbf{6. \texttt{full} (\textsc{LEIO Code v2.6.5})} & $\mathbf{0.9800}$ & $\mathbf{96.0\%}$ & $\mathbf{100.0\%}$ & $\mathbf{100.0\%}$ & $\mathbf{100.0\%}$ & $\mathbf{586.6}$ & $\mathbf{2.04}$ \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+\begin{table}[t]
+\centering
+\caption{Per-category Mean Reciprocal Rank (MRR) and Top-1 Precision ($\text{Hit@1}$) across the five software engineering task categories.}
+\label{tab:category-breakdown}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{@{}lcccccccccc@{}}
+\toprule
+ & \multicolumn{2}{c}{\texttt{symbol\_module}} & \multicolumn{2}{c}{\texttt{infra\_topology}} & \multicolumn{2}{c}{\texttt{cross\_lang}} & \multicolumn{2}{c}{\texttt{knowledge\_graph}} & \multicolumn{2}{c}{\texttt{multi\_agent}} \\
+\cmidrule(lr){2-3} \cmidrule(lr){4-5} \cmidrule(lr){6-7} \cmidrule(lr){8-9} \cmidrule(lr){10-11}
+\textbf{Method} & \textbf{MRR} & \textbf{H@1} & \textbf{MRR} & \textbf{H@1} & \textbf{MRR} & \textbf{H@1} & \textbf{MRR} & \textbf{H@1} & \textbf{MRR} & \textbf{H@1} \\
+\midrule
+\texttt{rg\_lexical} & $0.450$ & $20\%$ & $0.240$ & $20\%$ & $0.000$ & $0\%$ & $0.440$ & $40\%$ & $0.467$ & $20\%$ \\
+\texttt{path\_only} & $0.867$ & $80\%$ & $0.740$ & $60\%$ & $0.600$ & $40\%$ & $0.467$ & $20\%$ & $0.700$ & $60\%$ \\
+\texttt{ast\_symbol\_only} & $0.867$ & $80\%$ & $0.400$ & $40\%$ & $0.850$ & $80\%$ & $0.867$ & $80\%$ & $0.700$ & $60\%$ \\
+\texttt{naive\_rrf} & $0.740$ & $60\%$ & $0.550$ & $40\%$ & $0.900$ & $80\%$ & $0.667$ & $40\%$ & $0.567$ & $40\%$ \\
+\textbf{\texttt{full} (\textsc{LEIO})} & $\mathbf{1.000}$ & $\mathbf{100\%}$ & $\mathbf{1.000}$ & $\mathbf{100\%}$ & $\mathbf{0.900}$ & $\mathbf{80\%}$ & $\mathbf{1.000}$ & $\mathbf{100\%}$ & $\mathbf{1.000}$ & $\mathbf{100\%}$ \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+\paragraph{Key Empirical Findings.}
+\begin{enumerate}
+    \item \textbf{$3.07\times$ Higher MRR and $29.4\times$ Token Reduction vs.\ Ripgrep:} As shown in Table~\ref{tab:main-ablation}, lexical \texttt{rg} achieves only $\text{MRR} = 0.3193$ and $\text{Hit@1} = 20.0\%$ because benchmark artifacts, changelogs, and documentation files contain dense keyword matches. An agent following the \texttt{rg} ranking must read an average of $17{,}260.6$ tokens across $7.04$ tool calls to localize the primary target file, whereas \textsc{LEIO Code} delivers the target file at rank 1 on $24/25$ tasks ($96.0\%$) and within the top 2 on $25/25$ tasks ($100.0\%$) using $586.6$ tokens and $2.04$ calls ($145.3\,\text{ms}$ median release-binary latency). Also on the 7-task golden retrieval suite (\texttt{benchmarks/retrieval-agent-tasks.json}), \textsc{LEIO Code} achieves a perfect $\text{MRR} = 1.0000$ and $\text{Hit@1} = 100.0\%$ ($7/7$).
+    \item \textbf{Complementarity of Operational Topology and AST Symbols:} Table~\ref{tab:category-breakdown} reveals why neither path matching nor AST symbol indexing suffices alone. On \texttt{infra\_topology} tasks (Docker smoke scripts, Keycloak Compose wiring, systemd service installers), \texttt{ast\_symbol\_only} collapses to $\text{MRR} = 0.400$ ($\text{Hit@1} = 40\%$) because shell and container manifests lack AST symbol tables. Conversely, on \texttt{knowledge\_graph} tasks (Oxigraph SPARQL refusal envelopes, category functor coherence), \texttt{path\_only} collapses to $\text{MRR} = 0.467$ ($\text{Hit@1} = 20\%$) because file paths alone cannot disambiguate internal algebraic abstractions.
+    \item \textbf{Empirical Proof of the Naive RRF Pathology:} Combining channels via \texttt{naive\_rrf} improves $\text{Hit@5}$ ($84\% \to 92\%$) but \emph{degrades} $\text{Hit@1}$ from $68.0\%$ (\texttt{ast\_symbol\_only}) to $52.0\%$, exactly as predicted by Proposition~\ref{prop:rrf-pathology}. Adding coverage-calibrated RRF (\texttt{no\_playbook} / \texttt{full}) eliminates single-token channel amplification and lifts $\text{Hit@1}$ by $+44.0$ percentage points ($52.0\% \to 96.0\%$) and $\text{MRR}$ from $0.6847$ to $0.9800$.
+    \item \textbf{$6\times$ Gain in Coupled Co-Edit Partner Recall:} On multi-file maintenance tasks where a source module is historically co-edited with a JSON schema descriptor, Cargo manifest, or surface-gap specification, the ACE co-edit playbook increases partner recall in the 6-file context bundle ($\text{Partner@6}$) from $16.7\%$ ($1/6$) to $100.0\%$ ($6/6$) without disturbing top-1 seed ranking.
+\end{enumerate}
+
+\subsection{Formal Concept Lattice Induction Performance}
+
+Table~\ref{tab:lattice-stats} summarizes the formal concept lattice induced on the live repository via \texttt{leio-code export formal-context}. The native Rust bitset \texttt{In-Close} engine processes $8{,}343$ repository objects, $4{,}061$ structural attributes, and $67{,}642$ incidences into $2{,}474$ closed Galois concepts and an OWL 2 TBox in $593\,\text{ms}$, verifying $1.000$ functorial coherence on both the cover-graph identity functor and the wiki heading hierarchy functor.
+
+\begin{table}[t]
+\centering
+\caption{Formal Concept Analysis (FCA) Galois lattice and RDF/OWL knowledge base metrics on the \texttt{leio-code} repository.}
+\label{tab:lattice-stats}
+\small
+\begin{tabular}{@{}lrr@{}}
+\toprule
+\textbf{Formal Artifact / Metric} & \textbf{Measured Value} & \textbf{Verification / Contract} \\
+\midrule
+Formal Objects $|G|$ (files, symbols, routes, services, wiki sections) & $8{,}343$ & Indexed across 349 files \\
+Formal Attributes $|M|$ (syntactic, operational, and domain properties) & $4{,}061$ & Canonical sorted incidence pairs \\
+Structural Incidences $|I| \subseteq G \times M$ & $67{,}642$ & SHA-256 incidence fingerprinted \\
+Closed Formal Concepts $|\mathfrak{B}(G, M, I)|$ & $2{,}474$ & Pure Rust bitset \texttt{In-Close} \\
+Cover Category Identity Functor Coherence & $1.000$ ($100\%$) & Verified by \texttt{evaluate\_functor} \\
+Wiki Heading Category $\to$ Lattice Functor Coherence & $1.000$ ($100\%$) & Verified by \texttt{evaluate\_functor} \\
+Oxigraph Formal Store Triples (\texttt{leio-knowledge-core}) & $9{,}726$ & Anchored-or-refuse SPARQL envelope \\
+End-to-End Lattice Induction + OWL TBox Export Latency & $593\,\text{ms}$ & Zero external Python dependency \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Conclusion}
+
+We presented \textsc{LEIO Code}, an infrastructure-aware repository intelligence engine that moves coding agents beyond syntactic call graphs. By unifying operational topology graphs, bitset-accelerated Formal Concept Analysis lattices, fail-closed Oxigraph SPARQL grounding, 102 executable drift contracts, and coverage-calibrated multi-faceted RRF with an evolving Git co-edit playbook, \textsc{LEIO Code} achieves $96.0\%$ top-1 and $100.0\%$ top-3 localization accuracy while reducing agent token consumption by $29.4\times$.
+
+\begin{thebibliography}{10}
+
+\bibitem{yang2024sweagent}
+J.~Yang et~al.
+\newblock SWE-agent: Agent-computer interfaces enable automated software engineering.
+\newblock In \emph{Proceedings of NeurIPS}, 2024.
+
+\bibitem{jimenez2024swebench}
+C.~E. Jimenez et~al.
+\newblock SWE-bench: Can language models resolve real-world GitHub issues?
+\newblock In \emph{Proceedings of ICLR}, 2024.
+
+\bibitem{xia2024agentless}
+C.~S. Xia, Y.~Deng, S.~Dunn, and L.~Zhang.
+\newblock Agentless: Demystifying LLM-based software engineering agents.
+\newblock \emph{arXiv preprint arXiv:2407.01489}, 2024.
+
+\bibitem{aider2024repomap}
+P.~Gauthier.
+\newblock Building a better repository map with Tree-sitter and PageRank.
+\newblock \emph{Aider Technical Report}, 2024.
+
+\bibitem{chen2025locagent}
+Z.~Chen et~al.
+\newblock LocAgent: Graph-guided LLM agents for code localization.
+\newblock In \emph{Proceedings of ACL}, 2025.
+
+\bibitem{ouyang2024repograph}
+S.~Ouyang et~al.
+\newblock RepoGraph: Enhancing AI software engineering with repository-level code graph.
+\newblock In \emph{Proceedings of ICLR}, 2025.
+
+\bibitem{liu2024codexgraph}
+X.~Liu et~al.
+\newblock CodexGraph: Bridging large language models and code repositories via code graph databases.
+\newblock In \emph{Proceedings of NAACL}, 2024.
+
+\bibitem{cormack2009reciprocal}
+G.~V. Cormack, C.~L.~A. Clarke, and S.~Buettcher.
+\newblock Reciprocal rank fusion outperforms condorcet and individual rank learning methods.
+\newblock In \emph{Proceedings of ACM SIGIR}, pages 758--759, 2009.
+
+\bibitem{ganter1999fca}
+B.~Ganter and R.~Wille.
+\newblock \emph{Formal Concept Analysis: Mathematical Foundations}.
+\newblock Springer, 1999.
+
+\bibitem{andrews2009inclose}
+S.~Andrews.
+\newblock In-Close, a fast algorithm for computing formal concepts.
+\newblock In \emph{International Conference on Conceptual Structures (ICCS)}, 2009.
+
+\end{thebibliography}
+
+\end{document}

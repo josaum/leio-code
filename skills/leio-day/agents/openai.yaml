@@ -1,0 +1,4 @@
+interface:
+  display_name: "LEIO Day"
+  short_description: "Orchestrate multi-model agent lanes"
+  default_prompt: "Use $leio-day to plan and run a multi-lane agent day through leio-harness."

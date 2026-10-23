@@ -112,4 +112,24 @@ test("git remote identity is stable across checkout paths", () => {
   });
 
   assert.equal(first.LEIO_CODE_REPO, second.LEIO_CODE_REPO);
+  assert.throws(() => deriveTenantKey("", secret), /tenant identity/i);
+  assert.throws(
+    () =>
+      buildTenantScopeEnv({
+        authInfo: { extra: {} },
+        repoTarget: { repoRoot: "/srv/checkout-a/one" },
+        hmacSecret: secret,
+      }),
+    /missing a trusted tenant claim or subject/i,
+  );
+  assert.throws(
+    () =>
+      buildTenantScopeEnv({
+        authInfo: { extra: { tenantId: "acme" } },
+        repoTarget: {},
+        hmacSecret: secret,
+      }),
+    /resolved repository target/i,
+  );
+  assert.deepEqual(buildTenantScopeEnv(), {});
 });

@@ -16,7 +16,11 @@ use crate::model::{EvidenceItem, QueryEnvelope, RepoIndex};
 const REGISTRY_PATH: &str = "skills/registry.toml";
 const MIN_DESCRIPTION_CHARS: usize = 40;
 const MAX_DESCRIPTION_CHARS: usize = 1024;
+const MAX_COMPATIBILITY_CHARS: usize = 500;
 const MAX_SKILL_LINES_EXCLUSIVE: usize = 500;
+const REQUIRED_FRONTMATTER_KEYS: &[&str] = &["description", "name"];
+const OPTIONAL_FRONTMATTER_KEYS: &[&str] =
+    &["allowed-tools", "compatibility", "license", "metadata"];
 const FORBIDDEN_RESOURCE_EXTENSIONS: &[&str] = &["pyc", "zip", "deprecated", "legacy"];
 const PRIVATE_KEY_MARKERS: &[&str] = &[
     "-----BEGIN PRIVATE KEY-----",
@@ -76,6 +80,7 @@ struct ParsedSkill {
     name: String,
     description: String,
     keys: BTreeSet<String>,
+    frontmatter: Mapping,
     body: String,
 }
 
@@ -216,11 +221,7 @@ pub fn doctor_skill_contract(root: &Path) -> QueryEnvelope {
                 continue;
             }
         };
-        let expected_keys = BTreeSet::from(["description".to_string(), "name".to_string()]);
-        if parsed.keys != expected_keys {
-            let count = parsed.keys.symmetric_difference(&expected_keys).count();
-            findings.add_count(path, "frontmatter-keys", count.max(1));
-        }
+        validate_frontmatter_fields(path, &parsed, &mut findings);
         let description_chars = parsed.description.chars().count();
         if !(MIN_DESCRIPTION_CHARS..=MAX_DESCRIPTION_CHARS).contains(&description_chars) {
             findings.add(path, "description-length");
@@ -375,8 +376,62 @@ fn parse_frontmatter(source: &str) -> Result<ParsedSkill, ()> {
         name,
         description,
         keys,
+        frontmatter: mapping.clone(),
         body: lines[closing + 1..].join("\n"),
     })
+}
+
+fn validate_frontmatter_fields(path: &str, parsed: &ParsedSkill, findings: &mut Findings) {
+    let missing_required = REQUIRED_FRONTMATTER_KEYS
+        .iter()
+        .filter(|key| !parsed.keys.contains(**key))
+        .count();
+    let unknown_keys = parsed
+        .keys
+        .iter()
+        .filter(|key| {
+            !REQUIRED_FRONTMATTER_KEYS.contains(&key.as_str())
+                && !OPTIONAL_FRONTMATTER_KEYS.contains(&key.as_str())
+        })
+        .count();
+    let key_violations = missing_required + unknown_keys;
+    if key_violations > 0 {
+        findings.add_count(path, "frontmatter-keys", key_violations);
+    }
+
+    if let Some(license) = mapping_value(&parsed.frontmatter, "license")
+        && license.as_str().is_none_or(|value| value.trim().is_empty())
+    {
+        findings.add(path, "frontmatter-license-invalid");
+    }
+
+    if let Some(compatibility) = mapping_value(&parsed.frontmatter, "compatibility") {
+        match compatibility.as_str() {
+            Some(value)
+                if !value.trim().is_empty()
+                    && (1..=MAX_COMPATIBILITY_CHARS).contains(&value.chars().count()) => {}
+            _ => findings.add(path, "compatibility-length"),
+        }
+    }
+
+    if let Some(allowed_tools) = mapping_value(&parsed.frontmatter, "allowed-tools")
+        && allowed_tools
+            .as_str()
+            .is_none_or(|value| value.trim().is_empty())
+    {
+        findings.add(path, "frontmatter-allowed-tools-invalid");
+    }
+
+    if let Some(metadata) = mapping_value(&parsed.frontmatter, "metadata") {
+        let valid_metadata = metadata.as_mapping().is_some_and(|map| {
+            map.iter().all(|(key, val)| {
+                key.as_str().is_some_and(|k| !k.trim().is_empty()) && val.as_str().is_some()
+            })
+        });
+        if !valid_metadata {
+            findings.add(path, "frontmatter-metadata-invalid");
+        }
+    }
 }
 
 fn validate_ui_metadata(

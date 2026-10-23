@@ -92,6 +92,7 @@ export function processLooksLikeBinary(pid, binaryPath) {
     try {
       cmd = execFileSync("ps", ["-p", String(pid), "-o", "args="], {
         encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
         timeout: 1000,
       });
     } catch {

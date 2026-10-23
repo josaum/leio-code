@@ -335,7 +335,10 @@ fn suggest_rust_pin_drift(_ev: &crate::model::EvidenceItem) -> Option<String> {
 static RULE_DOCS: &[RuleDoc] = &[
     RuleDoc {
         rule_id: "redis_no_prefix",
-        aliases: &["redis-key-hygiene/no-prefix", "redis-key-hygiene/wildcard-keys"],
+        aliases: &[
+            "redis-key-hygiene/no-prefix",
+            "redis-key-hygiene/wildcard-keys",
+        ],
         description: "Flags Redis keys built without a tenant or cartridge prefix. \
              Operational state may be sharded by tenant; an unprefixed \
              key collides across tenants and silently leaks one tenant's \
@@ -373,7 +376,10 @@ static RULE_DOCS: &[RuleDoc] = &[
     },
     RuleDoc {
         rule_id: "env_undeclared_read",
-        aliases: &["env-contract/undeclared-var", "env-contract/undeclared-read"],
+        aliases: &[
+            "env-contract/undeclared-var",
+            "env-contract/undeclared-read",
+        ],
         description: "Flags environment variables read in source code that are not declared \
              in any `.env*` file, `deploy/profiles/*`, `deploy/secret-sets/*`, Docker Compose \
              manifest, Dockerfile `ENV`/`ARG`, or Kubernetes ConfigMap.",
@@ -387,7 +393,10 @@ static RULE_DOCS: &[RuleDoc] = &[
     },
     RuleDoc {
         rule_id: "import_boundary_violation",
-        aliases: &["import-boundary/forbidden-import", "import-boundary/violation"],
+        aliases: &[
+            "import-boundary/forbidden-import",
+            "import-boundary/violation",
+        ],
         description: "Flags imports that cross a forbidden architectural boundary declared under \
              `[[doctors.import_boundary.rules]]` in `.leio-code/config.toml`.",
         fix_advice: "Move the shared type or helper into an allowed lower-layer module, invert \
@@ -442,7 +451,10 @@ static RULE_DOCS: &[RuleDoc] = &[
     },
     RuleDoc {
         rule_id: "duplicate_large_files",
-        aliases: &["repo-hygiene/duplicate-large-files", "repo-hygiene/large-binary"],
+        aliases: &[
+            "repo-hygiene/duplicate-large-files",
+            "repo-hygiene/large-binary",
+        ],
         description: "Flags byte-identical large files (>5 MB) tracked at multiple paths in the repository.",
         fix_advice: "Consolidate the duplicate copies into a single canonical path (or generate \
              the mirror at release/build time instead of tracking duplicate blobs).",

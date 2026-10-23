@@ -133,6 +133,33 @@ class BuildSpecTests(unittest.TestCase):
         self.assertIn(GOLDEN["tasks"][0]["task"], spec["lanes"][0]["task"])
         self.assertIn("evidence_paths", spec["lanes"][0]["task"])
 
+    def test_prompt_variants_and_openrouter_direct_response_formats(self) -> None:
+        for variant in benchmark_models.PROMPT_VARIANTS:
+            for rf in ("none", "json_object", "json_schema"):
+                args = make_args(
+                    agent="openrouter-direct",
+                    prompt_variant=variant,
+                    response_format=rf,
+                )
+                spec, _, _ = benchmark_models.build_spec(args, GOLDEN["tasks"][:1])
+                tpl = spec["agentTemplates"]["openrouter-direct"]
+                self.assertEqual(tpl["env"]["LEIO_BENCH_MODEL"], "{model}")
+                if rf == "none":
+                    self.assertNotIn("LEIO_BENCH_RF", tpl["env"])
+                else:
+                    self.assertIn("LEIO_BENCH_RF", tpl["env"])
+
+    def test_with_context_embeds_and_truncates_bundle(self) -> None:
+        from unittest import mock
+
+        big_bundle = "x" * (benchmark_models.MAX_CONTEXT_CHARS + 100)
+        completed = subprocess.CompletedProcess(args=[], returncode=0, stdout=big_bundle)
+        with mock.patch("subprocess.run", return_value=completed):
+            args = make_args(with_context=True, response_format="none")
+            spec, _, _ = benchmark_models.build_spec(args, GOLDEN["tasks"][:1])
+            self.assertIn("LEIO CONTEXT BUNDLE", spec["lanes"][0]["task"])
+            self.assertIn("... (truncated)", spec["lanes"][0]["task"])
+
 
 class GradeLaneTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -210,6 +237,24 @@ class GradeLaneTests(unittest.TestCase):
         grade = benchmark_models.grade_lane(outcome, self.task, Path(self.tmp.name))
         self.assertTrue(grade["json_valid"])
 
+    def test_unwraps_openai_choices_and_scores_reference_text(self) -> None:
+        inner = {
+            "answer": "ROAS forecast is governed and signed by the contract",
+            "evidence_paths": ["apps-sdk/server.js"],
+            "tests": ["npm run check"],
+        }
+        wrapped = {"choices": [{"message": {"content": json.dumps({"content": json.dumps(inner)})}}]}
+        self.stdout.write_text(json.dumps(wrapped) + "\n")
+        grade = benchmark_models.grade_lane(
+            self.outcome(),
+            self.task,
+            Path(self.tmp.name),
+            reference_text="ROAS forecast must be governed and signed.",
+        )
+        self.assertTrue(grade["json_valid"])
+        self.assertTrue(grade["reference_reflected"])
+        self.assertGreater(grade["reference_score"], 0.0)
+
 
 class FakeHarnessMainTests(unittest.TestCase):
     """End-to-end `--execute` through a fake harness binary (no model spend)."""
@@ -280,7 +325,15 @@ class FakeHarnessMainTests(unittest.TestCase):
         return code, buffer.getvalue()
 
     def test_execute_runs_grades_and_writes_reports(self) -> None:
-        code, stdout = self.run_main("--execute", "--bus", "127.0.0.1:18815")
+        notes_path = self.root / "ref.json"
+        notes_path.write_text(json.dumps({GOLDEN["tasks"][0]["name"]: "Governed signed forecast."}))
+        code, stdout = self.run_main(
+            "--execute",
+            "--bus",
+            "127.0.0.1:18815",
+            "--reference-answers",
+            str(notes_path),
+        )
         self.assertEqual(code, 0)
         out = self.root / "sweep"
         self.assertIn("day spec:", stdout)
@@ -315,4 +368,4 @@ class FakeHarnessMainTests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(module=__name__)

@@ -4,4 +4,4 @@ default_mode = "capabilities-first"
 workspace_profile = "leio-code"
 
 [doctors]
-disabled = ["env-contract", "skill-contract"]
+disabled = ["env-contract"]

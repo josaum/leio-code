@@ -1,0 +1,4 @@
+interface:
+  display_name: "LEIO Trio"
+  short_description: "Ground code, business facts, and harness swarms"
+  default_prompt: "Use $leio-trio to ground this cross-surface task across LEIO Code, governed facts, and harness lanes."
