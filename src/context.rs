@@ -1439,7 +1439,6 @@ fn apply_query_coverage_and_role_priors(
     let (parent_dir, filename) = file
         .path
         .rsplit_once(['/', '\\'])
-        .map(|(dir, f)| (dir, f))
         .unwrap_or(("", &file.path));
     let file_stem = filename.split('.').next().unwrap_or(filename);
     let mut stem_tokens = tokenize(file_stem);
