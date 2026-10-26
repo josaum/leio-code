@@ -45,7 +45,7 @@ def server_modules() -> Path:
         shutil.rmtree(cached)
     cached.mkdir(parents=True)
     (cached / "package.json").write_text(
-        '{"name":"leio-code-server","private":true,"version":"2.6.5"}\n',
+        '{"name":"leio-code-server","private":true,"version":"2.6.6"}\n',
         encoding="utf-8",
     )
     subprocess.run(
@@ -63,13 +63,13 @@ def stage_server(dest: Path, *, with_modules: bool = False) -> None:
     for name in SERVER_FILES:
         shutil.copy2(ROOT / "mcp" / name, dest / name)
     (dest / "package.json").write_text(
-        '{"name":"leio-code-server","private":true,"type":"module","version":"2.6.5"}\n',
+        '{"name":"leio-code-server","private":true,"type":"module","version":"2.6.6"}\n',
         encoding="utf-8",
     )
     shutil.copy2(ROOT / "packaging" / "npm" / "bin" / "leio-mcp.js", dest / "leio-mcp.js")
     if with_modules:
         shutil.copytree(server_modules(), dest / "node_modules")
-VERSION = "2.6.5"
+VERSION = "2.6.6"
 TAG = f"leio-code-plugin-v{VERSION}"
 REPO = "josaum/leio-code"
 

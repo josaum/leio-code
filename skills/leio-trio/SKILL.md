@@ -5,7 +5,7 @@ license: MIT OR Apache-2.0
 compatibility: Requires python3, leio-code, and leio-harness.
 metadata:
   author: leio-code
-  version: "2.6.5"
+  version: "2.6.6"
 ---
 
 # LEIO Trio — three sovereignties, one evidence chain

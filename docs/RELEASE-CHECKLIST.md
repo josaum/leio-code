@@ -22,7 +22,7 @@ leio-code --version
 `.github/workflows/binary-release.yml` builds `leio-code-linux-amd64`,
 `leio-code-darwin-arm64`, and `leio-code-darwin-amd64`, plus the matching
 harness binaries, on tag `leio-code-plugin-v*`. Current release:
-[`leio-code-plugin-v2.6.5`](https://github.com/josaum/leio-code/releases/tag/leio-code-plugin-v2.6.5).
+[`leio-code-plugin-v2.6.6`](https://github.com/josaum/leio-code/releases/tag/leio-code-plugin-v2.6.6).
 
 ## Homebrew
 

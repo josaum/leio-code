@@ -31,7 +31,7 @@ All notable changes to LEIO Code. Format follows [Keep a Changelog](https://keep
   delivery loss, parallel worktree lanes and 2,000 cross-process ring messages.
 
 
-## [Unreleased]
+## [2.6.6] — 2026-10-26
 
 ### Fixed
 - env-contract: `${NAME}` inside JavaScript, TypeScript and TSX sources is a template-literal interpolation, not a shell expansion, and no longer counts as an environment read. The shell form still applies to every other language.
