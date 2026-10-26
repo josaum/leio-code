@@ -5,7 +5,7 @@ license: MIT OR Apache-2.0
 compatibility: Requires cargo, python3, and a local git checkout.
 metadata:
   author: leio-code
-  version: "2.6.5"
+  version: "2.6.6"
 ---
 
 

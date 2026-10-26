@@ -8,7 +8,7 @@
   "serverInfo": {
     "name": "leio-code",
     "title": "LEIO Code",
-    "version": "2.6.5",
+    "version": "2.6.6",
     "description": "Evidence-first repository intelligence over stdio: status, capabilities, context, find, explain, graph, doctors, formal SPARQL, and lattice navigation. One absolute repo_root per call.",
     "websiteUrl": "https://github.com/josaum/leio-code",
     "icons": [
@@ -3374,7 +3374,6 @@
             "type": "string",
             "enum": [
               "symbol",
-              "text",
               "env-var",
               "redis-key",
               "deploy-target",
@@ -3807,7 +3806,6 @@
           "kind": {
             "type": "string",
             "enum": [
-              "symbol",
               "deploy-target",
               "env-var",
               "redis-key",
@@ -12695,7 +12693,6 @@
           "type": "string",
           "enum": [
             "symbol",
-            "text",
             "env-var",
             "redis-key",
             "deploy-target",
@@ -12772,7 +12769,6 @@
             "type": "string",
             "enum": [
               "symbol",
-              "text",
               "env-var",
               "redis-key",
               "deploy-target",
@@ -13210,7 +13206,6 @@
           "name": "kind",
           "type": "string",
           "enum": [
-            "symbol",
             "deploy-target",
             "env-var",
             "redis-key",
@@ -13274,7 +13269,6 @@
           "kind": {
             "type": "string",
             "enum": [
-              "symbol",
               "deploy-target",
               "env-var",
               "redis-key",

@@ -26,17 +26,23 @@ class StrictContextTests(unittest.TestCase):
         self.repo = self.root / 'repo'
         self.repo.mkdir()
 
-    def fake_binary(self, stdout, *, stderr='', exit_code=0, delay=0):
+    def fake_binary(self, stdout, *, stderr='', exit_code=0, delay=0, output_after_delay=False):
+        """A stand-in for leio-code. With ``output_after_delay`` nothing is written
+        before ``delay`` elapses, so a shorter timeout observes no output at all."""
         binary = self.root / 'fake-leio-code'
-        binary.write_text(
-            '#!/usr/bin/env python3\n'
-            'import sys, time\n'
+        sleep = f'time.sleep({delay!r})\n'
+        write = (
             f'sys.stdout.write({stdout!r})\n'
             'sys.stdout.flush()\n'
             f'sys.stderr.write({stderr!r})\n'
             'sys.stderr.flush()\n'
-            f'time.sleep({delay!r})\n'
-            f'raise SystemExit({exit_code})\n'
+        )
+        body = sleep + write if output_after_delay else write + sleep
+        binary.write_text(
+            '#!/usr/bin/env python3\n'
+            'import sys, time\n'
+            + body
+            + f'raise SystemExit({exit_code})\n'
         )
         binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
         return binary
@@ -56,9 +62,11 @@ class StrictContextTests(unittest.TestCase):
         binary = self.fake_binary('partial stdout', stderr='partial stderr', delay=2)
         with self.assertRaisesRegex(RuntimeError, 'timed out'):
             evaluate.run_context(binary, self.repo, 'task', timeout=0.05)
-        # Python's TimeoutExpired may carry None output on fast timeouts; the
-        # runner must then emit the empty diagnostic rather than crash.
-        slow = self.fake_binary('partial stdout', stderr='partial stderr', delay=1)
+        # Python's TimeoutExpired carries None output when nothing was written
+        # before the deadline; the runner must then emit the empty diagnostic
+        # rather than crash. The binary writes only after the timeout has
+        # passed, so this does not race interpreter start-up.
+        slow = self.fake_binary('partial stdout', stderr='partial stderr', delay=1, output_after_delay=True)
         with self.assertRaisesRegex(RuntimeError, "stdout=''"):
             evaluate.run_context(slow, self.repo, 'task', timeout=0.02)
 

@@ -5,7 +5,7 @@ license: MIT OR Apache-2.0
 compatibility: Requires leio-code CLI or leio-code stdio MCP server with local repository filesystem access.
 metadata:
   author: leio-code
-  version: "2.6.5"
+  version: "2.6.6"
 ---
 
 # LEIO Code
