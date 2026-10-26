@@ -72,11 +72,20 @@ static ENV_ACCESS_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
         Regex::new(r#"os\.environ(?:\.get)?\[\s*["']([A-Z][A-Z0-9_]+)["']\s*\]"#)
             .expect("valid regex"),
         Regex::new(r#"os\.environ\.get\(["']([A-Z][A-Z0-9_]+)["']\)"#).expect("valid regex"),
-        Regex::new(r#"\$\{([A-Z][A-Z0-9_]+)(?::-[^}]*)?\}"#).expect("valid regex"),
     ]
 });
+/// Shell parameter expansion (`${NAME}`, `${NAME:-default}`). Kept apart from
+/// `ENV_ACCESS_PATTERNS` because the same syntax is a template-literal
+/// interpolation in JavaScript and TypeScript, where `${DEFAULT_TOP_K}` names a
+/// constant, not an environment variable.
+static SHELL_EXPANSION_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"\$\{([A-Z][A-Z0-9_]+)(?::-[^}]*)?\}"#).expect("valid regex"));
 static DECLARED_ENV_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r#"^([A-Z][A-Z0-9_]+)\s*=\s*(.+)?$"#).expect("valid regex"));
+/// YAML mapping form of a declaration (`KEY: value`), as in a GitHub Actions
+/// `env:` block or a Compose `environment:` mapping.
+static DECLARED_YAML_ENV_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"^-?\s*([A-Z][A-Z0-9_]+)\s*:\s*(.+)?$"#).expect("valid regex"));
 static REDIS_LITERAL_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"["']([A-Za-z0-9_{}*-]+(?::[A-Za-z0-9_{}*.-]+)+)["']"#).expect("valid regex")
 });
@@ -1344,9 +1353,16 @@ fn extract_env_vars(path: &str, language: SourceLanguage, source: &str) -> Vec<E
             language,
             SourceLanguage::Env | SourceLanguage::Toml | SourceLanguage::Yaml
         ) && !trimmed.starts_with('#')
-            && let Some(captures) = DECLARED_ENV_PATTERN.captures(trimmed)
         {
-            let name = captures.get(1).map(|m| m.as_str()).unwrap_or_default();
+            let declared = DECLARED_ENV_PATTERN.captures(trimmed).or_else(|| {
+                (language == SourceLanguage::Yaml)
+                    .then(|| DECLARED_YAML_ENV_PATTERN.captures(trimmed))
+                    .flatten()
+            });
+            let name = declared
+                .and_then(|captures| captures.get(1))
+                .map(|m| m.as_str())
+                .unwrap_or_default();
             if !name.is_empty() {
                 out.push(EnvVarOccurrence {
                     name: name.to_string(),
@@ -1358,7 +1374,12 @@ fn extract_env_vars(path: &str, language: SourceLanguage, source: &str) -> Vec<E
             }
         }
 
-        for pattern in ENV_ACCESS_PATTERNS.iter() {
+        let shell_expansion = (!matches!(
+            language,
+            SourceLanguage::JavaScript | SourceLanguage::TypeScript | SourceLanguage::Tsx
+        ))
+        .then_some(&*SHELL_EXPANSION_PATTERN);
+        for pattern in ENV_ACCESS_PATTERNS.iter().chain(shell_expansion) {
             for capture in pattern.captures_iter(line) {
                 let Some(name) = capture.get(1).map(|value| value.as_str()) else {
                     continue;
@@ -2458,6 +2479,55 @@ value = os.environ["DB_PASSWORD"]
         assert_eq!(access_by_line.get(&4), Some(&AccessKind::Read));
         assert_eq!(access_by_line.get(&5), Some(&AccessKind::Write));
         assert_eq!(access_by_line.get(&6), Some(&AccessKind::Read));
+    }
+
+    #[test]
+    fn template_literal_interpolation_is_not_an_env_read_in_js_and_ts() {
+        let source = r#"
+const DEFAULT_TOP_K = 12;
+const usage = `Candidates to route (default ${DEFAULT_TOP_K})`;
+const real = process.env.OLAYA_EXTRA_ONTOLOGY;
+"#;
+        for (path, language) in [
+            ("demo.ts", SourceLanguage::TypeScript),
+            ("demo.mjs", SourceLanguage::JavaScript),
+            ("demo.tsx", SourceLanguage::Tsx),
+        ] {
+            let names: Vec<String> = extract_env_vars(path, language, source)
+                .into_iter()
+                .map(|item| item.name)
+                .collect();
+            assert_eq!(names, vec!["OLAYA_EXTRA_ONTOLOGY".to_string()], "{path}");
+        }
+
+        let shell = extract_env_vars("run.sh", SourceLanguage::Bash, "echo ${DEFAULT_TOP_K}");
+        assert_eq!(shell.len(), 1);
+        assert_eq!(shell[0].name, "DEFAULT_TOP_K");
+        assert_eq!(shell[0].access, AccessKind::Read);
+    }
+
+    #[test]
+    fn yaml_env_block_declares_the_variables_its_run_steps_read() {
+        let source = r#"
+jobs:
+  leio:
+    env:
+      LEIO_CODE_VERSION: 2.6.5
+      LEIO_CODE_SHA256: "73fcae5b"
+    steps:
+      - run: curl -o leio-code ".../v${LEIO_CODE_VERSION}/leio-code"
+"#;
+        let envs = extract_env_vars(".github/workflows/ci.yml", SourceLanguage::Yaml, source);
+        let declared: Vec<&str> = envs
+            .iter()
+            .filter(|item| item.access == AccessKind::Declared)
+            .map(|item| item.name.as_str())
+            .collect();
+        assert_eq!(declared, vec!["LEIO_CODE_VERSION", "LEIO_CODE_SHA256"]);
+        assert!(
+            envs.iter()
+                .any(|item| item.name == "LEIO_CODE_VERSION" && item.access == AccessKind::Read)
+        );
     }
 
     #[test]

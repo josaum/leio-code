@@ -33,6 +33,10 @@ All notable changes to LEIO Code. Format follows [Keep a Changelog](https://keep
 
 ## [Unreleased]
 
+### Fixed
+- env-contract: `${NAME}` inside JavaScript, TypeScript and TSX sources is a template-literal interpolation, not a shell expansion, and no longer counts as an environment read. The shell form still applies to every other language.
+- env-contract: YAML `KEY: value` mappings (GitHub Actions `env:` blocks, Compose `environment:`) now declare the variable, so a workflow that reads `${KEY}` in a `run:` step is not reported as undeclared.
+
 ### Changed
 - JSON-LD results embed a JSON-LD 1.1 context. `rdf:type` is `prov:Activity`, provenance links are IRIs, and `meta` and `checkout` are RDF JSON literals. `@version: 1.2` is not emitted: oxjsonld 0.2.6 rejects it. Historical journal lines are left as written.
 - Hosted `graph_repository` accepts `full`. The default packet keeps 20 entities; `full: true` returns the complete result.
