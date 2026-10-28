@@ -89,7 +89,7 @@ fn root(repo: &Path) -> Result<PathBuf> {
         repo.is_absolute() && repo.is_dir(),
         "repo must be an absolute existing directory"
     );
-    Ok(repo.canonicalize()?)
+    Ok(crate::process::clean_canonicalize(repo)?)
 }
 fn runs(repo: &Path) -> PathBuf {
     repo.join(".leio-code/harness/runs")
@@ -252,10 +252,11 @@ pub fn submit(
     #[cfg(unix)]
     let checkout = {
         let top_bytes = top.stdout.strip_suffix(b"\n").unwrap_or(&top.stdout);
-        Path::new(std::ffi::OsStr::from_bytes(top_bytes)).canonicalize()?
+        crate::process::clean_canonicalize(Path::new(std::ffi::OsStr::from_bytes(top_bytes)))?
     };
     #[cfg(not(unix))]
-    let checkout = Path::new(std::str::from_utf8(&top.stdout)?.trim()).canonicalize()?;
+    let checkout =
+        crate::process::clean_canonicalize(Path::new(std::str::from_utf8(&top.stdout)?.trim()))?;
     ensure!(
         repo == checkout,
         "task repo must be the Git checkout root ({}); constrain module scope in the task instead of submitting a subdirectory",
@@ -638,7 +639,7 @@ fn collect(spec: &TaskSpec, dir: &Path, tracker: &Tracker) -> Result<()> {
         );
         let source = repo.join(relative);
         let metadata = std::fs::symlink_metadata(&source)?;
-        if !metadata.is_file() || !source.canonicalize()?.starts_with(repo) {
+        if !metadata.is_file() || !crate::process::clean_canonicalize(&source)?.starts_with(repo) {
             truncated = true;
             continue;
         }

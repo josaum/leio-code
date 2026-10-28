@@ -472,6 +472,7 @@ function startDetachedLeio(subcommandArgs, repoRoot, { pidName, logName }) {
   const child = spawn(invocation.command, invocation.args, {
     cwd: invocation.cwd,
     detached: true,
+    windowsHide: true,
     stdio: ["ignore", logFd, logFd],
     env: process.env,
   });

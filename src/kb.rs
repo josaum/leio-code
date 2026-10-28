@@ -88,9 +88,10 @@ pub struct KbRegistry {
 }
 
 pub fn kb_home() -> PathBuf {
-    Path::new(&std::env::var("HOME").unwrap_or_else(|_| ".".to_string()))
-        .join(".leio-code")
-        .join("kb")
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .unwrap_or_else(|_| ".".to_string());
+    Path::new(&home).join(".leio-code").join("kb")
 }
 
 pub fn registry_path() -> PathBuf {
@@ -128,6 +129,7 @@ pub fn save_registry(registry: &KbRegistry) -> Result<()> {
 pub fn add_source(name: &str, source: &Path) -> Result<Vec<KbSource>> {
     let source = source
         .canonicalize()
+        .map(crate::checkout::strip_windows_verbatim)
         .with_context(|| format!("resolve {}", source.display()))?;
     let mut registry = load_registry();
     let sources = registry.bases.entry(name.to_owned()).or_default();

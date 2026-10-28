@@ -80,9 +80,17 @@ fn git(cwd: &Path, args: &[&str]) -> Result<String> {
 
 fn on_path(program: &str) -> Option<PathBuf> {
     let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path)
-        .map(|dir| dir.join(program))
-        .find(|candidate| candidate.is_file())
+    let suffixes: &[&str] = if cfg!(windows) && !program.contains('.') {
+        &["", ".exe", ".cmd"]
+    } else {
+        &[""]
+    };
+    std::env::split_paths(&path).find_map(|dir| {
+        suffixes
+            .iter()
+            .map(|suffix| dir.join(format!("{program}{suffix}")))
+            .find(|candidate| candidate.is_file())
+    })
 }
 
 /// Verify the routing artifacts actually installed, even for same-version refreshes.
@@ -218,11 +226,16 @@ fn prune_cache_fat(cache_root: &Path) {
     recurse(cache_root, 0);
 }
 
+fn user_home() -> PathBuf {
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/root"))
+}
+
 /// Cache roots the two harness CLIs snapshot plugins into.
 fn plugin_cache_roots() -> [PathBuf; 2] {
-    let home = std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/root"));
+    let home = user_home();
     [
         home.join(".codex/plugins/cache/leio-code"),
         home.join(".claude/plugins/cache/leio-code"),
@@ -234,7 +247,17 @@ fn install_binary(source: &Path, dest: &Path) -> Result<()> {
     let tmp = dest.with_extension("tmp-update");
     std::fs::copy(source, &tmp)
         .with_context(|| format!("copy {} -> {}", source.display(), tmp.display()))?;
+    #[cfg(windows)]
+    if dest.exists() {
+        let old = dest.with_extension("old-exe");
+        let _ = std::fs::remove_file(&old);
+        let _ = std::fs::rename(dest, &old);
+    }
     std::fs::rename(&tmp, dest).with_context(|| format!("publish {}", dest.display()))?;
+    #[cfg(windows)]
+    {
+        let _ = std::fs::remove_file(dest.with_extension("old-exe"));
+    }
     Ok(())
 }
 
@@ -294,8 +317,9 @@ pub fn run_update(force: bool, refresh_plugins: bool) -> Result<QueryEnvelope> {
             let _ = std::fs::write(&build_script, source);
         }
 
+        let exe = std::env::consts::EXE_SUFFIX;
         let cargo = on_path("cargo")
-            .or_else(|| Some(home_cargo_bin().join("cargo")))
+            .or_else(|| Some(home_cargo_bin().join(format!("cargo{exe}"))))
             .context("cargo not found on PATH")?;
         let build = Command::new(&cargo)
             .current_dir(&checkout)
@@ -332,13 +356,15 @@ pub fn run_update(force: bool, refresh_plugins: bool) -> Result<QueryEnvelope> {
         let target_dir = std::env::var("CARGO_TARGET_DIR")
             .map(PathBuf::from)
             .unwrap_or_else(|_| checkout.join("target"));
+        let leio_bin = format!("leio-code{exe}");
+        let harness_bin = format!("leio-harness{exe}");
         install_binary(
-            &target_dir.join("release/leio-code"),
-            &dest_dir.join("leio-code"),
+            &target_dir.join("release").join(&leio_bin),
+            &dest_dir.join(&leio_bin),
         )?;
         install_binary(
-            &target_dir.join("release/leio-harness"),
-            &dest_dir.join("leio-harness"),
+            &target_dir.join("release").join(&harness_bin),
+            &dest_dir.join(&harness_bin),
         )?;
         steps.push(Step {
             name: "install",
@@ -346,13 +372,13 @@ pub fn run_update(force: bool, refresh_plugins: bool) -> Result<QueryEnvelope> {
         });
         evidence.push(EvidenceItem {
             kind: "binary".to_string(),
-            path: dest_dir.join("leio-code").display().to_string(),
+            path: dest_dir.join(&leio_bin).display().to_string(),
             line: None,
             detail: "installed binary".to_string(),
         });
         evidence.push(EvidenceItem {
             kind: "binary".to_string(),
-            path: dest_dir.join("leio-harness").display().to_string(),
+            path: dest_dir.join(&harness_bin).display().to_string(),
             line: None,
             detail: "installed binary".to_string(),
         });
@@ -362,7 +388,8 @@ pub fn run_update(force: bool, refresh_plugins: bool) -> Result<QueryEnvelope> {
         let dest_dir = std::env::var("DEST_DIR")
             .map(PathBuf::from)
             .unwrap_or_else(|_| home_cargo_bin());
-        Command::new(dest_dir.join("leio-code"))
+        let leio_bin = format!("leio-code{}", std::env::consts::EXE_SUFFIX);
+        Command::new(dest_dir.join(leio_bin))
             .arg("--version")
             .output()
             .ok()
@@ -432,10 +459,7 @@ pub fn run_update(force: bool, refresh_plugins: bool) -> Result<QueryEnvelope> {
 }
 
 fn home_cargo_bin() -> PathBuf {
-    std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/root"))
-        .join(".cargo/bin")
+    user_home().join(".cargo/bin")
 }
 
 #[cfg(test)]

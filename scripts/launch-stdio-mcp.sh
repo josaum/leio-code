@@ -2,13 +2,19 @@
 # Single stdio MCP bootstrap for the Claude plugin and project .mcp.json.
 set -euo pipefail
 
+HOME="${HOME:-${USERPROFILE:-}}"
+
 # Claude Desktop often starts MCP with a stripped PATH. Prefer the cargo-installed
 # binary so a stale unpacked snapshot cannot win via walk-up `target/`.
-if [[ -z "${LEIO_CODE_BIN:-}" && -x "${HOME}/.cargo/bin/leio-code" ]]; then
-  export LEIO_CODE_BIN="${HOME}/.cargo/bin/leio-code"
+if [[ -z "${LEIO_CODE_BIN:-}" && -n "${HOME}" ]]; then
+  if [[ -x "${HOME}/.cargo/bin/leio-code.exe" ]]; then
+    export LEIO_CODE_BIN="${HOME}/.cargo/bin/leio-code.exe"
+  elif [[ -x "${HOME}/.cargo/bin/leio-code" ]]; then
+    export LEIO_CODE_BIN="${HOME}/.cargo/bin/leio-code"
+  fi
 fi
 for dir in "${HOME}/.cargo/bin" "${HOME}/.local/bin" "/opt/homebrew/bin" "/usr/local/bin"; do
-  if [[ -d "${dir}" ]]; then
+  if [[ -n "${dir}" && -d "${dir}" ]]; then
     case ":${PATH}:" in
       *":${dir}:"*) ;;
       *) export PATH="${dir}:${PATH}" ;;
@@ -20,8 +26,14 @@ if ! command -v node >/dev/null 2>&1; then
   for candidate in \
     "${HOME}"/.nvm/versions/node/*/bin \
     "${HOME}"/.local/share/fnm/node-versions/*/installation/bin \
-    "${HOME}/Library/Application Support/fnm/node-versions"/*/installation/bin; do
-    if [[ -x "${candidate}/node" ]]; then
+    "${HOME}/Library/Application Support/fnm/node-versions"/*/installation/bin \
+    "${HOME}/.volta/bin" \
+    "/c/Program Files/nodejs" \
+    "${PROGRAMFILES:-}/nodejs" \
+    "${APPDATA:-}/nvm"/* \
+    "${APPDATA:-}/fnm/node-versions"/*/installation \
+    "${LOCALAPPDATA:-}/fnm_multishells"/*; do
+    if [[ -n "${candidate}" ]] && [[ -x "${candidate}/node" || -x "${candidate}/node.exe" ]]; then
       export PATH="${candidate}:${PATH}"
     fi
   done
@@ -50,4 +62,13 @@ if [[ ! -d "${MCP_DIR}/node_modules/@modelcontextprotocol/sdk" ]] \
   fi
 fi
 
-exec node "${MCP_DIR}/index.js"
+ENTRYPOINT="${MCP_DIR}/index.js"
+if command -v cygpath >/dev/null 2>&1; then
+  case "$(uname -s 2>/dev/null || true)" in
+    MINGW*|MSYS*|CYGWIN*)
+      ENTRYPOINT="$(cygpath -w "${ENTRYPOINT}")"
+      ;;
+  esac
+fi
+
+exec node "${ENTRYPOINT}"

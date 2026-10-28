@@ -1835,6 +1835,7 @@ fn index_file_age_secs(index_path: &Path) -> Option<f64> {
 fn canonical_repo(path: &Path) -> Result<PathBuf> {
     let canonical = path
         .canonicalize()
+        .map(leio_code::checkout::strip_windows_verbatim)
         .with_context(|| format!("failed to resolve repo path {}", path.display()))?;
 
     // When running from a subdirectory with default or current directory path,

@@ -71,6 +71,7 @@ const MIN_CONTEXT_LENGTH: u64 = 100_000;
 /// `~/.config/leio-harness/openrouter-models.json` (HOME-dependent).
 pub fn models_cache_path() -> Option<std::path::PathBuf> {
     std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
         .ok()
         .filter(|home| !home.trim().is_empty())
         .map(|home| Path::new(&home).join(".config/leio-harness/openrouter-models.json"))

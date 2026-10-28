@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
 
@@ -18,7 +19,7 @@ function directory(target) {
 
 function readRegular(target,max) {
   if(fs.realpathSync(path.dirname(target)) !== path.dirname(target)) throw new Error('Review path must not contain symlinks');
-  const fd=fs.openSync(target,fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
+  const fd=fs.openSync(target,(fs.constants.O_RDONLY ?? 0) | (fs.constants.O_NOFOLLOW ?? 0) | (fs.constants.O_NONBLOCK ?? 0));
   try {
     const before=fs.fstatSync(fd);
     if(!before.isFile() || before.size>max) throw new Error('Review input must be a regular file within the byte limit');
@@ -42,7 +43,7 @@ console.log(JSON.stringify({selected_files_unchanged:true,files:files.length,sco
 
 export async function captureReview(input,runProcess) {
   const git=async(args,cwd=input.repo_root)=>{
-    const result=await runProcess('git',args,cwd,15000,{GIT_CONFIG_NOSYSTEM:'1',GIT_CONFIG_GLOBAL:'/dev/null',GIT_CONFIG_COUNT:'0'});
+    const result=await runProcess('git',args,cwd,15000,{GIT_CONFIG_NOSYSTEM:'1',GIT_CONFIG_GLOBAL:os.devNull,GIT_CONFIG_COUNT:'0'});
     if(result.code!==0)throw new Error(result.stderr.trim() || 'Review Git setup failed');
     return result.stdout.replace(/\r?\n$/,'');
   };
@@ -59,12 +60,13 @@ export async function captureReview(input,runProcess) {
   }
   const catalog=path.join(input.repo_root,'.leio-code/harness/reviews');directory(catalog);
   const id=`${Date.now()}-${randomUUID()}`,owner=path.join(catalog,id),root=path.join(owner,'snapshot');directory(root);
+  const emptyHooks=path.join(owner,'empty-hooks');directory(emptyHooks);
   for(const file of selected) {
     const target=path.join(root,file.path);directory(path.dirname(target));
     fs.writeFileSync(target,file.bytes,{flag:'wx',mode:file.mode});
   }
   await git(['init','-q','--template='],root);
-  await git(['config','core.hooksPath','/dev/null'],root);
+  await git(['config','core.hooksPath',emptyHooks],root);
   directory(path.join(root,'.git/info'));
   fs.writeFileSync(path.join(root,'.git/info/exclude'),'.leio-code/\n');
   await git(['--literal-pathspecs','add','--force','--',...selected.map(f=>f.path)],root);

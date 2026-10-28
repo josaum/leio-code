@@ -31,6 +31,23 @@ pub(crate) fn unique_id() -> String {
     )
 }
 
+/// Strip the Windows verbatim drive prefix (`\\?\C:\...` -> `C:\...`) added by
+/// `std::fs::canonicalize` so paths match `git rev-parse --show-toplevel` and
+/// Node `fs.realpathSync` on Windows.
+pub(crate) fn strip_windows_verbatim(path: PathBuf) -> PathBuf {
+    if let Some(raw) = path.to_str()
+        && let Some(stripped) = raw.strip_prefix(r"\\?\")
+        && stripped.as_bytes().get(1) == Some(&b':')
+    {
+        return PathBuf::from(stripped);
+    }
+    path
+}
+
+pub(crate) fn clean_canonicalize(path: impl AsRef<Path>) -> std::io::Result<PathBuf> {
+    std::fs::canonicalize(path).map(strip_windows_verbatim)
+}
+
 pub fn run(spec: RunSpec) -> Result<RunResult> {
     run_observed(spec, None)
 }
@@ -79,6 +96,22 @@ pub fn run_observed(spec: RunSpec, observer: Option<Arc<dyn RunObserver>>) -> Re
         "LOGNAME",
         "SHELL",
         "TMPDIR",
+        "TEMP",
+        "TMP",
+        "SystemRoot",
+        "SYSTEMROOT",
+        "WINDIR",
+        "COMSPEC",
+        "PATHEXT",
+        "USERPROFILE",
+        "APPDATA",
+        "LOCALAPPDATA",
+        "PROGRAMDATA",
+        "PROGRAMFILES",
+        "PROGRAMFILES(X86)",
+        "HOMEDRIVE",
+        "HOMEPATH",
+        "USERNAME",
         "LANG",
         "LC_ALL",
         "TERM",

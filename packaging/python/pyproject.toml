@@ -31,4 +31,4 @@ leio-mcp = "leio_code.mcp:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-leio_code = ["bin/*", "mcp/**/*", "register-mcp.js"]
+leio_code = ["bin/*", "mcp/**/*", "skills/**/*", "register-mcp.js", "package.json"]

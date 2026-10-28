@@ -12,14 +12,18 @@ export function isCargoTargetBinary(
   candidate,
   { cargoTargetDir = process.env.CARGO_TARGET_DIR ?? "" } = {},
 ) {
-  const normalized = String(candidate ?? "").split(path.sep).join("/");
-  if (/\/target\/(?:[^/]+\/)?(?:release|debug)(?:\/|$)/.test(normalized)) {
+  const normalized = String(candidate ?? "").replace(/\\/g, "/");
+  if (/\/target\/(?:[^/]+\/)?(?:release|debug)(?:\/|$)/i.test(normalized)) {
     return true;
   }
   const targetDir = String(cargoTargetDir ?? "").trim();
   if (targetDir) {
-    const prefix = path.resolve(targetDir).split(path.sep).join("/");
-    if (normalized === prefix || normalized.startsWith(`${prefix}/`)) {
+    const prefix = path.resolve(targetDir).replace(/\\/g, "/");
+    const normCmp =
+      process.platform === "win32" ? normalized.toLowerCase() : normalized;
+    const prefixCmp =
+      process.platform === "win32" ? prefix.toLowerCase() : prefix;
+    if (normCmp === prefixCmp || normCmp.startsWith(`${prefixCmp}/`)) {
       return TARGET_PROFILE.test(normalized.slice(prefix.length));
     }
   }
@@ -109,6 +113,36 @@ export function findBinaryUpwards(
  * `~/.cargo/bin`) keeps the executable source user-owned and avoids running an
  * arbitrary `target/release/leio-code` from the repository being inspected.
  */
+function binaryVariants(binaryName) {
+  if (process.platform === "win32" && binaryName && !path.extname(binaryName)) {
+    return [binaryName, `${binaryName}.exe`, `${binaryName}.cmd`];
+  }
+  return [binaryName];
+}
+
+function resolveEnvCandidate(
+  candidate,
+  { homeDir = os.homedir(), exists = fs.existsSync, stat = defaultStat } = {},
+) {
+  let trimmed = String(candidate ?? "").trim();
+  if (!trimmed) {
+    return null;
+  }
+  if (homeDir && /^\$\{HOME\}[/\\]/.test(trimmed)) {
+    trimmed = path.join(homeDir, trimmed.slice("${HOME}/".length));
+  }
+  if (isTrustedEnvBinary(trimmed, { exists, stat })) {
+    return path.resolve(trimmed);
+  }
+  if (
+    path.basename(trimmed) === "leio-code" &&
+    isTrustedEnvBinary(`${trimmed}.exe`, { exists, stat })
+  ) {
+    return path.resolve(`${trimmed}.exe`);
+  }
+  return null;
+}
+
 export function findInstalledBinary(
   binaryName,
   {
@@ -121,6 +155,7 @@ export function findInstalledBinary(
   } = {},
 ) {
   const candidates = [];
+  const names = binaryVariants(binaryName);
   const cargoRoot = cargoHome.trim()
     ? path.resolve(cargoHome)
     : homeDir
@@ -128,13 +163,17 @@ export function findInstalledBinary(
       : null;
 
   if (cargoRoot) {
-    candidates.push(path.join(cargoRoot, "bin", binaryName));
+    for (const name of names) {
+      candidates.push(path.join(cargoRoot, "bin", name));
+    }
   }
 
   for (const entry of pathValue.split(path.delimiter)) {
     const trimmed = entry.trim();
     if (trimmed) {
-      candidates.push(path.join(path.resolve(trimmed), binaryName));
+      for (const name of names) {
+        candidates.push(path.join(path.resolve(trimmed), name));
+      }
     }
   }
 
@@ -168,13 +207,17 @@ export function resolveBinaryPath({
   exists = fs.existsSync,
   stat = defaultStat,
 } = {}) {
-  const trimmed = String(envPath ?? "").trim();
-  if (trimmed && isTrustedEnvBinary(trimmed, { exists, stat })) {
-    return path.resolve(trimmed);
+  const resolvedEnv = resolveEnvCandidate(envPath, { homeDir, exists, stat });
+  if (resolvedEnv) {
+    return resolvedEnv;
   }
-  const bundled = String(bundledBinaryPath ?? "").trim();
-  if (bundled && isTrustedEnvBinary(bundled, { exists, stat })) {
-    return path.resolve(bundled);
+  const resolvedBundled = resolveEnvCandidate(bundledBinaryPath, {
+    homeDir,
+    exists,
+    stat,
+  });
+  if (resolvedBundled) {
+    return resolvedBundled;
   }
   if (!binaryName) {
     return null;

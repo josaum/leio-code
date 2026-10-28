@@ -154,8 +154,22 @@ fn git(cwd: &Path, args: &[&str]) -> Option<String> {
     if text.is_empty() { None } else { Some(text) }
 }
 
+/// Strip the Windows verbatim drive prefix (`\\?\C:\...` -> `C:\...`) added by
+/// `std::fs::canonicalize` so paths match `git rev-parse --show-toplevel` and
+/// Node `fs.realpathSync` on Windows.
+pub fn strip_windows_verbatim(path: std::path::PathBuf) -> std::path::PathBuf {
+    if let Some(raw) = path.to_str()
+        && let Some(stripped) = raw.strip_prefix(r"\\?\")
+        && stripped.as_bytes().get(1) == Some(&b':')
+    {
+        return std::path::PathBuf::from(stripped);
+    }
+    path
+}
+
 fn canonicalize_or(path: &Path) -> String {
     path.canonicalize()
+        .map(strip_windows_verbatim)
         .unwrap_or_else(|_| path.to_path_buf())
         .display()
         .to_string()
@@ -194,6 +208,22 @@ mod tests {
     use super::*;
     use std::fs;
     use std::process::Command;
+
+    #[test]
+    fn strip_windows_verbatim_removes_drive_prefix_only() {
+        assert_eq!(
+            strip_windows_verbatim(std::path::PathBuf::from(r"\\?\C:\Users\dev\repo")),
+            std::path::PathBuf::from(r"C:\Users\dev\repo")
+        );
+        assert_eq!(
+            strip_windows_verbatim(std::path::PathBuf::from(r"\\?\UNC\server\share")),
+            std::path::PathBuf::from(r"\\?\UNC\server\share")
+        );
+        assert_eq!(
+            strip_windows_verbatim(std::path::PathBuf::from("/Users/dev/repo")),
+            std::path::PathBuf::from("/Users/dev/repo")
+        );
+    }
 
     #[test]
     fn normalize_origin_joins_ssh_and_https() {

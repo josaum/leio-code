@@ -29,7 +29,7 @@ export function encodeWatchRecord({ pid, token, binaryPath }) {
 export function parseWatchRecord(raw) {
   const lines = String(raw ?? "")
     .trim()
-    .split("\n");
+    .split(/\r?\n/);
   const pid = Number.parseInt(lines[0] ?? "", 10);
   if (!Number.isFinite(pid) || pid <= 0) {
     return null;
@@ -86,6 +86,24 @@ export function rememberedSpawn(key) {
 export function processLooksLikeBinary(pid, binaryPath) {
   const base = path.basename(binaryPath || "leio-code");
   let cmd = "";
+  if (process.platform === "win32") {
+    try {
+      cmd = execFileSync(
+        "tasklist",
+        ["/FI", `PID eq ${pid}`, "/FO", "CSV", "/NH"],
+        {
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "ignore"],
+          timeout: 1500,
+          windowsHide: true,
+        },
+      );
+    } catch {
+      return false;
+    }
+    const lower = cmd.toLowerCase();
+    return lower.includes(base.toLowerCase()) || lower.includes("leio-code");
+  }
   try {
     cmd = fs.readFileSync(`/proc/${pid}/cmdline`, "utf8").replace(/\0/g, " ");
   } catch {
