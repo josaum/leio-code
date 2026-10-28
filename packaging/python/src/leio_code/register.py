@@ -30,7 +30,14 @@ def _ensure(home: str | None) -> None:
     env["LEIO_MCP_HOME"] = str(home_dir)
     env["LEIO_MCP_COMMAND"] = node
     env["LEIO_MCP_ARGS"] = json.dumps([str(launcher)])
-    subprocess.run([node, str(script)], env=env, check=False)
+    subprocess.run(
+        [node, str(script)],
+        env=env,
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
 
 
 def _already(path: Path, node: str, launcher: Path) -> bool:

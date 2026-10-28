@@ -132,10 +132,10 @@ pub fn retire(
 }
 
 fn canonical_repo_root(path: &Path) -> Result<PathBuf> {
-    let expected =
-        std::fs::canonicalize(path).with_context(|| format!("canonicalize {}", path.display()))?;
+    let expected = crate::process::clean_canonicalize(path)
+        .with_context(|| format!("canonicalize {}", path.display()))?;
     let actual = git(&expected, &["rev-parse", "--show-toplevel"])?;
-    let actual = std::fs::canonicalize(actual.trim())?;
+    let actual = crate::process::clean_canonicalize(actual.trim())?;
     if expected != actual {
         bail!(
             "repository root mismatch: expected {}, got {}",
@@ -148,10 +148,10 @@ fn canonical_repo_root(path: &Path) -> Result<PathBuf> {
 
 fn normalize_absolute(path: &Path) -> Result<PathBuf> {
     if path.exists() {
-        return Ok(std::fs::canonicalize(path)?);
+        return Ok(crate::process::clean_canonicalize(path)?);
     }
     let parent = path.parent().context("path has no parent")?;
-    let parent = std::fs::canonicalize(parent)?;
+    let parent = crate::process::clean_canonicalize(parent)?;
     Ok(parent.join(path.file_name().context("path has no file name")?))
 }
 

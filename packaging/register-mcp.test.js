@@ -137,6 +137,18 @@ test("mergeJson, mergeToml, and skill sync handle malformed inputs and updates",
   assert.match(updatedToml, /\[other_section\]/);
   assert.equal(mergeToml(tomlFile, spec), false);
 
+  const crlfToml = path.join(dir, "crlf-config.toml");
+  fs.writeFileSync(
+    crlfToml,
+    "[mcp_servers.other]\r\ncommand = \"other\"\r\n\r\n[mcp_servers.leio-code]\r\ncommand = \"old\"\r\nargs = []\r\n",
+  );
+  assert.equal(mergeToml(crlfToml, spec), true);
+  assert.equal(mergeToml(crlfToml, spec), false);
+  assert.equal(
+    fs.readFileSync(crlfToml, "utf8").match(/\[mcp_servers\.leio-code\]/g).length,
+    1,
+  );
+
   assert.equal(resolveDefaultSkillSource(path.join(dir, "missing-skill")), null);
   assert.deepEqual(installDefaultSkill(dir, path.join(dir, "missing-skill")), []);
 

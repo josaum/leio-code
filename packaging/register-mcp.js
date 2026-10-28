@@ -168,7 +168,7 @@ export function mergeToml(file, spec) {
     `command = ${JSON.stringify(spec.command)}`,
     `args = ${JSON.stringify(spec.args)}`,
   ];
-  const current = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
+  const current = (fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "").replace(/\r\n/g, "\n");
   if (
     current.includes(`[mcp_servers.leio-code]`)
     && current.includes(`command = ${JSON.stringify(spec.command)}`)
@@ -202,7 +202,19 @@ function readSpec() {
   return serverSpec(command, args);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+function isDirectExecution() {
+  if (!process.argv[1]) return false;
+  try {
+    return (
+      fs.realpathSync(fileURLToPath(import.meta.url)) ===
+      fs.realpathSync(process.argv[1])
+    );
+  } catch {
+    return import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
+  }
+}
+
+if (isDirectExecution()) {
   const home = process.env.LEIO_MCP_HOME || os.homedir();
   applyRegistration(home, readSpec());
 }

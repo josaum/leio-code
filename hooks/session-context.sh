@@ -7,14 +7,11 @@ if [[ ! -f "$SKILL" ]]; then
   printf 'LEIO Code skill missing at %s\n' "$SKILL"
   exit 0
 fi
-python3 - "$SKILL" <<'PY'
-from pathlib import Path
-import sys
-
-text = Path(sys.argv[1]).read_text()
-if text.startswith("---"):
-    parts = text.split("---", 2)
-    if len(parts) >= 3:
-        text = parts[2].lstrip("\n")
-print(text, end="")
-PY
+awk '
+  { line = $0; sub(/\r$/, "", line) }
+  NR == 1 && line == "---" { in_fm = 1; next }
+  in_fm && line == "---" { in_fm = 0; skip_blank = 1; next }
+  in_fm { next }
+  skip_blank && line == "" { next }
+  { skip_blank = 0; print line }
+' "$SKILL"

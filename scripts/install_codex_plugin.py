@@ -124,10 +124,15 @@ def install_plugin(source_root: Path, repo_root: Path, mode: str, force: bool) -
         else:
             shutil.rmtree(dest)
 
+    symlinked = False
     if mode == "symlink" and source_root.is_dir():
         symlink_target = Path(os.path.relpath(source_root, dest.parent))
-        dest.symlink_to(symlink_target, target_is_directory=True)
-    else:
+        try:
+            dest.symlink_to(symlink_target, target_is_directory=True)
+            symlinked = True
+        except OSError:
+            symlinked = False
+    if not symlinked:
         dest.mkdir(parents=True, exist_ok=True)
         for rel in INCLUDED_PATHS:
             src = source_root / rel
@@ -171,7 +176,10 @@ def ensure_marketplace_root_compatibility(repo_root: Path, installed_path: Path)
             shutil.rmtree(compat_dest)
 
     compat_target = Path(os.path.relpath(installed_path, compat_dest.parent))
-    compat_dest.symlink_to(compat_target, target_is_directory=True)
+    try:
+        compat_dest.symlink_to(compat_target, target_is_directory=True)
+    except OSError:
+        shutil.copytree(installed_path, compat_dest, dirs_exist_ok=True, symlinks=False)
     return compat_dest
 
 
@@ -186,7 +194,8 @@ def prepare_mcp_dependencies(plugin_root: Path) -> None:
     if node_modules.is_dir():
         return
 
-    base_cmd = ["npm", "ci", "--omit=dev"] if lockfile.is_file() else ["npm", "install", "--omit=dev"]
+    npm_bin = shutil.which("npm") or "npm"
+    base_cmd = [npm_bin, "ci", "--omit=dev"] if lockfile.is_file() else [npm_bin, "install", "--omit=dev"]
     try:
         subprocess.run(base_cmd, cwd=mcp_dir, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except FileNotFoundError as exc:

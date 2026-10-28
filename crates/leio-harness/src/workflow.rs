@@ -153,12 +153,14 @@ pub fn apply_with_deployment_policy(
         let plan: Plan =
             serde_json::from_slice(&fs::read(input.context("--input plan required")?)?)?;
         validate(&plan)?;
-        let root = repo.context("--repo required")?.canonicalize()?;
+        let root = crate::process::clean_canonicalize(repo.context("--repo required")?)?;
         ensure!(root.is_dir(), "repository must be a directory");
         let id = format!(
             "urn:leio:workflow:run:{}",
             hex::encode(Sha256::digest(
-                dir.canonicalize()?.to_string_lossy().as_bytes()
+                crate::process::clean_canonicalize(dir)?
+                    .to_string_lossy()
+                    .as_bytes()
             ))
         );
         let state = Workflow {
@@ -284,7 +286,9 @@ pub fn apply_with_deployment_policy(
                 run_id: format!("attempt-{}", state.attempts),
                 argv: step.argv,
                 cwd: state.repo.display().to_string(),
-                output_dir: dir.canonicalize()?.display().to_string(),
+                output_dir: crate::process::clean_canonicalize(dir)?
+                    .display()
+                    .to_string(),
                 timeout_ms: step.timeout_ms,
                 kill_grace_ms: 1000,
                 max_output_bytes: 1024 * 1024,
@@ -298,7 +302,7 @@ pub fn apply_with_deployment_policy(
             let mut artifacts = Vec::new();
             // Failed commands can still produce useful partial artifacts.
             for name in step.artifacts {
-                match state.repo.join(&name).canonicalize().and_then(|path| {
+                match crate::process::clean_canonicalize(state.repo.join(&name)).and_then(|path| {
                         if !path.starts_with(&state.repo) { return Err(std::io::Error::other("artifact escapes repository")); }
                         fs::read(path)
                     }) {

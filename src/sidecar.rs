@@ -525,7 +525,24 @@ fn pid_alive(pid: u32) -> bool {
         let rc = unsafe { kill_bind::kill(pid as i32, 0) };
         rc == 0
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+        const STILL_ACTIVE: u32 = 259;
+        const ERROR_ACCESS_DENIED: u32 = 5;
+        // Safety: OpenProcess / GetExitCodeProcess / CloseHandle are standard Win32 kernel32 probes.
+        unsafe {
+            let handle = win_bind::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+            if handle.is_null() {
+                return win_bind::GetLastError() == ERROR_ACCESS_DENIED;
+            }
+            let mut exit_code: u32 = 0;
+            let ok = win_bind::GetExitCodeProcess(handle, &mut exit_code);
+            let _ = win_bind::CloseHandle(handle);
+            ok != 0 && exit_code == STILL_ACTIVE
+        }
+    }
+    #[cfg(not(any(unix, windows)))]
     {
         let _ = pid;
         true
@@ -537,6 +554,21 @@ mod kill_bind {
     #[link(name = "c")]
     unsafe extern "C" {
         pub fn kill(pid: i32, sig: i32) -> i32;
+    }
+}
+
+#[cfg(windows)]
+mod win_bind {
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        pub fn OpenProcess(
+            desired_access: u32,
+            inherit_handle: i32,
+            process_id: u32,
+        ) -> *mut core::ffi::c_void;
+        pub fn GetExitCodeProcess(process: *mut core::ffi::c_void, exit_code: *mut u32) -> i32;
+        pub fn CloseHandle(object: *mut core::ffi::c_void) -> i32;
+        pub fn GetLastError() -> u32;
     }
 }
 

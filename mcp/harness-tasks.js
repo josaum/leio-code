@@ -40,9 +40,12 @@ function executable(candidate) {
 }
 
 export function codexArguments(input, {home = os.homedir(), find = findInstalledBinary, readOnly = false, servers = []} = {}) {
+  const standaloneDir = path.join(home, '.codex/packages/standalone/current/bin');
   const binary = input.codex_binary
     ? executable(input.codex_binary)
-    : executable(path.join(home,'.codex/packages/standalone/current/bin/codex')) || executable(find('codex',{homeDir:home,accept:candidate=>Boolean(executable(candidate))}));
+    : executable(path.join(standaloneDir, 'codex'))
+      || (process.platform === 'win32' && (executable(path.join(standaloneDir, 'codex.exe')) || executable(path.join(standaloneDir, 'codex.cmd'))))
+      || executable(find('codex',{homeDir:home,accept:candidate=>Boolean(executable(candidate))}));
   if (!binary) throw new Error('No executable Codex found; supply codex_binary as an absolute executable path. Existing Codex login is required.');
   if(readOnly && servers.some(name=>!/^[-A-Za-z0-9_]+$/.test(name)))throw new Error('Cannot isolate an MCP server name containing dots or special characters with Codex CLI overrides; review was not started');
   const constraints = [...DEFAULT_CONSTRAINTS,...(input.constraints ?? [])];
@@ -70,7 +73,7 @@ export function artifactPreview(repo, id, relative, bytes, tail = false) {
     const target = path.join(run,relative);
     empty.path = target;
     if (fs.realpathSync(path.dirname(target)) !== path.dirname(target)) throw new Error('redirected artifact directory');
-    fd = fs.openSync(target,fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
+    fd = fs.openSync(target,(fs.constants.O_RDONLY ?? 0) | (fs.constants.O_NOFOLLOW ?? 0) | (fs.constants.O_NONBLOCK ?? 0));
     const info = fs.fstatSync(fd);
     if (!info.isFile()) throw new Error('artifact is not a regular file');
     const count = Math.min(info.size,bytes);
@@ -107,7 +110,7 @@ function newFilePreviews(task, bytes) {
     }
     const preview=artifactPreview(task.repoRoot,task.runId,path.join('untracked',relative),remaining);
     remaining-=Buffer.byteLength(preview.text);
-    files.push({file:relative,preview});
+    files.push({file:relative.split(path.sep).join('/'),preview});
   }
   return {new_files:files,new_files_incomplete:Boolean(task.untrackedTruncated || files.length<archives.length || files.some(f=>!f.preview.available || f.preview.truncated))};
 }

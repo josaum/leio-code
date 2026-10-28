@@ -23,6 +23,7 @@
   "files": [
     "bin",
     "server",
+    "skills",
     "install.js",
     "register-mcp.js",
     "README.md"

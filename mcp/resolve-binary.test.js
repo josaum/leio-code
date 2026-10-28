@@ -339,3 +339,18 @@ test("isTrustedEnvBinary rejects directories and wrong basenames", () => {
     null,
   );
 });
+
+test("resolveBinaryPath expands ${HOME} and falls back to .exe for LEIO_CODE_BIN on Windows", () => {
+  const homeDir = "/Users/win-test";
+  const exePath = `${homeDir}/.cargo/bin/leio-code.exe`;
+  assert.equal(
+    resolveBinaryPath({
+      binaryName: "leio-code.exe",
+      envPath: "${HOME}/.cargo/bin/leio-code",
+      homeDir,
+      exists: (candidate) => candidate === exePath,
+      stat: () => ({ isFile: () => true, isDirectory: () => false }),
+    }),
+    exePath,
+  );
+});

@@ -102,7 +102,7 @@ pub(crate) fn validate_merge_target(
     target_ref: &str,
 ) -> Result<std::path::PathBuf> {
     let repo_root = canonical_repo_root(repo_root)?;
-    let worktree = std::fs::canonicalize(worktree)
+    let worktree = crate::process::clean_canonicalize(worktree)
         .with_context(|| format!("canonicalize {}", worktree.display()))?;
     assert_linked(&repo_root, &worktree)?;
     validate_ref(source_branch)?;
@@ -174,10 +174,10 @@ fn combined_output(output: &Output) -> String {
 }
 
 fn canonical_repo_root(path: &Path) -> Result<std::path::PathBuf> {
-    let expected =
-        std::fs::canonicalize(path).with_context(|| format!("canonicalize {}", path.display()))?;
+    let expected = crate::process::clean_canonicalize(path)
+        .with_context(|| format!("canonicalize {}", path.display()))?;
     let actual = git(&expected, &["rev-parse", "--show-toplevel"])?;
-    let actual = std::fs::canonicalize(actual.trim())?;
+    let actual = crate::process::clean_canonicalize(actual.trim())?;
     if expected != actual {
         bail!("repository root mismatch");
     }
@@ -188,18 +188,18 @@ fn canonical_repo_root(path: &Path) -> Result<std::path::PathBuf> {
 /// checkout itself). Prevents merging into an arbitrary directory.
 fn assert_linked(repo_root: &Path, worktree: &Path) -> Result<()> {
     let top = git(worktree, &["rev-parse", "--show-toplevel"])?;
-    if std::fs::canonicalize(top.trim())? != worktree {
+    if crate::process::clean_canonicalize(top.trim())? != worktree {
         bail!("worktree is not a git checkout root");
     }
     let common_raw = git(worktree, &["rev-parse", "--git-common-dir"])?
         .trim()
         .to_owned();
     let common = if Path::new(&common_raw).is_absolute() {
-        std::fs::canonicalize(&common_raw)?
+        crate::process::clean_canonicalize(&common_raw)?
     } else {
-        std::fs::canonicalize(worktree.join(&common_raw))?
+        crate::process::clean_canonicalize(worktree.join(&common_raw))?
     };
-    let repo_git = std::fs::canonicalize(repo_root.join(".git"))?;
+    let repo_git = crate::process::clean_canonicalize(repo_root.join(".git"))?;
     if common != repo_git {
         bail!("worktree is not linked to repository root");
     }

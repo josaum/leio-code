@@ -73,7 +73,7 @@ fn safe_path(path: &Path) -> Result<()> {
 fn root(target: &Path) -> Result<PathBuf> {
     boundary_path(target)?;
     fs::create_dir_all(target)?;
-    let target = target.canonicalize()?;
+    let target = crate::process::clean_canonicalize(target)?;
     for name in ["releases", "state.jsonld", ".lock"] {
         safe_path(&target.join(name))?;
     }
@@ -292,7 +292,7 @@ fn authorization(target: &Path, action: &str, id: &str, current: &State) -> Resu
 /// Stage a directory containing actual build output. Does not claim to run a build.
 pub fn prepare(source: &Path, target: &Path) -> Result<Value> {
     boundary_path(source)?;
-    let source = source.canonicalize()?;
+    let source = crate::process::clean_canonicalize(source)?;
     let target = root(target)?;
     ensure!(
         !target.starts_with(&source) && !source.starts_with(&target),
