@@ -1,11 +1,14 @@
 use crate::arrow_events::{EventStreamWriter, StreamEvent};
 use crate::model::{RunResult, RunSpec, RunStatus};
 use anyhow::{Context, Result, bail};
+#[cfg(unix)]
 use nix::sys::signal::{Signal, killpg};
+#[cfg(unix)]
 use nix::unistd::Pid;
 use std::collections::BTreeSet;
 use std::fs::File;
 use std::io::{Read, Write};
+#[cfg(unix)]
 use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -195,7 +198,15 @@ pub fn run_observed(spec: RunSpec, observer: Option<Arc<dyn RunObserver>>) -> Re
     // Descendants can retain stdout/stderr after the leader exits. Terminate
     // the owned process group before joining pipe readers, or a successful
     // shell can hang this supervisor forever.
+    #[cfg(unix)]
     let _ = killpg(Pid::from_raw(child.id() as i32), Signal::SIGKILL);
+    #[cfg(windows)]
+    let _ = Command::new("taskkill")
+        .args(["/PID", &child.id().to_string(), "/T", "/F"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
     finished.store(true, Ordering::Release);
     stdout_reader
         .join()
@@ -242,7 +253,10 @@ impl std::ops::DerefMut for OwnedChild {
 }
 impl Drop for OwnedChild {
     fn drop(&mut self) {
+        #[cfg(unix)]
         let _ = killpg(Pid::from_raw(self.0.id() as i32), Signal::SIGKILL);
+        #[cfg(not(unix))]
+        let _ = self.0.kill();
         let _ = self.0.wait();
     }
 }
@@ -254,6 +268,7 @@ struct StreamFlags {
     observer: Option<Arc<dyn RunObserver>>,
 }
 
+#[cfg(unix)]
 fn read_stream<R: Read + AsRawFd + Send + 'static>(
     mut reader: R,
     stream: &'static str,
@@ -342,6 +357,75 @@ fn read_stream<R: Read + AsRawFd + Send + 'static>(
     })
 }
 
+#[cfg(not(unix))]
+fn read_stream<R: Read + Send + 'static>(
+    mut reader: R,
+    stream: &'static str,
+    max_bytes: usize,
+    mut log: File,
+    tx: SyncSender<StreamEvent>,
+    seq: Arc<AtomicU64>,
+    flags: StreamFlags,
+) -> StreamReaderHandle {
+    thread::spawn(move || {
+        let StreamFlags {
+            truncated: truncated_flag,
+            finished,
+            observer,
+        } = flags;
+        let mut captured = 0_usize;
+        let mut drain_chunks = 0;
+        loop {
+            if finished.load(Ordering::Acquire) {
+                drain_chunks += 1;
+                if drain_chunks > 32 {
+                    break;
+                }
+            }
+            let mut buffer = vec![0_u8; 64 * 1024];
+            let read = match reader.read(&mut buffer) {
+                Ok(count) => count,
+                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(error) => return Err(error.into()),
+            };
+            if read == 0 {
+                break;
+            }
+            buffer.truncate(read);
+            let remaining = max_bytes.saturating_sub(captured);
+            if remaining > 0 {
+                let kept = buffer.len().min(remaining);
+                log.write_all(&buffer[..kept])?;
+                captured += kept;
+                if let Some(observer) = &observer {
+                    observer.output(stream, kept)?;
+                }
+            }
+            if read > remaining {
+                truncated_flag.store(true, Ordering::Relaxed);
+            }
+            buffer.truncate(read.min(remaining));
+            if buffer.is_empty() {
+                continue;
+            }
+            if tx
+                .send(StreamEvent {
+                    seq: seq.fetch_add(1, Ordering::Relaxed),
+                    timestamp_ms: now_ms() as i64,
+                    kind: "process_output".to_owned(),
+                    stream: stream.to_owned(),
+                    payload: buffer,
+                })
+                .is_err()
+            {
+                break;
+            }
+        }
+        log.sync_all()?;
+        Ok(())
+    })
+}
+
 fn arrow_writer(path: &Path, rx: Receiver<StreamEvent>) -> Result<()> {
     let mut writer = EventStreamWriter::create(path)?;
     for event in rx {
@@ -382,8 +466,18 @@ fn terminate_group(pid: u32, grace_ms: u64) -> Result<()> {
     }
     #[cfg(not(unix))]
     {
-        let _ = pid;
         thread::sleep(Duration::from_millis(grace_ms));
+        #[cfg(windows)]
+        {
+            let _ = Command::new("taskkill")
+                .args(["/PID", &pid.to_string(), "/T", "/F"])
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+        }
+        #[cfg(not(windows))]
+        let _ = pid;
     }
     Ok(())
 }
@@ -395,6 +489,7 @@ pub(crate) fn write_json_atomic(path: &Path, value: &impl serde::Serialize) -> R
     file.write_all(b"\n")?;
     file.sync_all()?;
     std::fs::rename(temporary, path)?;
+    #[cfg(unix)]
     if let Some(parent) = path.parent() {
         File::open(parent)?.sync_all()?;
     }
@@ -427,6 +522,7 @@ pub(crate) fn harness_env_path() -> Option<std::path::PathBuf> {
         .map(std::path::PathBuf::from)
         .or_else(|| {
             std::env::var("HOME")
+                .or_else(|_| std::env::var("USERPROFILE"))
                 .ok()
                 .map(|home| std::path::Path::new(&home).join(".config/leio-harness/env"))
         })

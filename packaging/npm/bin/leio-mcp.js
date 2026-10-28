@@ -16,14 +16,19 @@ const server = firstExisting([
   path.join(root, "mcp", "index.js"),
   path.join(here, "index.js"),
 ]);
+const ext = process.platform === "win32" ? ".exe" : "";
 const codeBin = firstExisting([
   process.env.LEIO_CODE_BIN,
+  path.join(root, "vendor", `leio-code${ext}`),
   path.join(root, "vendor", "leio-code"),
+  path.join(root, "bin", `leio-code${ext}`),
   path.join(root, "bin", "leio-code"),
 ].filter(Boolean));
 const harnessBin = firstExisting([
   process.env.LEIO_HARNESS_BIN,
+  path.join(root, "vendor", `leio-harness${ext}`),
   path.join(root, "vendor", "leio-harness"),
+  path.join(root, "bin", `leio-harness${ext}`),
   path.join(root, "bin", "leio-harness"),
 ].filter(Boolean));
 
@@ -41,6 +46,6 @@ const child = spawn(process.execPath, [server], {
   },
 });
 child.on("exit", (code, signal) => {
-  if (signal) process.kill(process.pid, signal);
+  if (signal && process.platform !== "win32") process.kill(process.pid, signal);
   process.exit(code ?? 1);
 });

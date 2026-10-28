@@ -28,6 +28,7 @@ const ASSETS = {
   "linux-x64": "leio-code-linux-amd64",
   "darwin-arm64": "leio-code-darwin-arm64",
   "darwin-x64": "leio-code-darwin-amd64",
+  "win32-x64": "leio-code-windows-amd64.exe",
 };
 
 function hint(message) {

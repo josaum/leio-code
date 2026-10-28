@@ -284,6 +284,13 @@ test("isTrustedEnvBinary rejects directories and wrong basenames", () => {
     true,
   );
   assert.equal(
+    isTrustedEnvBinary("/opt/explicit/leio-code.exe", {
+      exists: () => true,
+      stat: () => ({ isFile: () => true, isDirectory: () => false }),
+    }),
+    true,
+  );
+  assert.equal(
     isTrustedEnvBinary("/opt/explicit/leio-code", {
       exists: () => true,
       stat: () => ({ isFile: () => false, isDirectory: () => true }),

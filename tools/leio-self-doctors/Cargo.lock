@@ -898,8 +898,9 @@ dependencies = [
 
 [[package]]
 name = "leio-code"
-version = "2.6.5"
+version = "2.6.7"
 dependencies = [
+ "aho-corasick",
  "anyhow",
  "arrow-array",
  "arrow-buffer",
@@ -946,7 +947,7 @@ dependencies = [
 
 [[package]]
 name = "leio-knowledge-core"
-version = "2.6.5"
+version = "2.6.7"
 dependencies = [
  "anyhow",
  "oxigraph",

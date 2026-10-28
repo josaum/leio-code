@@ -7,6 +7,7 @@ use anyhow::{Context, Result, ensure};
 use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+#[cfg(unix)]
 use std::os::unix::{
     ffi::OsStrExt,
     fs::{DirBuilderExt, OpenOptionsExt},
@@ -25,6 +26,7 @@ use std::{
 };
 
 static INTERRUPTED: AtomicBool = AtomicBool::new(false);
+#[cfg(unix)]
 extern "C" fn interrupt(_: i32) {
     INTERRUPTED.store(true, Ordering::SeqCst);
 }
@@ -105,14 +107,19 @@ fn directory(repo: &Path, id: &str) -> Result<PathBuf> {
     Ok(dir)
 }
 fn lock(path: &Path) -> Result<File> {
-    Ok(OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .mode(0o600)
-        .custom_flags(nix::libc::O_NOFOLLOW)
-        .open(path)?)
+    let mut options = OpenOptions::new();
+    options.read(true).write(true).create(true).truncate(false);
+    #[cfg(unix)]
+    {
+        options.mode(0o600).custom_flags(nix::libc::O_NOFOLLOW);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+        options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+    }
+    Ok(options.open(path)?)
 }
 fn locked(path: &Path) -> Result<bool> {
     let file = lock(path)?;
@@ -123,10 +130,11 @@ fn locked(path: &Path) -> Result<bool> {
     }
 }
 fn private_directory(path: &Path) -> Result<()> {
-    std::fs::DirBuilder::new()
-        .recursive(true)
-        .mode(0o700)
-        .create(path)?;
+    let mut builder = std::fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    builder.mode(0o700);
+    builder.create(path)?;
     ensure!(
         std::fs::symlink_metadata(path)?.file_type().is_dir(),
         "sidecar directory must not be a symlink"
@@ -159,11 +167,11 @@ impl Tracker {
         s.last_activity_at_ms = now();
         s.last_activity = detail.to_owned();
         let event = json!({"seq":s.sequence,"timestampMs":s.last_activity_at_ms,"kind":kind,"phase":s.phase,"state":s.state,"workerPid":s.worker_pid,"detail":detail});
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .mode(0o600)
-            .open(self.dir.join("events.ndjson"))?;
+        let mut options = OpenOptions::new();
+        options.create(true).append(true);
+        #[cfg(unix)]
+        options.mode(0o600);
+        let mut file = options.open(self.dir.join("events.ndjson"))?;
         serde_json::to_writer(&mut file, &event)?;
         file.write_all(b"\n")?;
         file.sync_all()?;
@@ -241,8 +249,13 @@ pub fn submit(
         .output()
         .context("resolve Git checkout root")?;
     ensure!(top.status.success(), "task requires a Git repository");
-    let top_bytes = top.stdout.strip_suffix(b"\n").unwrap_or(&top.stdout);
-    let checkout = Path::new(std::ffi::OsStr::from_bytes(top_bytes)).canonicalize()?;
+    #[cfg(unix)]
+    let checkout = {
+        let top_bytes = top.stdout.strip_suffix(b"\n").unwrap_or(&top.stdout);
+        Path::new(std::ffi::OsStr::from_bytes(top_bytes)).canonicalize()?
+    };
+    #[cfg(not(unix))]
+    let checkout = Path::new(std::str::from_utf8(&top.stdout)?.trim()).canonicalize()?;
     ensure!(
         repo == checkout,
         "task repo must be the Git checkout root ({}); constrain module scope in the task instead of submitting a subdirectory",
@@ -271,7 +284,10 @@ pub fn submit(
     private_directory(&runs(&repo))?;
     let id = process::unique_id();
     let dir = runs(&repo).join(&id);
+    #[cfg(unix)]
     std::fs::DirBuilder::new().mode(0o700).create(&dir)?;
+    #[cfg(not(unix))]
+    std::fs::DirBuilder::new().create(&dir)?;
     let spec = TaskSpec {
         run_id: id.clone(),
         repo_root: repo.display().to_string(),
@@ -316,11 +332,11 @@ pub fn submit(
         }),
     };
     tracker.record("submitted", "explicit task submitted", |_| {})?;
-    let log = OpenOptions::new()
-        .create_new(true)
-        .write(true)
-        .mode(0o600)
-        .open(dir.join("supervisor.log"))?;
+    let mut log_options = OpenOptions::new();
+    log_options.create_new(true).write(true);
+    #[cfg(unix)]
+    log_options.mode(0o600);
+    let log = log_options.open(dir.join("supervisor.log"))?;
     let mut command = Command::new(std::env::current_exe()?);
     command
         .args(["task", "execute", "--repo"])
@@ -331,11 +347,19 @@ pub fn submit(
         .stderr(log);
     // Detach from the calling coding host's process group. Only the task
     // supervisor owns worker cancellation, never the MCP request lifetime.
+    #[cfg(unix)]
     unsafe {
         command.pre_exec(|| {
             nix::unistd::setsid().map_err(std::io::Error::from)?;
             Ok(())
         });
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW);
     }
     match command.spawn() {
         Ok(mut child) => {
@@ -429,14 +453,17 @@ pub fn execute(repo: &Path, id: &str) -> Result<()> {
         state: Mutex::new(s),
     });
     INTERRUPTED.store(false, Ordering::SeqCst);
-    let signal = nix::sys::signal::SigAction::new(
-        nix::sys::signal::SigHandler::Handler(interrupt),
-        nix::sys::signal::SaFlags::empty(),
-        nix::sys::signal::SigSet::empty(),
-    );
-    unsafe {
-        nix::sys::signal::sigaction(nix::sys::signal::Signal::SIGTERM, &signal)?;
-        nix::sys::signal::sigaction(nix::sys::signal::Signal::SIGINT, &signal)?;
+    #[cfg(unix)]
+    {
+        let signal = nix::sys::signal::SigAction::new(
+            nix::sys::signal::SigHandler::Handler(interrupt),
+            nix::sys::signal::SaFlags::empty(),
+            nix::sys::signal::SigSet::empty(),
+        );
+        unsafe {
+            nix::sys::signal::sigaction(nix::sys::signal::Signal::SIGTERM, &signal)?;
+            nix::sys::signal::sigaction(nix::sys::signal::Signal::SIGINT, &signal)?;
+        }
     }
     if tracker.canceled() {
         return tracker.finish("cancelled", Some("cancelled before dispatch".to_owned()));
@@ -621,16 +648,24 @@ fn collect(spec: &TaskSpec, dir: &Path, tracker: &Tracker) -> Result<()> {
         }
         let target = dir.join("untracked").join(relative);
         private_directory(target.parent().context("untracked parent missing")?)?;
-        let mut input = OpenOptions::new()
-            .read(true)
-            .custom_flags(nix::libc::O_NOFOLLOW)
+        let mut input_options = OpenOptions::new();
+        input_options.read(true);
+        #[cfg(unix)]
+        input_options.custom_flags(nix::libc::O_NOFOLLOW);
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+            input_options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+        }
+        let mut input = input_options
             .open(source)?
             .take(budget.min(4 * 1024 * 1024));
-        let mut output = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(&target)?;
+        let mut output_options = OpenOptions::new();
+        output_options.write(true).create_new(true);
+        #[cfg(unix)]
+        output_options.mode(0o600);
+        let mut output = output_options.open(&target)?;
         let size = std::io::copy(&mut input, &mut output)?;
         output.sync_all()?;
         budget -= size;
@@ -747,13 +782,17 @@ pub fn cancel(repo: &Path, id: &str) -> Result<Value> {
     let dir = directory(&repo, id)?;
     let current = inspect(&repo, id)?;
     if !terminal(current["state"].as_str().unwrap_or("")) {
-        let mut file = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .mode(0o600)
-            .custom_flags(nix::libc::O_NOFOLLOW)
-            .open(dir.join("cancel.request"))?;
+        let mut options = OpenOptions::new();
+        options.create(true).write(true).truncate(true);
+        #[cfg(unix)]
+        options.mode(0o600).custom_flags(nix::libc::O_NOFOLLOW);
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+            options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+        }
+        let mut file = options.open(dir.join("cancel.request"))?;
         writeln!(file, "{}", now())?;
         file.sync_all()?;
     }

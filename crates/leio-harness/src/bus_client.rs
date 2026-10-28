@@ -76,25 +76,33 @@ impl BusClient {
     }
 
     async fn connect_uds(path: PathBuf) -> Result<Channel> {
-        use hyper_util::rt::TokioIo;
-        use tower::service_fn;
-        let endpoint = Endpoint::try_from("http://[::]:50051")?
-            .timeout(Duration::from_secs(30))
-            .connect_timeout(Duration::from_secs(2));
-        let socket_path = path.clone();
-        let channel = endpoint
-            .connect_with_connector(service_fn(move |_: tonic::transport::Uri| {
-                let p = socket_path.clone();
-                async move {
-                    let stream = tokio::net::UnixStream::connect(p).await?;
-                    Ok::<_, std::io::Error>(TokioIo::new(stream))
-                }
-            }))
-            .await
-            .with_context(|| {
-                format!("failed to connect to UDS flight bus at {}", path.display())
-            })?;
-        Ok(channel)
+        #[cfg(unix)]
+        {
+            use hyper_util::rt::TokioIo;
+            use tower::service_fn;
+            let endpoint = Endpoint::try_from("http://[::]:50051")?
+                .timeout(Duration::from_secs(30))
+                .connect_timeout(Duration::from_secs(2));
+            let socket_path = path.clone();
+            let channel = endpoint
+                .connect_with_connector(service_fn(move |_: tonic::transport::Uri| {
+                    let p = socket_path.clone();
+                    async move {
+                        let stream = tokio::net::UnixStream::connect(p).await?;
+                        Ok::<_, std::io::Error>(TokioIo::new(stream))
+                    }
+                }))
+                .await
+                .with_context(|| {
+                    format!("failed to connect to UDS flight bus at {}", path.display())
+                })?;
+            Ok(channel)
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = path;
+            bail!("Unix domain socket bus is not supported on Windows; use a TCP endpoint")
+        }
     }
 
     pub async fn connect_with_retry(addr: &str, attempts: usize, delay: Duration) -> Result<Self> {

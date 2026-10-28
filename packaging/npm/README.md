@@ -8,4 +8,4 @@ leio-code --repo /absolute/path/to/repo context "fix the payment validation"
 leio-harness workflow --repo /absolute/path/to/repo --dir /tmp/my-run --action show
 ```
 
-Release binaries cover macOS arm64, macOS x64, and Linux x64.
+Release binaries cover macOS arm64, macOS x64, Linux x64, and Windows x64.

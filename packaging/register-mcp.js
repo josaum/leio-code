@@ -27,6 +27,9 @@ const HOSTS = [
   { dir: "Library/Application Support/Claude", file: "claude_desktop_config.json", kind: "mcpServers" },
   { dir: "Library/Application Support/Code/User", file: "mcp.json", kind: "servers" },
   { dir: "Library/Application Support/Cursor/User", file: "mcp.json", kind: "mcpServers" },
+  { dir: "AppData/Roaming/Claude", file: "claude_desktop_config.json", kind: "mcpServers" },
+  { dir: "AppData/Roaming/Code/User", file: "mcp.json", kind: "servers" },
+  { dir: "AppData/Roaming/Cursor/User", file: "mcp.json", kind: "mcpServers" },
   { dir: ".config/Code/User", file: "mcp.json", kind: "servers" },
 ];
 

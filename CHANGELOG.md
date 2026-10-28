@@ -2,6 +2,12 @@
 
 All notable changes to LEIO Code. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow the crate version in `Cargo.toml`.
 
+## [2.6.7] — 2026-10-28
+
+### Added
+- Windows x64 (`x86_64-pc-windows-msvc` / `win32-x64`) release support across `leio-code` and `leio-harness`, GitHub Release assets (`leio-code-windows-amd64.exe` and `leio-code-windows-amd64-harness.exe`), `cargo-binstall` metadata, `@leio/leio-code-mcp` binary installer, `leio-code` npm package, and `leio_code` `win_amd64` Python wheel.
+- Cross-platform `leio-harness` process supervision, local TCP managed bus fallback, file-backed shared-memory ring and loopback UDP signaling plane, and native/local doctor pack execution on Windows.
+
 ## [2.6.5] — 2026-09-23
 
 - Move product-specific doctors, baselines and regression tests into their owning

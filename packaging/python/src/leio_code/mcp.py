@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -19,4 +20,6 @@ def main() -> None:
     ensure()
     if "--register" in sys.argv[1:]:
         return
+    if sys.platform == "win32":
+        raise SystemExit(subprocess.run([node, str(launcher)]).returncode)
     os.execv(node, [node, str(launcher)])

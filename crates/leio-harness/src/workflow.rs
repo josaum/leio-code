@@ -94,6 +94,7 @@ fn save(dir: &Path, state: &Workflow) -> Result<()> {
     file.write_all(&serde_json::to_vec_pretty(state)?)?;
     file.sync_all()?;
     fs::rename(dir.join("state.jsonld.tmp"), dir.join("state.jsonld"))?;
+    #[cfg(unix)]
     fs::File::open(dir)?.sync_all()?;
     Ok(())
 }
