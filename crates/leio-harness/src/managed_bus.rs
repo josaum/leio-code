@@ -17,10 +17,10 @@ pub fn directory() -> Result<PathBuf> {
     if let Some(path) = std::env::var_os("LEIO_HARNESS_BUS_DIR") {
         return Ok(PathBuf::from(path));
     }
-    Ok(
-        PathBuf::from(std::env::var_os("HOME").context("HOME missing; set LEIO_HARNESS_BUS_DIR")?)
-            .join(".local/share/leio-harness/bus"),
-    )
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .context("HOME missing; set LEIO_HARNESS_BUS_DIR")?;
+    Ok(PathBuf::from(home).join(".local/share/leio-harness/bus"))
 }
 
 pub async fn ensure(explicit: Option<String>, disabled: bool) -> Result<Option<String>> {
@@ -42,7 +42,8 @@ pub async fn ensure(explicit: Option<String>, disabled: bool) -> Result<Option<S
         dir.is_absolute() && dir.parent().is_some(),
         "bus directory must be an absolute private directory"
     );
-    {
+    #[cfg(unix)]
+    let addr = {
         use std::os::unix::fs::{DirBuilderExt, MetadataExt};
         std::fs::DirBuilder::new()
             .recursive(true)
@@ -56,12 +57,38 @@ pub async fn ensure(explicit: Option<String>, disabled: bool) -> Result<Option<S
             "bus directory must be owned by this user, mode 0700, and not a symlink: {}",
             dir.display()
         );
-    }
-    let addr = dir.join("bus.sock").to_string_lossy().into_owned();
-    anyhow::ensure!(
-        addr.len() < 100,
-        "default bus socket path is too long; set LEIO_HARNESS_BUS_DIR to a shorter absolute path"
-    );
+        let addr = dir.join("bus.sock").to_string_lossy().into_owned();
+        anyhow::ensure!(
+            addr.len() < 100,
+            "default bus socket path is too long; set LEIO_HARNESS_BUS_DIR to a shorter absolute path"
+        );
+        addr
+    };
+    #[cfg(not(unix))]
+    let addr = {
+        std::fs::create_dir_all(&dir)?;
+        let meta = std::fs::symlink_metadata(&dir)?;
+        anyhow::ensure!(
+            meta.file_type().is_dir() && !meta.file_type().is_symlink(),
+            "bus directory must be a directory and not a symlink: {}",
+            dir.display()
+        );
+        let addr_file = dir.join("bus.addr");
+        if let Ok(saved) = std::fs::read_to_string(&addr_file) {
+            let trimmed = saved.trim().to_owned();
+            if !trimmed.is_empty() {
+                trimmed
+            } else {
+                "127.0.0.1:18815".to_owned()
+            }
+        } else {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+            let allocated = listener.local_addr()?.to_string();
+            drop(listener);
+            std::fs::write(&addr_file, &allocated)?;
+            allocated
+        }
+    };
     // try_lock + asynchronous delay never block a Tokio worker on another starter.
     let lock = std::fs::OpenOptions::new()
         .read(true)
@@ -107,6 +134,13 @@ pub async fn ensure(explicit: Option<String>, disabled: bool) -> Result<Option<S
                 Ok(())
             });
         }
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW);
     }
     let mut child = command.spawn().context("start managed bus")?;
     for _ in 0..100 {

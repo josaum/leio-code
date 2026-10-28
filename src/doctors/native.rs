@@ -151,7 +151,9 @@ fn state_dir() -> Result<PathBuf> {
     if let Some(path) = std::env::var_os("LEIO_DOCTOR_TRUST_DIR") {
         return Ok(PathBuf::from(path));
     }
-    let home = std::env::var_os("HOME").context("HOME unavailable for local doctor trust")?;
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .context("HOME unavailable for local doctor trust")?;
     Ok(PathBuf::from(home).join(".local/share/leio-code/doctor-packs"))
 }
 fn trust_path(root: &Path) -> Result<PathBuf> {
@@ -404,7 +406,7 @@ fn invoke(
         .context("native doctor stdout unavailable")?;
     let mut guard = Guard(child);
     #[cfg(unix)]
-    {
+    let (bytes, exit) = {
         use std::os::fd::AsRawFd;
         let fd = stdout.as_raw_fd();
         let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
@@ -412,43 +414,76 @@ fn invoke(
             flags >= 0 && unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } >= 0,
             "could not bound native doctor output"
         );
-    }
-    #[cfg(not(unix))]
-    {
-        anyhow::bail!("native doctors currently require a Unix host");
-    }
-    let deadline = Instant::now() + Duration::from_secs(60);
-    let mut bytes = Vec::new();
-    let mut block = [0u8; 16384];
-    let mut exit = None;
-    loop {
-        ensure!(Instant::now() < deadline, "native doctor deadline exceeded");
-        match stdout.read(&mut block) {
-            Ok(0) => {
-                if exit.is_some() {
-                    break;
+        let deadline = Instant::now() + Duration::from_secs(60);
+        let mut bytes = Vec::new();
+        let mut block = [0u8; 16384];
+        let mut exit = None;
+        loop {
+            ensure!(Instant::now() < deadline, "native doctor deadline exceeded");
+            match stdout.read(&mut block) {
+                Ok(0) => {
+                    if exit.is_some() {
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_millis(5));
                 }
-                std::thread::sleep(Duration::from_millis(5));
+                Ok(n) => {
+                    ensure!(
+                        bytes.len() + n <= MAX_OUTPUT,
+                        "native doctor output limit exceeded"
+                    );
+                    bytes.extend_from_slice(&block[..n]);
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    if exit.is_some() {
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                Err(e) => return Err(e.into()),
             }
-            Ok(n) => {
+            if exit.is_none() {
+                exit = guard.0.try_wait()?;
+            }
+        }
+        (bytes, exit)
+    };
+    #[cfg(not(unix))]
+    let (bytes, exit) = {
+        let (tx, rx) = std::sync::mpsc::sync_channel(1);
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            let res = (&mut stdout)
+                .take((MAX_OUTPUT as u64).saturating_add(1))
+                .read_to_end(&mut buf)
+                .map(|_| buf);
+            let _ = tx.send(res);
+        });
+        let deadline = Instant::now() + Duration::from_secs(60);
+        let mut exit = None;
+        let mut bytes = None;
+        loop {
+            ensure!(Instant::now() < deadline, "native doctor deadline exceeded");
+            if bytes.is_none()
+                && let Ok(res) = rx.try_recv()
+            {
+                let buf = res?;
                 ensure!(
-                    bytes.len() + n <= MAX_OUTPUT,
+                    buf.len() <= MAX_OUTPUT,
                     "native doctor output limit exceeded"
                 );
-                bytes.extend_from_slice(&block[..n]);
+                bytes = Some(buf);
             }
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                if exit.is_some() {
-                    break;
-                }
-                std::thread::sleep(Duration::from_millis(5));
+            if exit.is_none() {
+                exit = guard.0.try_wait()?;
             }
-            Err(e) => return Err(e.into()),
+            if exit.is_some() && bytes.is_some() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(5));
         }
-        if exit.is_none() {
-            exit = guard.0.try_wait()?;
-        }
-    }
+        (bytes.unwrap_or_default(), exit)
+    };
     ensure!(
         exit.is_some_and(|status| status.success()),
         "native doctor process failed"

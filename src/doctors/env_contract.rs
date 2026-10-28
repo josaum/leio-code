@@ -58,8 +58,11 @@ impl Doctor for EnvContractDoctor {
 /// declaration is normal, so they are never flagged. The list is intentionally
 /// small; repo-specific exemptions belong in `[doctors.env_contract] allow`.
 const PLATFORM_VARS: &[&str] = &[
-    // POSIX session basics.
+    // POSIX / Windows session basics.
     "HOME",
+    "USERPROFILE",
+    "APPDATA",
+    "LOCALAPPDATA",
     "PATH",
     "PWD",
     "USER",

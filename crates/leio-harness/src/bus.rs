@@ -523,51 +523,60 @@ pub async fn serve_persistent(bind: SocketAddr, persist_path: Option<PathBuf>) -
 }
 
 pub async fn serve_uds(path: PathBuf, persist_path: Option<PathBuf>) -> AnyResult<()> {
-    use tokio::net::UnixListener;
-    use tokio_stream::wrappers::UnixListenerStream;
-
-    use std::os::unix::fs::{FileTypeExt, PermissionsExt};
-    let _socket_lock = {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{FileTypeExt, PermissionsExt};
+        use tokio::net::UnixListener;
+        use tokio_stream::wrappers::UnixListenerStream;
+        let _socket_lock = {
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            let lock = std::fs::OpenOptions::new()
+                .create(true)
+                .truncate(false)
+                .read(true)
+                .write(true)
+                .open(path.with_extension("socket.lock"))?;
+            fs2::FileExt::try_lock_exclusive(&lock).context("bus socket already owned")?;
+            lock
+        };
+        if let Ok(meta) = std::fs::symlink_metadata(&path) {
+            anyhow::ensure!(
+                meta.file_type().is_socket(),
+                "refusing to replace a non-socket path"
+            );
+            match std::os::unix::net::UnixStream::connect(&path) {
+                Ok(_) => bail!("bus socket already serving"),
+                Err(error) if error.kind() == std::io::ErrorKind::ConnectionRefused => {
+                    std::fs::remove_file(&path)?
+                }
+                Err(error) => return Err(error.into()),
+            }
+        }
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let lock = std::fs::OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .read(true)
-            .write(true)
-            .open(path.with_extension("socket.lock"))?;
-        fs2::FileExt::try_lock_exclusive(&lock).context("bus socket already owned")?;
-        lock
-    };
-    if let Ok(meta) = std::fs::symlink_metadata(&path) {
-        anyhow::ensure!(
-            meta.file_type().is_socket(),
-            "refusing to replace a non-socket path"
-        );
-        match std::os::unix::net::UnixStream::connect(&path) {
-            Ok(_) => bail!("bus socket already serving"),
-            Err(error) if error.kind() == std::io::ErrorKind::ConnectionRefused => {
-                std::fs::remove_file(&path)?
-            }
-            Err(error) => return Err(error.into()),
-        }
-    }
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
 
-    let listener = UnixListener::bind(&path)
-        .with_context(|| format!("failed to bind UDS flight bus to {}", path.display()))?;
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
-    let stream = UnixListenerStream::new(listener);
+        let listener = UnixListener::bind(&path)
+            .with_context(|| format!("failed to bind UDS flight bus to {}", path.display()))?;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+        let stream = UnixListenerStream::new(listener);
 
-    let bus = Arc::new(SemanticBus::load_or_default(persist_path)?);
-    Server::builder()
-        .add_service(FlightServiceServer::from_arc(bus))
-        .serve_with_incoming(stream)
-        .await
-        .context("flight bus serve over uds")
+        let bus = Arc::new(SemanticBus::load_or_default(persist_path)?);
+        Server::builder()
+            .add_service(FlightServiceServer::from_arc(bus))
+            .serve_with_incoming(stream)
+            .await
+            .context("flight bus serve over uds")
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (path, persist_path);
+        bail!(
+            "Unix domain socket bus is not supported on Windows; use a TCP bind address such as 127.0.0.1:8815"
+        )
+    }
 }
 
 pub async fn serve_auto(bind: &str, persist_path: Option<PathBuf>) -> AnyResult<()> {
@@ -779,6 +788,7 @@ fn handle_exchange_match(
     )?)
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 struct RenamedSnapshotError(std::io::Error);
 impl std::fmt::Display for RenamedSnapshotError {
@@ -794,7 +804,6 @@ impl std::error::Error for RenamedSnapshotError {}
 
 pub(crate) fn save_bus_snapshot(path: &Path, rows: &[EmbeddingRow]) -> AnyResult<()> {
     use arrow_ipc::writer::FileWriter;
-    use std::os::unix::fs::OpenOptionsExt;
     static TEMP_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let parent = path
         .parent()
@@ -808,16 +817,20 @@ pub(crate) fn save_bus_snapshot(path: &Path, rows: &[EmbeddingRow]) -> AnyResult
         .as_nanos();
     let temporary = path.with_extension(format!("{}.{nanos}.{id}.tmp", std::process::id()));
     let result = (|| -> AnyResult<()> {
-        let file = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(&temporary)?;
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let file = options.open(&temporary)?;
         let mut writer = FileWriter::try_new(file, &embedding_schema())?;
         writer.write(&batch)?;
         writer.finish()?;
         writer.get_ref().sync_all()?;
         std::fs::rename(&temporary, path)?;
+        #[cfg(unix)]
         std::fs::File::open(parent)
             .and_then(|f| f.sync_all())
             .map_err(RenamedSnapshotError)?;

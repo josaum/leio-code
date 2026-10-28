@@ -2636,8 +2636,8 @@ fn read_regular_file_no_follow(
     }
     #[cfg(not(unix))]
     {
-        let _ = (root, relative, max_bytes);
-        Err(NoFollowError::Unreadable)
+        let file = open_regular_file_handle_no_follow(root, relative)?;
+        read_bounded_utf8(file, max_bytes)
     }
 }
 
@@ -2652,9 +2652,34 @@ fn read_regular_file_bytes_no_follow(
     }
     #[cfg(not(unix))]
     {
-        let _ = (root, relative, max_bytes);
-        Err(NoFollowError::Unreadable)
+        let file = open_regular_file_handle_no_follow(root, relative)?;
+        read_bounded_bytes(file, max_bytes)
     }
+}
+
+#[cfg(not(unix))]
+fn open_regular_file_handle_no_follow(root: &Path, relative: &Path) -> Result<File, NoFollowError> {
+    let metadata = open_existing_no_follow(root, relative)?.ok_or(NoFollowError::Missing)?;
+    if !metadata.is_file() {
+        return Err(NoFollowError::Unreadable);
+    }
+    let full_path = root.join(relative);
+    let mut options = fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+        options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+    }
+    let file = options
+        .open(&full_path)
+        .map_err(|_| NoFollowError::Unreadable)?;
+    let opened_meta = file.metadata().map_err(|_| NoFollowError::Unreadable)?;
+    if !opened_meta.is_file() || opened_meta.file_type().is_symlink() {
+        return Err(NoFollowError::Unreadable);
+    }
+    Ok(file)
 }
 
 #[cfg(unix)]

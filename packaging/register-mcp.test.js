@@ -38,6 +38,11 @@ test("registration updates every detected harness and keeps other servers", () =
     path.join(home, "Library/Application Support/Code/User/mcp.json"),
     JSON.stringify({ servers: { editor: { command: "editor" } } }),
   );
+  fs.mkdirSync(path.join(home, "AppData/Roaming/Code/User"), { recursive: true });
+  fs.writeFileSync(
+    path.join(home, "AppData/Roaming/Code/User/mcp.json"),
+    JSON.stringify({ servers: { winEditor: { command: "win-editor" } } }),
+  );
   fs.mkdirSync(path.join(home, ".vscode"));
   fs.mkdirSync(path.join(home, ".gemini/antigravity"), { recursive: true });
   fs.writeFileSync(
@@ -74,6 +79,13 @@ test("registration updates every detected harness and keeps other servers", () =
   assert.equal(code.servers.editor.command, "editor");
   assert.equal(code.servers["leio-code"].type, "stdio");
   assert.equal(code.servers["leio-code"].command, spec.command);
+
+  const winCode = JSON.parse(
+    fs.readFileSync(path.join(home, "AppData/Roaming/Code/User/mcp.json"), "utf8"),
+  );
+  assert.equal(winCode.servers.winEditor.command, "win-editor");
+  assert.equal(winCode.servers["leio-code"].type, "stdio");
+  assert.equal(winCode.servers["leio-code"].command, spec.command);
 
   const gemini = JSON.parse(fs.readFileSync(path.join(home, ".gemini/settings.json"), "utf8"));
   assert.deepEqual(gemini.mcpServers["leio-code"], spec);

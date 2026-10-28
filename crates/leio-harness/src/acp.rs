@@ -12,7 +12,9 @@ use crate::arrow_events::{EventStreamWriter, StreamEvent};
 use crate::model::{AgentSessionResult, AgentSessionSpec, RunStatus};
 use crate::process::inherited_value;
 use anyhow::{Context, Result, bail};
+#[cfg(unix)]
 use nix::sys::signal::{Signal, killpg};
+#[cfg(unix)]
 use nix::unistd::Pid;
 use std::collections::BTreeSet;
 use std::fs::File;
@@ -406,8 +408,18 @@ fn terminate_group(pid: u32, grace_ms: u64) -> Result<()> {
     }
     #[cfg(not(unix))]
     {
-        let _ = pid;
         thread::sleep(Duration::from_millis(grace_ms));
+        #[cfg(windows)]
+        {
+            let _ = Command::new("taskkill")
+                .args(["/PID", &pid.to_string(), "/T", "/F"])
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+        }
+        #[cfg(not(windows))]
+        let _ = pid;
     }
     Ok(())
 }
@@ -419,6 +431,7 @@ fn write_json_atomic(path: &Path, value: &impl serde::Serialize) -> Result<()> {
     file.write_all(b"\n")?;
     file.sync_all()?;
     std::fs::rename(temporary, path)?;
+    #[cfg(unix)]
     if let Some(parent) = path.parent() {
         File::open(parent)?.sync_all()?;
     }

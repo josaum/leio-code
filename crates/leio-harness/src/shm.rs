@@ -8,10 +8,14 @@
 //! and dual-plane Unix Domain datagram signaling to prevent CPU busy-spinning.
 
 use anyhow::{Context, Result, bail};
+#[cfg(unix)]
 use nix::libc;
+#[cfg(unix)]
 use std::ffi::CString;
+#[cfg(unix)]
 use std::os::unix::net::UnixDatagram;
 use std::path::PathBuf;
+#[cfg(unix)]
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
@@ -172,11 +176,21 @@ pub struct ShmRingHeader {
     pub tail: CachePaddedAtomicU64,
 }
 
-/// Cross-platform POSIX / memfd shared memory mapping.
+/// Cross-platform POSIX / memfd / file-backed shared memory mapping.
+#[cfg(unix)]
 pub struct ShmSegment {
     name: String,
     size: usize,
     ptr: NonNull<u8>,
+    is_owner: bool,
+}
+
+#[cfg(not(unix))]
+pub struct ShmSegment {
+    name: String,
+    size: usize,
+    mmap: memmap2::MmapMut,
+    backing_path: PathBuf,
     is_owner: bool,
 }
 
@@ -203,89 +217,138 @@ impl ShmSegment {
                     .all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-'),
             "shm name must contain at most 29 ASCII letters, digits, underscores or hyphens"
         );
-        let c_name = CString::new(final_name.clone())?;
-        let flags = libc::O_RDWR
-            | if owner {
-                libc::O_CREAT | libc::O_EXCL
-            } else {
-                0
+        #[cfg(unix)]
+        {
+            let c_name = CString::new(final_name.clone())?;
+            let flags = libc::O_RDWR
+                | if owner {
+                    libc::O_CREAT | libc::O_EXCL
+                } else {
+                    0
+                };
+            // SAFETY: NUL-terminated name and valid flags. Owners exclusively create;
+            // attaching never creates or truncates an existing mapping.
+            let fd = unsafe { libc::shm_open(c_name.as_ptr(), flags, 0o600) };
+            if fd < 0 {
+                bail!("shm_open {final_name}: {}", std::io::Error::last_os_error());
+            }
+            let checked = (|| -> Result<()> {
+                if owner {
+                    if unsafe { libc::ftruncate(fd, size as libc::off_t) } != 0 {
+                        return Err(std::io::Error::last_os_error().into());
+                    }
+                } else {
+                    let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
+                    if unsafe { libc::fstat(fd, stat.as_mut_ptr()) } != 0 {
+                        return Err(std::io::Error::last_os_error().into());
+                    }
+                    let stat = unsafe { stat.assume_init() };
+                    anyhow::ensure!(
+                        stat.st_size >= 0 && {
+                            // Darwin reports page-rounded POSIX shm sizes; Linux
+                            // reports the ftruncate length. Validate either form,
+                            // then validate the exact logical capacity in the ABI.
+                            let page = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
+                            page > 0
+                                && (stat.st_size as usize == size
+                                    || stat.st_size as usize
+                                        == size.div_ceil(page as usize) * page as usize)
+                        },
+                        "shm mapping size mismatch (requested {size}, found {}); refusing to resize existing segment",
+                        stat.st_size
+                    );
+                }
+                Ok(())
+            })();
+            if let Err(error) = checked {
+                unsafe {
+                    libc::close(fd);
+                    if owner {
+                        libc::shm_unlink(c_name.as_ptr());
+                    }
+                }
+                return Err(error);
+            }
+
+            let ptr = unsafe {
+                libc::mmap(
+                    std::ptr::null_mut(),
+                    size,
+                    libc::PROT_READ | libc::PROT_WRITE,
+                    libc::MAP_SHARED,
+                    fd,
+                    0,
+                )
             };
-        // SAFETY: NUL-terminated name and valid flags. Owners exclusively create;
-        // attaching never creates or truncates an existing mapping.
-        let fd = unsafe { libc::shm_open(c_name.as_ptr(), flags, 0o600) };
-        if fd < 0 {
-            bail!("shm_open {final_name}: {}", std::io::Error::last_os_error());
-        }
-        let checked = (|| -> Result<()> {
-            if owner {
-                if unsafe { libc::ftruncate(fd, size as libc::off_t) } != 0 {
-                    return Err(std::io::Error::last_os_error().into());
+            unsafe { libc::close(fd) };
+
+            if ptr == libc::MAP_FAILED {
+                if owner {
+                    unsafe {
+                        libc::shm_unlink(c_name.as_ptr());
+                    }
                 }
-            } else {
-                let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
-                if unsafe { libc::fstat(fd, stat.as_mut_ptr()) } != 0 {
-                    return Err(std::io::Error::last_os_error().into());
-                }
-                let stat = unsafe { stat.assume_init() };
-                anyhow::ensure!(
-                    stat.st_size >= 0 && {
-                        // Darwin reports page-rounded POSIX shm sizes; Linux
-                        // reports the ftruncate length. Validate either form,
-                        // then validate the exact logical capacity in the ABI.
-                        let page = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
-                        page > 0
-                            && (stat.st_size as usize == size
-                                || stat.st_size as usize
-                                    == size.div_ceil(page as usize) * page as usize)
-                    },
-                    "shm mapping size mismatch (requested {size}, found {}); refusing to resize existing segment",
-                    stat.st_size
+                bail!(
+                    "mmap failed for {}: {}",
+                    final_name,
+                    std::io::Error::last_os_error()
                 );
             }
-            Ok(())
-        })();
-        if let Err(error) = checked {
-            unsafe {
-                libc::close(fd);
-                if owner {
-                    libc::shm_unlink(c_name.as_ptr());
-                }
-            }
-            return Err(error);
-        }
 
-        let ptr = unsafe {
-            libc::mmap(
-                std::ptr::null_mut(),
+            let non_null = NonNull::new(ptr as *mut u8).context("mmap returned null")?;
+            Ok(Self {
+                name: final_name,
                 size,
-                libc::PROT_READ | libc::PROT_WRITE,
-                libc::MAP_SHARED,
-                fd,
-                0,
-            )
-        };
-        unsafe { libc::close(fd) };
-
-        if ptr == libc::MAP_FAILED {
-            if owner {
-                unsafe {
-                    libc::shm_unlink(c_name.as_ptr());
-                }
-            }
-            bail!(
-                "mmap failed for {}: {}",
-                final_name,
-                std::io::Error::last_os_error()
-            );
+                ptr: non_null,
+                is_owner: owner,
+            })
         }
-
-        let non_null = NonNull::new(ptr as *mut u8).context("mmap returned null")?;
-        Ok(Self {
-            name: final_name,
-            size,
-            ptr: non_null,
-            is_owner: owner,
-        })
+        #[cfg(not(unix))]
+        {
+            let backing_path =
+                std::env::temp_dir().join(format!("leio-shm-{}.bin", &final_name[1..]));
+            let file = if owner {
+                let file = std::fs::OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .create_new(true)
+                    .open(&backing_path)
+                    .with_context(|| format!("shm_open {final_name}"))?;
+                if let Err(error) = file.set_len(size as u64) {
+                    let _ = std::fs::remove_file(&backing_path);
+                    return Err(error.into());
+                }
+                file
+            } else {
+                let file = std::fs::OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .open(&backing_path)
+                    .with_context(|| format!("shm_open {final_name}"))?;
+                let actual = file.metadata()?.len() as usize;
+                anyhow::ensure!(
+                    actual == size,
+                    "shm mapping size mismatch (requested {size}, found {actual}); refusing to resize existing segment"
+                );
+                file
+            };
+            let mmap = match unsafe { memmap2::MmapMut::map_mut(&file) } {
+                Ok(mmap) => mmap,
+                Err(error) => {
+                    if owner {
+                        let _ = std::fs::remove_file(&backing_path);
+                    }
+                    return Err(error).with_context(|| format!("mmap failed for {final_name}"));
+                }
+            };
+            Ok(Self {
+                name: final_name,
+                size,
+                mmap,
+                backing_path,
+                is_owner: owner,
+            })
+        }
     }
 
     pub fn name(&self) -> &str {
@@ -297,12 +360,20 @@ impl ShmSegment {
 
     #[inline]
     pub fn as_ptr(&self) -> *mut u8 {
-        self.ptr.as_ptr()
+        #[cfg(unix)]
+        {
+            self.ptr.as_ptr()
+        }
+        #[cfg(not(unix))]
+        {
+            self.mmap.as_ptr() as *mut u8
+        }
     }
 }
 
 impl Drop for ShmSegment {
     fn drop(&mut self) {
+        #[cfg(unix)]
         unsafe {
             libc::munmap(self.ptr.as_ptr() as *mut libc::c_void, self.size);
             if self.is_owner
@@ -311,12 +382,25 @@ impl Drop for ShmSegment {
                 libc::shm_unlink(c_name.as_ptr());
             }
         }
+        #[cfg(not(unix))]
+        if self.is_owner {
+            let _ = std::fs::remove_file(&self.backing_path);
+        }
     }
 }
 
-/// Lightweight Unix Domain Datagram notification plane to avoid 100% CPU busy-spinning.
+/// Lightweight datagram notification plane to avoid 100% CPU busy-spinning.
+#[cfg(unix)]
 pub struct ShmSignal {
     socket: UnixDatagram,
+    peer_path: Option<PathBuf>,
+    bind_path: Option<PathBuf>,
+}
+
+#[cfg(not(unix))]
+pub struct ShmSignal {
+    socket: std::net::UdpSocket,
+    peer_addr: Option<std::net::SocketAddr>,
     peer_path: Option<PathBuf>,
     bind_path: Option<PathBuf>,
 }
@@ -329,46 +413,101 @@ impl ShmSignal {
             !path.exists(),
             "signal socket already exists; refusing to unlink another listener"
         );
-        let socket = UnixDatagram::bind(&path)
-            .with_context(|| format!("failed to bind shm signal socket: {}", path.display()))?;
-        socket.set_nonblocking(true)?;
-        Ok(Self {
-            socket,
-            peer_path: None,
-            bind_path: Some(path),
-        })
+        #[cfg(unix)]
+        {
+            let socket = UnixDatagram::bind(&path)
+                .with_context(|| format!("failed to bind shm signal socket: {}", path.display()))?;
+            socket.set_nonblocking(true)?;
+            Ok(Self {
+                socket,
+                peer_path: None,
+                bind_path: Some(path),
+            })
+        }
+        #[cfg(not(unix))]
+        {
+            let socket = std::net::UdpSocket::bind("127.0.0.1:0")?;
+            let addr = socket.local_addr()?;
+            std::fs::write(&path, addr.to_string())?;
+            Ok(Self {
+                socket,
+                peer_addr: None,
+                peer_path: None,
+                bind_path: Some(path),
+            })
+        }
     }
 
     /// Create an unbound sender signal targeting a ring listener.
     pub fn connect(ring_name: &str) -> Result<Self> {
         let peer_path = Self::socket_path(ring_name);
-        let socket =
-            UnixDatagram::unbound().context("failed to create unbound unix datagram socket")?;
-        socket.set_nonblocking(true)?;
-        Ok(Self {
-            socket,
-            peer_path: Some(peer_path),
-            bind_path: None,
-        })
+        #[cfg(unix)]
+        {
+            let socket =
+                UnixDatagram::unbound().context("failed to create unbound unix datagram socket")?;
+            socket.set_nonblocking(true)?;
+            Ok(Self {
+                socket,
+                peer_path: Some(peer_path),
+                bind_path: None,
+            })
+        }
+        #[cfg(not(unix))]
+        {
+            let socket = std::net::UdpSocket::bind("127.0.0.1:0")?;
+            socket.set_nonblocking(true)?;
+            Ok(Self {
+                socket,
+                peer_addr: None,
+                peer_path: Some(peer_path),
+                bind_path: None,
+            })
+        }
     }
 
     /// Anonymous pair for intra-process or fork-exec child signaling.
     pub fn pair() -> Result<(Self, Self)> {
-        let (s1, s2) = UnixDatagram::pair().context("UnixDatagram::pair failed")?;
-        s1.set_nonblocking(true)?;
-        s2.set_nonblocking(true)?;
-        Ok((
-            Self {
-                socket: s1,
-                peer_path: None,
-                bind_path: None,
-            },
-            Self {
-                socket: s2,
-                peer_path: None,
-                bind_path: None,
-            },
-        ))
+        #[cfg(unix)]
+        {
+            let (s1, s2) = UnixDatagram::pair().context("UnixDatagram::pair failed")?;
+            s1.set_nonblocking(true)?;
+            s2.set_nonblocking(true)?;
+            Ok((
+                Self {
+                    socket: s1,
+                    peer_path: None,
+                    bind_path: None,
+                },
+                Self {
+                    socket: s2,
+                    peer_path: None,
+                    bind_path: None,
+                },
+            ))
+        }
+        #[cfg(not(unix))]
+        {
+            let s1 = std::net::UdpSocket::bind("127.0.0.1:0")?;
+            let s2 = std::net::UdpSocket::bind("127.0.0.1:0")?;
+            let a1 = s1.local_addr()?;
+            let a2 = s2.local_addr()?;
+            s1.connect(a2)?;
+            s2.connect(a1)?;
+            Ok((
+                Self {
+                    socket: s1,
+                    peer_addr: Some(a2),
+                    peer_path: None,
+                    bind_path: None,
+                },
+                Self {
+                    socket: s2,
+                    peer_addr: Some(a1),
+                    peer_path: None,
+                    bind_path: None,
+                },
+            ))
+        }
     }
 
     fn socket_path(ring_name: &str) -> PathBuf {
@@ -380,8 +519,19 @@ impl ShmSignal {
     /// Send notification that a slot was updated. Non-blocking.
     pub fn notify(&self, slot_index: usize) -> Result<()> {
         let payload = (slot_index as u32).to_le_bytes();
+        #[cfg(unix)]
         let sent = if let Some(ref peer) = self.peer_path {
             self.socket.send_to(&payload, peer)
+        } else {
+            self.socket.send(&payload)
+        };
+        #[cfg(not(unix))]
+        let sent = if self.peer_addr.is_some() {
+            self.socket.send(&payload)
+        } else if let Some(ref peer) = self.peer_path {
+            let text = std::fs::read_to_string(peer)?;
+            let addr: std::net::SocketAddr = text.trim().parse()?;
+            self.socket.send_to(&payload, addr)
         } else {
             self.socket.send(&payload)
         };
@@ -397,36 +547,60 @@ impl ShmSignal {
     /// Wait without changing shared descriptor flags. Always recheck ring state
     /// after waiting: wakeups are hints, not the data/ownership protocol.
     pub fn wait_timeout(&self, timeout: std::time::Duration) -> Result<Option<usize>> {
-        use std::os::fd::AsRawFd;
-        let mut descriptor = libc::pollfd {
-            fd: self.socket.as_raw_fd(),
-            events: libc::POLLIN,
-            revents: 0,
-        };
-        // SAFETY: one initialized pollfd is writable for the duration of poll.
-        let result = unsafe {
-            libc::poll(
-                &mut descriptor,
-                1,
-                timeout.as_millis().min(i32::MAX as u128) as i32,
-            )
-        };
-        if result < 0 {
-            let error = std::io::Error::last_os_error();
-            if error.kind() == std::io::ErrorKind::Interrupted {
+        #[cfg(unix)]
+        {
+            use std::os::fd::AsRawFd;
+            let mut descriptor = libc::pollfd {
+                fd: self.socket.as_raw_fd(),
+                events: libc::POLLIN,
+                revents: 0,
+            };
+            // SAFETY: one initialized pollfd is writable for the duration of poll.
+            let result = unsafe {
+                libc::poll(
+                    &mut descriptor,
+                    1,
+                    timeout.as_millis().min(i32::MAX as u128) as i32,
+                )
+            };
+            if result < 0 {
+                let error = std::io::Error::last_os_error();
+                if error.kind() == std::io::ErrorKind::Interrupted {
+                    return Ok(None);
+                }
+                return Err(error.into());
+            }
+            if result == 0 {
                 return Ok(None);
             }
-            return Err(error.into());
+            let mut buf = [0u8; 4];
+            match self.socket.recv(&mut buf) {
+                Ok(4) => Ok(Some(u32::from_le_bytes(buf) as usize)),
+                Ok(_) => Ok(None),
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
+                Err(e) => Err(e.into()),
+            }
         }
-        if result == 0 {
-            return Ok(None);
-        }
-        let mut buf = [0u8; 4];
-        match self.socket.recv(&mut buf) {
-            Ok(4) => Ok(Some(u32::from_le_bytes(buf) as usize)),
-            Ok(_) => Ok(None),
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
-            Err(e) => Err(e.into()),
+        #[cfg(not(unix))]
+        {
+            self.socket
+                .set_read_timeout(Some(timeout.max(std::time::Duration::from_millis(1))))?;
+            let mut buf = [0u8; 4];
+            match self.socket.recv(&mut buf) {
+                Ok(4) => Ok(Some(u32::from_le_bytes(buf) as usize)),
+                Ok(_) => Ok(None),
+                Err(e)
+                    if matches!(
+                        e.kind(),
+                        std::io::ErrorKind::WouldBlock
+                            | std::io::ErrorKind::TimedOut
+                            | std::io::ErrorKind::Interrupted
+                    ) =>
+                {
+                    Ok(None)
+                }
+                Err(e) => Err(e.into()),
+            }
         }
     }
 }

@@ -5,7 +5,7 @@ license: MIT OR Apache-2.0
 compatibility: Requires ChatGPT Developer Mode or remote HTTP MCP connection to the LEIO Code Apps SDK server.
 metadata:
   author: leio-code
-  version: "2.6.6"
+  version: "2.6.7"
 ---
 
 # LEIO Code — Apps SDK (ChatGPT)

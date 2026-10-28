@@ -26,6 +26,8 @@ SERVER_FILES = (
     "envelope.js",
     "guide.js",
     "workflow.js",
+    "harness-tasks.js",
+    "harness-review.js",
     "mcp-spec-2025-11-25.js",
     "output-schemas.js",
     "install-root.js",
@@ -45,7 +47,7 @@ def server_modules() -> Path:
         shutil.rmtree(cached)
     cached.mkdir(parents=True)
     (cached / "package.json").write_text(
-        '{"name":"leio-code-server","private":true,"version":"2.6.6"}\n',
+        '{"name":"leio-code-server","private":true,"version":"2.6.7"}\n',
         encoding="utf-8",
     )
     subprocess.run(
@@ -63,13 +65,13 @@ def stage_server(dest: Path, *, with_modules: bool = False) -> None:
     for name in SERVER_FILES:
         shutil.copy2(ROOT / "mcp" / name, dest / name)
     (dest / "package.json").write_text(
-        '{"name":"leio-code-server","private":true,"type":"module","version":"2.6.6"}\n',
+        '{"name":"leio-code-server","private":true,"type":"module","version":"2.6.7"}\n',
         encoding="utf-8",
     )
     shutil.copy2(ROOT / "packaging" / "npm" / "bin" / "leio-mcp.js", dest / "leio-mcp.js")
     if with_modules:
         shutil.copytree(server_modules(), dest / "node_modules")
-VERSION = "2.6.6"
+VERSION = "2.6.7"
 TAG = f"leio-code-plugin-v{VERSION}"
 REPO = "josaum/leio-code"
 
@@ -88,6 +90,11 @@ PLATFORMS = (
         "code": "leio-code-linux-amd64",
         "harness": "leio-code-linux-amd64-harness",
         "tag": "py3-none-manylinux_2_34_x86_64",
+    },
+    {
+        "code": "leio-code-windows-amd64.exe",
+        "harness": "leio-code-windows-amd64-harness.exe",
+        "tag": "py3-none-win_amd64",
     },
 )
 
@@ -133,8 +140,14 @@ def retag_wheel(source: Path, tag: str) -> Path:
     wheel_text = re.sub(r"^Tag: .*$", f"Tag: {tag}", wheel_text, flags=re.M)
     wheel_text = wheel_text.replace("Root-Is-Purelib: true", "Root-Is-Purelib: false")
     files[wheel_name] = wheel_text.encode()
-    for name in ("leio_code/bin/leio-code", "leio_code/bin/leio-harness"):
-        modes[name] = 0o100755
+    for name in (
+        "leio_code/bin/leio-code",
+        "leio_code/bin/leio-harness",
+        "leio_code/bin/leio-code.exe",
+        "leio_code/bin/leio-harness.exe",
+    ):
+        if name in files:
+            modes[name] = 0o100755
     files["leio_register.pth"] = (
         b"import leio_code.register; leio_code.register.ensure()\n"
     )
@@ -170,10 +183,13 @@ def build_wheel(platform: dict[str, str]) -> Path:
     )
     bindir = stage / "src" / "leio_code" / "bin"
     bindir.mkdir(parents=True)
-    shutil.copy2(code, bindir / "leio-code")
-    shutil.copy2(harness, bindir / "leio-harness")
-    (bindir / "leio-code").chmod(0o755)
-    (bindir / "leio-harness").chmod(0o755)
+    ext = ".exe" if platform["code"].endswith(".exe") else ""
+    code_dest = bindir / f"leio-code{ext}"
+    harness_dest = bindir / f"leio-harness{ext}"
+    shutil.copy2(code, code_dest)
+    shutil.copy2(harness, harness_dest)
+    code_dest.chmod(0o755)
+    harness_dest.chmod(0o755)
     mcp_dir = stage / "src" / "leio_code" / "mcp"
     stage_server(mcp_dir, with_modules=True)
     shutil.copy2(ROOT / "packaging" / "register-mcp.js", stage / "src" / "leio_code" / "register-mcp.js")

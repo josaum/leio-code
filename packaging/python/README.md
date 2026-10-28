@@ -10,4 +10,4 @@ leio-harness workflow --repo /absolute/path/to/repo --dir /tmp/my-run --action s
 
 Each command reads one repository. Pass `--repo` or, for the MCP server, `repo_root`.
 
-Release binaries cover macOS arm64, macOS x64, and Linux x64.
+Release binaries cover macOS arm64, macOS x64, Linux x64, and Windows x64.

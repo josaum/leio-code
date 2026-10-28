@@ -176,9 +176,12 @@ impl LeaseStore {
 }
 
 fn sync_parent(path: &Path) -> Result<()> {
+    #[cfg(unix)]
     if let Some(parent) = path.parent() {
         File::open(parent)?.sync_all()?;
     }
+    #[cfg(not(unix))]
+    let _ = path;
     Ok(())
 }
 

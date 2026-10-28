@@ -45,12 +45,19 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             asset_name: leio-code-linux-amd64
+            ext: ""
           - os: macos-15
             target: aarch64-apple-darwin
             asset_name: leio-code-darwin-arm64
+            ext: ""
           - os: macos-15-intel
             target: x86_64-apple-darwin
             asset_name: leio-code-darwin-amd64
+            ext: ""
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            asset_name: leio-code-windows-amd64
+            ext: ".exe"
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     permissions:
@@ -64,27 +71,37 @@ jobs:
         with:
           shared-key: leio-code-binary-${{ matrix.target }}
       - name: Build release binary
+        shell: bash
         env:
           RUSTC_WRAPPER: ""
           CARGO_TARGET_DIR: target
         run: |
           cargo build --locked --release --target ${{ matrix.target }} -p leio-code -p leio-harness
-          BINARY=$(find target -name leio-code -type f ! -path "*/deps/*" ! -path "*/build/*" | grep release | head -1)
-          HARNESS=$(find target -name leio-harness -type f ! -path "*/deps/*" ! -path "*/build/*" | grep release | head -1)
-          cp "$BINARY" ${{ matrix.asset_name }}
-          cp "$HARNESS" ${{ matrix.asset_name }}-harness
+          cp "target/${{ matrix.target }}/release/leio-code${{ matrix.ext }}" "${{ matrix.asset_name }}${{ matrix.ext }}"
+          cp "target/${{ matrix.target }}/release/leio-harness${{ matrix.ext }}" "${{ matrix.asset_name }}-harness${{ matrix.ext }}"
       - name: Strip binary
+        shell: bash
         run: |
-          command -v strip >/dev/null && strip ${{ matrix.asset_name }} ${{ matrix.asset_name }}-harness || true
+          if [ -z "${{ matrix.ext }}" ] && command -v strip >/dev/null; then
+            strip "${{ matrix.asset_name }}${{ matrix.ext }}" "${{ matrix.asset_name }}-harness${{ matrix.ext }}" || true
+          fi
       - name: Smoke release binaries
+        shell: bash
         run: |
-          ./${{ matrix.asset_name }} --version
-          ./${{ matrix.asset_name }}-harness --version
+          "./${{ matrix.asset_name }}${{ matrix.ext }}" --version
+          "./${{ matrix.asset_name }}-harness${{ matrix.ext }}" --version
       - name: Checksum
+        shell: bash
         run: |
-          shasum -a 256 ${{ matrix.asset_name }} > ${{ matrix.asset_name }}.sha256
-          shasum -a 256 ${{ matrix.asset_name }}-harness > ${{ matrix.asset_name }}-harness.sha256
+          if command -v shasum >/dev/null 2>&1; then
+            shasum -a 256 "${{ matrix.asset_name }}${{ matrix.ext }}" > "${{ matrix.asset_name }}${{ matrix.ext }}.sha256"
+            shasum -a 256 "${{ matrix.asset_name }}-harness${{ matrix.ext }}" > "${{ matrix.asset_name }}-harness${{ matrix.ext }}.sha256"
+          else
+            sha256sum "${{ matrix.asset_name }}${{ matrix.ext }}" > "${{ matrix.asset_name }}${{ matrix.ext }}.sha256"
+            sha256sum "${{ matrix.asset_name }}-harness${{ matrix.ext }}" > "${{ matrix.asset_name }}-harness${{ matrix.ext }}.sha256"
+          fi
       - name: Ensure release
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -93,7 +110,8 @@ jobs:
             gh release create "$TAG" --target "$GITHUB_SHA" \
               --title "LEIO Code v${{ needs.resolve-tag.outputs.version }}" \
               --notes "Binary release for leio-code v${{ needs.resolve-tag.outputs.version }}" \
-              --draft
+              --draft || true
           fi
-          gh release upload "$TAG" "${{ matrix.asset_name }}" "${{ matrix.asset_name }}.sha256" \
-            "${{ matrix.asset_name }}-harness" "${{ matrix.asset_name }}-harness.sha256" --clobber
+          gh release upload "$TAG" \
+            "${{ matrix.asset_name }}${{ matrix.ext }}" "${{ matrix.asset_name }}${{ matrix.ext }}.sha256" \
+            "${{ matrix.asset_name }}-harness${{ matrix.ext }}" "${{ matrix.asset_name }}-harness${{ matrix.ext }}.sha256" --clobber

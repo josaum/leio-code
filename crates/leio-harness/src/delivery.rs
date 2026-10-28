@@ -118,6 +118,7 @@ fn atomic_json(path: &Path, value: &Value) -> Result<()> {
     file.write_all(&serde_json::to_vec_pretty(value)?)?;
     file.sync_all()?;
     fs::rename(tmp, path)?;
+    #[cfg(unix)]
     File::open(path.parent().unwrap())?.sync_all()?;
     Ok(())
 }
@@ -129,6 +130,7 @@ fn sync_directories(dir: &Path) -> Result<()> {
             sync_directories(&path)?;
         }
     }
+    #[cfg(unix)]
     File::open(dir)?.sync_all()?;
     Ok(())
 }
@@ -335,6 +337,7 @@ pub fn prepare(source: &Path, target: &Path) -> Result<Value> {
         )?;
         sync_directories(&staging)?;
         fs::rename(&staging, &destination)?;
+        #[cfg(unix)]
         File::open(target.join("releases"))?.sync_all()?;
     }
     Ok(

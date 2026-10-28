@@ -1,6 +1,6 @@
 {
   "name": "leio-code",
-  "version": "2.6.6",
+  "version": "2.6.7",
   "description": "Agent-first code intelligence. CLI/MCP for index, find, graph, doctors, local Arrow wiki, SPARQL-gated knowledge explain, formal.nq, lattice/heading nav, and JSON-LD provenance events. Concurrent-agent safe.",
   "author": {
     "name": "LEIO Code contributors",

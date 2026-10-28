@@ -12,7 +12,7 @@ The Python wheel and the Node package install `leio-code`, `leio-harness`, and
 the stdio server `leio-mcp`. They register that server with harnesses already
 on the machine. Any other MCP host launches `leio-mcp`.
 `cargo binstall leio-code` installs Code. Release binaries cover macOS arm64,
-macOS x64, and Linux x64. `scripts/build_packages.py` builds the wheel and the
+macOS x64, Linux x64, and Windows x64. `scripts/build_packages.py` builds the wheel and the
 npm package from the GitHub release assets.
 
 The steps below are for changing Leio itself. A browser-only chat cannot
