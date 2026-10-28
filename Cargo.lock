@@ -1324,7 +1324,7 @@ dependencies = [
 
 [[package]]
 name = "leio-code"
-version = "2.6.7"
+version = "2.6.8"
 dependencies = [
  "aho-corasick",
  "anyhow",
@@ -1373,7 +1373,7 @@ dependencies = [
 
 [[package]]
 name = "leio-harness"
-version = "2.6.7"
+version = "2.6.8"
 dependencies = [
  "anyhow",
  "arrow-array",
@@ -1404,7 +1404,7 @@ dependencies = [
 
 [[package]]
 name = "leio-knowledge-core"
-version = "2.6.7"
+version = "2.6.8"
 dependencies = [
  "anyhow",
  "oxigraph",

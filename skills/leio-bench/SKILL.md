@@ -5,7 +5,7 @@ license: MIT OR Apache-2.0
 compatibility: Requires python3, leio-harness, and a clean git checkout.
 metadata:
   author: leio-code
-  version: "2.6.7"
+  version: "2.6.8"
 ---
 
 # LEIO Bench — model-swept golden tasks

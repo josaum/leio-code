@@ -23,7 +23,7 @@ leio-code --version
 `leio-code-darwin-arm64`, `leio-code-darwin-amd64`, and
 `leio-code-windows-amd64.exe`, plus the matching harness binaries, on tag
 `leio-code-plugin-v*`. Current release:
-[`leio-code-plugin-v2.6.7`](https://github.com/josaum/leio-code/releases/tag/leio-code-plugin-v2.6.7).
+[`leio-code-plugin-v2.6.8`](https://github.com/josaum/leio-code/releases/tag/leio-code-plugin-v2.6.8).
 
 ## Homebrew
 

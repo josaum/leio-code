@@ -51,7 +51,7 @@ and confirm the session cursor is still there.
 
 **15 of 15 scripted runs passed**, including cursor restoration after provider
 restart. Measured on this repository's **420 indexed files**, Apple M1,
-release 2.6.2. The current release is 2.6.7; these timings were not re-run.
+release 2.6.2. The current release is 2.6.8; these timings were not re-run.
 Five runs per scenario; warm index/graph. Timings include the
 11 calls, checks and reconnect; setup is excluded.
 
@@ -73,7 +73,7 @@ cargo binstall leio-code
 
 The Python wheel and the Node package install `leio-code`, `leio-harness`, and the stdio server `leio-mcp`. They register that server with harnesses already on the machine. Any other MCP host launches `leio-mcp`. `cargo binstall leio-code` installs Code. The release covers macOS arm64, macOS x64, Linux x64, and Windows x64. Pass an absolute `--repo` or `repo_root` for each codebase. Do not set `LEIO_CODE_REPO_ROOT`.
 
-[Release 2.6.7](https://github.com/josaum/leio-code/releases/tag/leio-code-plugin-v2.6.7)
+[Release 2.6.8](https://github.com/josaum/leio-code/releases/tag/leio-code-plugin-v2.6.8)
 
 ## Your first useful query
 
