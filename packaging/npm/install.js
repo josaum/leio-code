@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { applyRegistration } from "../register-mcp.js";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
-const version = "2.6.7";
+const version = "2.6.8";
 const tag = `leio-code-plugin-v${version}`;
 const repo = "josaum/leio-code";
 

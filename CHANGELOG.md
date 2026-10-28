@@ -2,6 +2,11 @@
 
 All notable changes to LEIO Code. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow the crate version in `Cargo.toml`.
 
+## [2.6.8] — 2026-10-28
+
+### Fixed
+- Windows installation and runtime POSIX hardening across `.gitattributes` (`eol=lf`), `scripts/launch-stdio-mcp.sh`, `hooks/session-context.sh`, `packaging/register-mcp.js`, `packaging/python/src/leio_code/register.py`, `scripts/install_codex_plugin.py`, `mcp/resolve-binary.js`, `mcp/watch-state.js`, `mcp/harness-tasks.js`, `mcp/harness-review.js`, and Rust (`leio-code` and `leio-harness` environment allowlists, verbatim `\\?\` drive prefix stripping, `leio-code update` `.exe` handling, and Win32 sidecar PID liveness probing).
+
 ## [2.6.7] — 2026-10-28
 
 ### Added
