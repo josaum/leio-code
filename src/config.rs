@@ -11,9 +11,11 @@
 //!   [`PLATFORM_CONTRACTS_ROOT_ENV`], [`PLATFORM_CARTRIDGE_ENV`]) add one
 //!   private checkout beside the neutral defaults. Unset means only those
 //!   defaults are recognized.
-//! - `embed.url` / `embed.model` → `LEIO_CODE_EMBED_URL` /
-//!   `LEIO_CODE_EMBED_MODEL` (optional BGE-M3 encoder). Direct TEI URLs end in
-//!   `/embed`; LiteLLM/OpenAI-compatible bases receive `/v1/embeddings`.
+//! - `embed.url` / `embed.model` / `embed.dim` → `LEIO_CODE_EMBED_URL` /
+//!   `LEIO_CODE_EMBED_MODEL` / `LEIO_CODE_EMBED_DIM` (optional dense encoder).
+//!   Direct TEI URLs end in `/embed`; LiteLLM/OpenAI-compatible bases receive
+//!   `/v1/embeddings`. Model and dimension travel together: a store embedded at
+//!   one pair must not be scored against another.
 //!
 //! [`repo_namespace`] resolves a stable repo-name slug for cross-graph URN
 //! generation; falls back to the working-dir basename.
@@ -35,12 +37,22 @@ pub const PROFILE_EXAMPLE: &str = "example";
 pub const DEFAULT_CODE_RDF_NAMESPACE: &str = "https://example.local/leio/code#";
 /// Env var that overrides [`DEFAULT_CODE_RDF_NAMESPACE`] / `[rdf] namespace`.
 pub const CODE_RDF_NAMESPACE_ENV: &str = "LEIO_CODE_RDF_NAMESPACE";
-/// OpenAI-compatible or direct TEI URL for BGE-M3 (`[embed] url`).
+/// OpenAI-compatible or direct TEI URL for the dense encoder (`[embed] url`).
 pub const EMBED_URL_ENV: &str = "LEIO_CODE_EMBED_URL";
-/// Encoder model id. Defaults to `BAAI/bge-m3`.
+/// Encoder model id. Defaults to [`DEFAULT_EMBED_MODEL`].
 pub const EMBED_MODEL_ENV: &str = "LEIO_CODE_EMBED_MODEL";
-/// Workspace-standard dense model. Must stay 1024-d BGE-M3.
+/// Encoder output width. Defaults to [`DEFAULT_EMBED_DIM`].
+pub const EMBED_DIM_ENV: &str = "LEIO_CODE_EMBED_DIM";
+/// Workspace-standard dense model, kept for stores embedded before
+/// `[embed] model` became load-bearing.
 pub const DEFAULT_EMBED_MODEL: &str = "BAAI/bge-m3";
+/// Dense width of [`DEFAULT_EMBED_MODEL`].
+///
+/// BGE-M3 emits 1024 floats. Every store written before `[embed] dim` existed
+/// is this wide, so changing the default would silently reinterpret them;
+/// a different encoder sets `[embed] dim` instead. Other widths are ordinary:
+/// `google/embeddinggemma-2` is 768, and its Matryoshka cuts are 512/256/128.
+pub const DEFAULT_EMBED_DIM: usize = 1024;
 
 /// Neutral API directory recognized for route mounting and Python modules.
 ///
@@ -219,15 +231,29 @@ pub struct OrphanFilesConfig {
     pub surfaces: Option<Vec<String>>,
 }
 
-/// Remote BGE-M3 encoder under `[embed]` in `.leio-code/config.toml`.
+/// Remote dense encoder under `[embed]` in `.leio-code/config.toml`.
 ///
 /// Direct TEI endpoints use the `/embed` suffix; LiteLLM/OpenAI-compatible
 /// endpoints may use their base URL and receive `/v1/embeddings` automatically.
+///
+/// `model` and `dim` describe one encoder and must agree with it: the ingest
+/// paths reject any response of a different width rather than store a vector
+/// that cannot be compared.
 ///
 /// ```toml
 /// [embed]
 /// url = "http://tei-bge-m3.example:8080/embed"
 /// model = "BAAI/bge-m3"
+/// dim = 1024
+/// ```
+///
+/// A locally served 768-d encoder looks the same with its own two values:
+///
+/// ```toml
+/// [embed]
+/// url = "http://localhost:8080/embed"
+/// model = "google/embeddinggemma-2"
+/// dim = 768
 /// ```
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct EmbedConfig {
@@ -235,6 +261,8 @@ pub struct EmbedConfig {
     pub url: Option<String>,
     /// Model id posted to `/v1/embeddings`. Defaults to [`DEFAULT_EMBED_MODEL`].
     pub model: Option<String>,
+    /// Encoder output width. Defaults to [`DEFAULT_EMBED_DIM`].
+    pub dim: Option<usize>,
 }
 
 pub fn load_repo_config(root: &Path) -> Option<LeioConfig> {
@@ -297,6 +325,24 @@ pub fn embed_model(root: &Path) -> String {
                 .filter(|value| !value.trim().is_empty())
         })
         .unwrap_or_else(|| DEFAULT_EMBED_MODEL.to_string())
+}
+
+/// Encoder width (`LEIO_CODE_EMBED_DIM` / `[embed] dim` / [`DEFAULT_EMBED_DIM`]).
+///
+/// Pairs with [`embed_model`]: both describe the same encoder, and ingest
+/// rejects a response that does not match this width. Zero and unparseable
+/// values fall back to the default rather than producing empty vectors.
+pub fn embed_dim(root: &Path) -> usize {
+    std::env::var(EMBED_DIM_ENV)
+        .ok()
+        .and_then(|value| value.trim().parse::<usize>().ok())
+        .filter(|dim| *dim > 0)
+        .or_else(|| {
+            load_repo_config(root)
+                .and_then(|config| config.embed.and_then(|embed| embed.dim))
+                .filter(|dim| *dim > 0)
+        })
+        .unwrap_or(DEFAULT_EMBED_DIM)
 }
 
 /// Adds `http://` when the value has no scheme. Empty → `None`.
@@ -680,6 +726,40 @@ mod tests {
         }
         if embed_query_url().is_none() {
             assert_eq!(embed_url(dir.path()).as_deref(), Some(REPO_URL));
+        }
+    }
+
+    #[test]
+    fn embed_dim_reads_config_and_defaults() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let cfg_dir = dir.path().join(".leio-code");
+        std::fs::create_dir_all(&cfg_dir).expect("mkdir");
+
+        // No `[embed]` table at all: the BGE-M3 width every older store used.
+        std::fs::write(cfg_dir.join("config.toml"), "version = 1\n").expect("write");
+        if std::env::var(EMBED_DIM_ENV).is_err() {
+            assert_eq!(embed_dim(dir.path()), DEFAULT_EMBED_DIM);
+        }
+
+        // A 768-d encoder is configured per repository, not compiled in.
+        std::fs::write(
+            cfg_dir.join("config.toml"),
+            "version = 1\n[embed]\nmodel = \"google/embeddinggemma-2\"\ndim = 768\n",
+        )
+        .expect("write");
+        if std::env::var(EMBED_DIM_ENV).is_err() {
+            assert_eq!(embed_dim(dir.path()), 768);
+            assert_eq!(embed_model(dir.path()), "google/embeddinggemma-2");
+        }
+
+        // Zero would produce empty vectors, so it is treated as unset.
+        std::fs::write(
+            cfg_dir.join("config.toml"),
+            "version = 1\n[embed]\ndim = 0\n",
+        )
+        .expect("write");
+        if std::env::var(EMBED_DIM_ENV).is_err() {
+            assert_eq!(embed_dim(dir.path()), DEFAULT_EMBED_DIM);
         }
     }
 
