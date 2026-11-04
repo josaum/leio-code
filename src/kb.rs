@@ -536,16 +536,25 @@ fn build_embedding_array(
     embeddings: &[Option<Vec<f32>>],
     dim: Option<i32>,
 ) -> std::sync::Arc<dyn Array> {
-    let values: Vec<f32> = embeddings
-        .iter()
-        .flatten()
-        .flat_map(|vector| vector.iter().copied())
-        .collect();
     match dim {
         Some(dim) => {
+            // Every slot must contribute `dim` values, including the null ones:
+            // a FixedSizeListArray indexes its values buffer by position, so an
+            // unembedded row still needs padding or every later row is shifted.
+            let width = dim as usize;
+            let mut values: Vec<f32> = Vec::with_capacity(embeddings.len() * width);
+            for entry in embeddings {
+                match entry {
+                    Some(vector) => values.extend(vector.iter().copied()),
+                    None => values.extend(std::iter::repeat_n(0.0, width)),
+                }
+            }
             let floats = Float32Array::from(values);
             let field = std::sync::Arc::new(Field::new("item", DataType::Float32, true));
-            let nulls: Vec<bool> = embeddings.iter().map(|entry| entry.is_none()).collect();
+            // Arrow validity semantics: `true` means VALID, not null. Mapping
+            // `is_none()` here marked every embedded row null, so stored
+            // vectors were silently unreadable and search fell back to lexical.
+            let nulls: Vec<bool> = embeddings.iter().map(|entry| entry.is_some()).collect();
             let array = FixedSizeListArray::new(
                 field,
                 dim,
@@ -836,4 +845,29 @@ fn phrase_bonus_beats_equal_coverage_without_phrase() {
         a > b,
         "contiguous phrase must outrank scattered tokens: {a} vs {b}"
     );
+}
+
+#[test]
+fn embedding_array_marks_embedded_rows_valid() {
+    // Arrow's validity bitmap is `true` = valid. Inverting it stored real
+    // vectors behind a null mask, so `kb query` silently fell back to lexical
+    // ranking on a collection that had been embedded successfully.
+    let embeddings = vec![Some(vec![0.5f32, 0.5]), None, Some(vec![1.0f32, 0.0])];
+    let array = build_embedding_array(&embeddings, Some(2));
+    let list = array
+        .as_any()
+        .downcast_ref::<FixedSizeListArray>()
+        .expect("fixed size list");
+
+    assert!(!list.is_null(0), "embedded row 0 must not be null");
+    assert!(list.is_null(1), "unembedded row 1 must be null");
+    assert!(!list.is_null(2), "embedded row 2 must not be null");
+
+    // The null slot still occupies `dim` values, so row 2 is not shifted.
+    let row2 = list.value(2);
+    let floats = row2
+        .as_any()
+        .downcast_ref::<Float32Array>()
+        .expect("float values");
+    assert_eq!(floats.values(), &[1.0, 0.0]);
 }
