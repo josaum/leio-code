@@ -347,11 +347,20 @@ fn query_tokens(query: &str) -> Vec<String> {
 /// embeddings, new chunks are embedded when an embeddings endpoint is
 /// reachable, and vanished chunks are dropped.
 ///
+/// A surviving chunk that carries *no* vector is re-queued for embedding, so
+/// enabling an encoder after a lexical-only build fills in the gaps instead of
+/// carrying the empty slots forever.
+///
+/// `force` discards every carried vector and re-embeds the whole collection.
+/// Use it when the encoder itself changed (a different model or width), since
+/// content hashes are unchanged in that case and nothing would otherwise be
+/// re-embedded.
+///
 /// # Errors
 ///
 /// Returns an error when the registry has no entry for `name`, a source
 /// cannot be read, or the collection cannot be written.
-pub fn build_kb(name: &str, repo_root: &Path) -> Result<KbBuildStats> {
+pub fn build_kb(name: &str, repo_root: &Path, force: bool) -> Result<KbBuildStats> {
     let registry = load_registry();
     let sources = registry
         .bases
@@ -366,7 +375,8 @@ pub fn build_kb(name: &str, repo_root: &Path) -> Result<KbBuildStats> {
     // Existing rows: chunk_id -> (embedding, embedding_model) — reused for
     // surviving chunks so rebuilds do not re-embed unchanged content.
     let mut carried: BTreeMap<String, (Option<Vec<f32>>, Option<String>)> = BTreeMap::new();
-    let prior_dim = if let Some(batch) = read_collection(name)? {
+    let prior = if force { None } else { read_collection(name)? };
+    let prior_dim = if let Some(batch) = prior {
         for row in 0..batch.num_rows() {
             let chunk = row_string(&batch, "chunk_id", row);
             carried.insert(
@@ -410,9 +420,8 @@ pub fn build_kb(name: &str, repo_root: &Path) -> Result<KbBuildStats> {
                 .get(&article.source_path.to_string())
                 .map(|stamp| stamp.mtime as i64)
                 .unwrap_or(0);
-            let carried_embedding = carried.get(&chunk);
-            let (embedding, embedding_model) = match carried_embedding {
-                Some((vector, model)) => (vector.clone(), model.clone()),
+            let (embedding, embedding_model) = match reusable_vector(carried.get(&chunk)) {
+                Some((vector, model)) => (Some(vector.clone()), model.clone()),
                 None => {
                     to_embed.push((rows.len(), article.body.to_string()));
                     (None, None)
@@ -441,16 +450,15 @@ pub fn build_kb(name: &str, repo_root: &Path) -> Result<KbBuildStats> {
             .first()
             .map(|s| Path::new(s.path.as_str()))
             .unwrap_or(repo_root);
+        // `lexical_only` is derived from the finished rows further down, so an
+        // encoder failure here simply leaves the placeholders in place.
         if let Ok(vectors) = embed_texts(anchor, &texts) {
-            stats.lexical_only = false;
+            let model = crate::config::embed_model(anchor);
             for ((row_index, _), vector) in to_embed.iter().zip(vectors) {
                 rows[*row_index].embedding = Some(vector.clone());
-                rows[*row_index].embedding_model =
-                    Some(std::env::var("LEIO_CODE_EMBED_MODEL").unwrap_or_default());
+                rows[*row_index].embedding_model = Some(model.clone());
                 stats.embedded += 1;
             }
-        } else {
-            stats.lexical_only = true;
         }
     }
     let _ = prior_dim;
@@ -513,10 +521,11 @@ pub fn build_kb(name: &str, repo_root: &Path) -> Result<KbBuildStats> {
     write_collection(name, &batch)?;
 
     stats.rows = rows.len();
-    stats.embedding_model = rows
-        .iter()
-        .find_map(|row| row.embedding_model.clone())
-        .or_else(|| std::env::var("LEIO_CODE_EMBED_MODEL").ok());
+    // Report only a model that actually produced a stored vector. Falling back
+    // to `LEIO_CODE_EMBED_MODEL` reported an encoder that had never run, so a
+    // lexical-only collection looked embedded.
+    stats.embedding_model = rows.iter().find_map(|row| row.embedding_model.clone());
+    stats.lexical_only = rows.iter().all(|row| row.embedding.is_none());
 
     let meta = json!({
         "name": name,
@@ -530,6 +539,23 @@ pub fn build_kb(name: &str, repo_root: &Path) -> Result<KbBuildStats> {
     std::fs::write(&meta_path, serde_json::to_vec_pretty(&meta)?)
         .with_context(|| format!("write {}", meta_path.display()))?;
     Ok(stats)
+}
+
+/// The vector a surviving chunk can keep, if it actually has one.
+///
+/// A chunk is re-embedded when it is new OR when it survived from a build that
+/// produced no vector for it. Matching on presence in the carried map alone
+/// stranded every row of a lexical-only build: the content hash does not
+/// change, so turning an encoder on later had no effect until the store was
+/// deleted by hand.
+#[allow(clippy::type_complexity)]
+fn reusable_vector(
+    carried: Option<&(Option<Vec<f32>>, Option<String>)>,
+) -> Option<(&Vec<f32>, &Option<String>)> {
+    match carried {
+        Some((Some(vector), model)) => Some((vector, model)),
+        _ => None,
+    }
 }
 
 fn build_embedding_array(
@@ -870,4 +896,32 @@ fn embedding_array_marks_embedded_rows_valid() {
         .downcast_ref::<Float32Array>()
         .expect("float values");
     assert_eq!(floats.values(), &[1.0, 0.0]);
+}
+
+#[test]
+fn lexical_only_rows_are_requeued_for_embedding() {
+    // A chunk carried from a lexical-only build has no vector. It must be
+    // re-embedded once an encoder is available, otherwise turning embeddings
+    // on later is a no-op until the store is deleted by hand.
+    let no_vector: (Option<Vec<f32>>, Option<String>) = (None, None);
+    assert!(
+        reusable_vector(Some(&no_vector)).is_none(),
+        "a carried row without a vector must be re-embedded"
+    );
+
+    // An absent chunk is new, so it is embedded too.
+    assert!(
+        reusable_vector(None).is_none(),
+        "a new chunk must be embedded"
+    );
+
+    // A carried row that really has a vector keeps it, model stamp included,
+    // so an incremental rebuild does not re-embed unchanged content.
+    let carried: (Option<Vec<f32>>, Option<String>) = (
+        Some(vec![0.25f32, 0.75]),
+        Some("google/embeddinggemma-2".to_string()),
+    );
+    let (vector, model) = reusable_vector(Some(&carried)).expect("vector is reusable");
+    assert_eq!(vector, &vec![0.25f32, 0.75]);
+    assert_eq!(model.as_deref(), Some("google/embeddinggemma-2"));
 }
