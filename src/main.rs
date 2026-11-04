@@ -427,6 +427,10 @@ enum KbCommand {
         /// first registered source).
         #[arg(long)]
         embed_repo: Option<PathBuf>,
+        /// Re-embed every chunk, discarding carried vectors. Needed when the
+        /// encoder changed, since content hashes stay the same.
+        #[arg(long)]
+        force: bool,
     },
     /// Hybrid top-k query over the collection.
     Query {
@@ -1752,7 +1756,11 @@ fn main() -> Result<()> {
                     }).collect::<Vec<_>>(),
                 }))?;
             }
-            KbCommand::Build { name, embed_repo } => {
+            KbCommand::Build {
+                name,
+                embed_repo,
+                force,
+            } => {
                 let root = embed_repo
                     .or_else(|| {
                         leio_code::kb::load_registry()
@@ -1763,7 +1771,7 @@ fn main() -> Result<()> {
                             })
                     })
                     .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
-                let stats = leio_code::kb::build_kb(&name, &root)?;
+                let stats = leio_code::kb::build_kb(&name, &root, force)?;
                 print_json(&serde_json::json!({
                     "sources": stats.sources,
                     "rows": stats.rows,
