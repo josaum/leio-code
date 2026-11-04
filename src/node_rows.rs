@@ -22,7 +22,7 @@ use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema as Arr
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-use crate::embed::{EMBED_DIM, EMBED_MODEL};
+use crate::config::DEFAULT_EMBED_MODEL;
 use crate::model::RepoIndex;
 use crate::query::{
     AggregatedApiRoute, DockerServiceCandidate, collect_api_routes, collect_docker_services,
@@ -229,7 +229,9 @@ fn build_execution_text(kind: &str, name: &str, path: &str, lang: &str) -> Strin
 /// Build a node entity JSON with zero-placeholder dense vector fields.
 ///
 /// The three float vectors (`code_vec`/`semantic_vec`/`ontology_vec`) start as
-/// zero placeholders at the BGE-M3 contract dimension (`EMBED_DIM`). An export
+/// zero placeholders `vector_dim` wide, the width of the configured encoder
+/// ([`crate::config::embed_dim`]), so a later embedding pass overwrites them
+/// in place rather than changing the row's shape. An export
 /// with an embed URL may replace them in one batched pass via
 /// [`crate::embed::embed_node_entities`], using three distinct text views;
 /// without a usable encoder, the zero placeholders are written and the row
@@ -240,6 +242,7 @@ fn build_execution_text(kind: &str, name: &str, path: &str, lang: &str) -> Strin
 #[allow(clippy::too_many_arguments)]
 fn build_node_entity(
     repo_root: &Path,
+    vector_dim: usize,
     logical_node_id: &str,
     kind: &str,
     symbol: &str,
@@ -274,9 +277,9 @@ fn build_node_entity(
         "text_snippet": &text_snippet[..text_snippet.len().min(2000)],
         "embed_model": "none",
         "embed_dim": 0,
-        "code_vec": vec![0.0f64; EMBED_DIM],
-        "semantic_vec": vec![0.0f64; EMBED_DIM],
-        "ontology_vec": vec![0.0f64; EMBED_DIM],
+        "code_vec": vec![0.0f64; vector_dim],
+        "semantic_vec": vec![0.0f64; vector_dim],
+        "ontology_vec": vec![0.0f64; vector_dim],
         "execution_vec_bin": exec_bin,
     })
 }
@@ -286,6 +289,9 @@ pub(crate) fn visit_node_entities<F>(index: &RepoIndex, repo_root: &Path, mut on
 where
     F: FnMut(Value),
 {
+    // Resolved once per walk: every row must share one width, and the lookup
+    // reads `.leio-code/config.toml` from disk.
+    let vector_dim = crate::config::embed_dim(repo_root);
     let profile_cartridges = profile_active_cartridges(index);
     let cartridge_profiles = cartridge_activation_profiles(index);
     let routes = collect_api_routes(index);
@@ -302,6 +308,7 @@ where
         );
         let mut entity = build_node_entity(
             repo_root,
+            vector_dim,
             &file_id,
             "file",
             "",
@@ -347,6 +354,7 @@ where
             );
             let mut entity = build_node_entity(
                 repo_root,
+                vector_dim,
                 &logical_id,
                 "symbol",
                 &sym.name,
@@ -385,6 +393,7 @@ where
             );
             let mut entity = build_node_entity(
                 repo_root,
+                vector_dim,
                 &logical_id,
                 "env_var",
                 &ev.name,
@@ -423,6 +432,7 @@ where
             );
             let mut entity = build_node_entity(
                 repo_root,
+                vector_dim,
                 &logical_id,
                 "redis_key",
                 &rk.key,
@@ -465,6 +475,7 @@ where
         );
         let mut entity = build_node_entity(
             repo_root,
+            vector_dim,
             &logical_id,
             "deploy_target",
             &dt.name,
@@ -539,6 +550,7 @@ where
         );
         let mut entity = build_node_entity(
             repo_root,
+            vector_dim,
             &logical_id,
             "cartridge",
             &cartridge,
@@ -603,6 +615,7 @@ where
         );
         let mut entity = build_node_entity(
             repo_root,
+            vector_dim,
             &logical_id,
             "profile",
             &profile.name,
@@ -648,6 +661,7 @@ where
         );
         let mut entity = build_node_entity(
             repo_root,
+            vector_dim,
             &logical_id,
             "secret_set",
             &secret_set.name,
@@ -694,6 +708,7 @@ where
         );
         let mut entity = build_node_entity(
             repo_root,
+            vector_dim,
             &logical_id,
             "api_route",
             &route.full_path,
@@ -757,6 +772,7 @@ where
         );
         let mut entity = build_node_entity(
             repo_root,
+            vector_dim,
             &logical_id,
             "docker_service",
             &service.name,
@@ -922,7 +938,10 @@ pub(crate) fn build_leio_row_batch(entities: &[Value]) -> Result<RecordBatch, St
     let mut text_snippet_builder = StringBuilder::with_capacity(capacity.rows, string_data_bytes);
     let mut embed_model_builder = StringBuilder::with_capacity(
         capacity.rows,
-        capacity.rows.saturating_mul(EMBED_MODEL.len().max(8)),
+        // Capacity hint only; a longer configured model id simply reallocates.
+        capacity
+            .rows
+            .saturating_mul(DEFAULT_EMBED_MODEL.len().max(8)),
     );
     let mut embed_dim_builder = Int64Builder::with_capacity(capacity.rows);
     let mut code_vec_builder = ListBuilder::with_capacity(
@@ -1070,6 +1089,7 @@ fn bytes_from_json_array(values: &[Value]) -> Result<Vec<u8>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::DEFAULT_EMBED_DIM;
 
     /// Env mutation in these tests is unsound under parallel test threads, so
     /// every scoping test serializes on this lock and restores prior values.
@@ -1115,6 +1135,7 @@ mod tests {
         let restore = EnvRestore::capture();
         let entity = build_node_entity(
             Path::new("/tmp/demo-repo"),
+            DEFAULT_EMBED_DIM,
             "file:src/main.rs",
             "file",
             "",
@@ -1152,6 +1173,7 @@ mod tests {
             }
             build_node_entity(
                 Path::new("/tmp/shared-repo"),
+                DEFAULT_EMBED_DIM,
                 "file:src/main.rs",
                 "file",
                 "",

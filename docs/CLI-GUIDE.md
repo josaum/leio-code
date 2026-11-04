@@ -133,6 +133,40 @@ Everything under `<repo>/.leio-code/`:
 
 Secrets in `explain` are redacted unless `--show-secrets` on a TTY.
 
+### Encoder model and width
+
+The encoder is described by two values that travel together, in `[embed]` of
+`.leio-code/config.toml` (or `LEIO_CODE_EMBED_MODEL` / `LEIO_CODE_EMBED_DIM`,
+which win):
+
+```toml
+[embed]
+url = "http://localhost:8080/embed"
+model = "google/embeddinggemma-2"
+dim = 768
+```
+
+Defaults are `BAAI/bge-m3` / `1024`, the contract every store written before
+`dim` existed used, so leaving `[embed]` alone changes nothing. Any width works:
+`embeddinggemma-2` is 768 (Matryoshka cuts: 512/256/128), bge-m3 is 1024.
+
+Three rules hold the contract together:
+
+- **Ingest rejects a mismatch.** A response whose width is not `dim` is an
+  error on all three endpoint forms, never a stored vector that cannot be
+  compared. Gemini requests send `dim` as `outputDimensionality`.
+- **Rows carry real provenance.** `embed_model` / `embed_dim` on each row are
+  the configured pair that produced it, not a compiled-in default. Rows that
+  fell through the graceful-degrade path stay `"none"` / `0`.
+- **Search skips incompatible vectors.** Stored vectors of a different width
+  than the query vector are not scored; those candidates fall back to on-demand
+  embedding or lexical ranking.
+
+Changing `model` or `dim` makes existing stored vectors incomparable. Re-run
+`export arrow-nodes` to rebuild them; a store is not migrated in place. Note
+that vectors from two *different* models of the same width are not detected
+by the width check alone — do not point one store at two encoders.
+
 ## Knowledge wiki
 
 Markdown in the repo compiles to a local Arrow wiki — same idea as

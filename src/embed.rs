@@ -1,9 +1,14 @@
-//! Optional BGE-M3 embedding of LEIO node rows for the textual regime.
+//! Optional dense embedding of LEIO node rows for the textual regime.
 //!
-//! Produces real semantic embeddings via a remote GPU encoder when
+//! Produces real semantic embeddings via a remote encoder when
 //! `LEIO_CODE_EMBED_URL` is set (direct TEI `/embed`, Gemini
-//! `generativelanguage.googleapis.com`, or LiteLLM OpenAI `/v1/embeddings`,
-//! 1024-d). Ingest may also read `[embed] url`. Query embedding uses env only.
+//! `generativelanguage.googleapis.com`, or LiteLLM OpenAI `/v1/embeddings`).
+//! Ingest may also read `[embed] url`. Query embedding uses env only.
+//!
+//! The encoder's model id and width come from `[embed] model` / `[embed] dim`
+//! (see [`crate::config::embed_model`] and [`crate::config::embed_dim`]), not
+//! from a compiled-in constant. Every embedded row is stamped with the pair
+//! actually used, so a store never claims an encoder that did not produce it.
 //!
 //! Three distinct text *views* are embedded per node so the vector arms are
 //! meaningful instead of three identical probes:
@@ -25,13 +30,7 @@ use std::time::Duration;
 use serde_json::{Value, json};
 use ureq::Agent;
 
-use crate::config::{embed_model, embed_url};
-
-/// Canonical encoder model id stamped on embedded rows.
-pub(crate) const EMBED_MODEL: &str = "BAAI/bge-m3";
-
-/// Dense vector dimension of [`EMBED_MODEL`].
-pub(crate) const EMBED_DIM: usize = 1024;
+use crate::config::{embed_dim, embed_model, embed_url};
 
 /// Maximum characters of any single view text sent to the encoder.
 ///
@@ -163,15 +162,16 @@ pub(crate) fn embed_node_entities(
 
     let base = embed_url(repo_root)
         .ok_or_else(|| "no [embed] url / LEIO_CODE_EMBED_URL configured".to_string())?;
-    let model = embed_model(repo_root);
+    let model = resolved_model(&base, &embed_model(repo_root));
+    let dim = embed_dim(repo_root);
 
     let code_views: Vec<String> = entities.iter().map(build_code_view).collect();
     let semantic_views: Vec<String> = entities.iter().map(candidate_embedding_text).collect();
     let ontology_views: Vec<String> = entities.iter().map(build_ontology_view).collect();
 
-    let code_vecs = embed_texts_remote(&base, &model, &code_views)?;
-    let semantic_vecs = embed_texts_remote(&base, &model, &semantic_views)?;
-    let ontology_vecs = embed_texts_remote(&base, &model, &ontology_views)?;
+    let code_vecs = embed_texts_remote(&base, &model, dim, &code_views)?;
+    let semantic_vecs = embed_texts_remote(&base, &model, dim, &semantic_views)?;
+    let ontology_vecs = embed_texts_remote(&base, &model, dim, &ontology_views)?;
 
     if code_vecs.len() != entities.len()
         || semantic_vecs.len() != entities.len()
@@ -200,8 +200,10 @@ pub(crate) fn embed_node_entities(
             "ontology_vec".to_string(),
             float_json(&ontology_vecs[index]),
         );
-        object.insert("embed_model".to_string(), json!(EMBED_MODEL));
-        object.insert("embed_dim".to_string(), json!(EMBED_DIM));
+        // Provenance is the configured pair, never a compiled-in default: a row
+        // must not claim BGE-M3 while holding vectors from another encoder.
+        object.insert("embed_model".to_string(), json!(model));
+        object.insert("embed_dim".to_string(), json!(dim));
         embedded += 1;
     }
 
@@ -226,15 +228,20 @@ pub(crate) fn embed_texts(repo_root: &Path, texts: &[String]) -> Result<Vec<Vec<
     let Some(base) = crate::config::embed_query_url() else {
         return Err("no LEIO_CODE_EMBED_URL / EMBEDDING_API_URL configured".to_string());
     };
-    let model = embed_model(repo_root);
-    embed_texts_remote(&base, &model, texts)
+    let model = resolved_model(&base, &embed_model(repo_root));
+    embed_texts_remote(&base, &model, embed_dim(repo_root), texts)
 }
 
 /// POST texts to direct TEI `/embed` or LiteLLM OpenAI `/v1/embeddings`.
 ///
 /// Requests are chunked to [`REMOTE_EMBED_BATCH`] so the lab TEI deployment's
 /// `--max-client-batch-size 64` contract is respected.
-fn embed_texts_remote(base: &str, model: &str, texts: &[String]) -> Result<Vec<Vec<f32>>, String> {
+fn embed_texts_remote(
+    base: &str,
+    model: &str,
+    dim: usize,
+    texts: &[String],
+) -> Result<Vec<Vec<f32>>, String> {
     if texts.is_empty() {
         return Ok(Vec::new());
     }
@@ -248,9 +255,9 @@ fn embed_texts_remote(base: &str, model: &str, texts: &[String]) -> Result<Vec<V
     let mut out = Vec::with_capacity(texts.len());
     for chunk in texts.chunks(REMOTE_EMBED_BATCH) {
         let vectors = match &endpoint {
-            EmbeddingEndpoint::OpenAi(url) => embed_openai_chunk(&agent, url, model, chunk)?,
-            EmbeddingEndpoint::Tei(url) => embed_tei_chunk(&agent, url, chunk)?,
-            EmbeddingEndpoint::Gemini(url) => embed_gemini_chunk(&agent, url, chunk)?,
+            EmbeddingEndpoint::OpenAi(url) => embed_openai_chunk(&agent, url, model, dim, chunk)?,
+            EmbeddingEndpoint::Tei(url) => embed_tei_chunk(&agent, url, dim, chunk)?,
+            EmbeddingEndpoint::Gemini(url) => embed_gemini_chunk(&agent, url, model, dim, chunk)?,
         };
         out.extend(vectors);
     }
@@ -274,9 +281,25 @@ enum EmbeddingEndpoint {
 /// Host of Google's Generative Language API embedding endpoint.
 const GEMINI_EMBED_HOST: &str = "generativelanguage.googleapis.com";
 
-/// Model id sent for Gemini embedding requests. `outputDimensionality: 1024`
-/// keeps vectors on the same contract as BGE-M3 so cosine scoring stays valid.
+/// Fallback model id for Gemini requests when `[embed] model` names no Gemini
+/// model. `outputDimensionality` is the configured width, so the response
+/// matches whatever the rest of the store was embedded at.
 const GEMINI_EMBED_MODEL: &str = "models/gemini-embedding-2";
+
+/// The model id actually sent to `base`, which is what rows are stamped with.
+///
+/// Gemini only accepts its own `models/…` ids, so a configured id it cannot
+/// serve is replaced by [`GEMINI_EMBED_MODEL`]. Resolving this once — rather
+/// than substituting inside the request builder — keeps the request and the
+/// stamped `embed_model` from disagreeing.
+fn resolved_model(base: &str, configured: &str) -> String {
+    match embedding_endpoint(base) {
+        EmbeddingEndpoint::Gemini(_) if !configured.starts_with("models/") => {
+            GEMINI_EMBED_MODEL.to_string()
+        }
+        _ => configured.to_string(),
+    }
+}
 
 fn embedding_endpoint(base: &str) -> EmbeddingEndpoint {
     let normalized = base.trim_end_matches('/');
@@ -306,6 +329,7 @@ fn embed_openai_chunk(
     agent: &Agent,
     url: &str,
     model: &str,
+    dim: usize,
     texts: &[String],
 ) -> Result<Vec<Vec<f32>>, String> {
     let body = json!({
@@ -326,10 +350,15 @@ fn embed_openai_chunk(
         .body_mut()
         .read_json()
         .map_err(|err| format!("remote embed {url} decode: {err}"))?;
-    parse_openai_embeddings(&payload, texts.len())
+    parse_openai_embeddings(&payload, dim, texts.len())
 }
 
-fn embed_tei_chunk(agent: &Agent, url: &str, texts: &[String]) -> Result<Vec<Vec<f32>>, String> {
+fn embed_tei_chunk(
+    agent: &Agent,
+    url: &str,
+    dim: usize,
+    texts: &[String],
+) -> Result<Vec<Vec<f32>>, String> {
     let body = json!({"inputs": texts});
     let mut request = agent.post(url).header("Content-Type", "application/json");
     if let Ok(key) = std::env::var("LEIO_CODE_EMBED_API_KEY") {
@@ -345,27 +374,36 @@ fn embed_tei_chunk(agent: &Agent, url: &str, texts: &[String]) -> Result<Vec<Vec
         .body_mut()
         .read_json()
         .map_err(|err| format!("remote TEI embed {url} decode: {err}"))?;
-    parse_tei_embeddings(&payload, texts.len())
+    parse_tei_embeddings(&payload, dim, texts.len())
 }
 
 /// Build the Gemini `batchEmbedContents` request body for one chunk.
-fn gemini_batch_request(texts: &[String]) -> Value {
+///
+/// `model` is sent verbatim; [`resolved_model`] has already mapped it to an id
+/// this endpoint accepts, so the request and the stamped provenance agree.
+fn gemini_batch_request(model: &str, dim: usize, texts: &[String]) -> Value {
     json!({
         "requests": texts
             .iter()
             .map(|text| {
                 json!({
-                    "model": GEMINI_EMBED_MODEL,
+                    "model": model,
                     "content": {"parts": [{"text": text}]},
-                    "outputDimensionality": EMBED_DIM,
+                    "outputDimensionality": dim,
                 })
             })
             .collect::<Vec<_>>(),
     })
 }
 
-fn embed_gemini_chunk(agent: &Agent, url: &str, texts: &[String]) -> Result<Vec<Vec<f32>>, String> {
-    let body = gemini_batch_request(texts);
+fn embed_gemini_chunk(
+    agent: &Agent,
+    url: &str,
+    model: &str,
+    dim: usize,
+    texts: &[String],
+) -> Result<Vec<Vec<f32>>, String> {
+    let body = gemini_batch_request(model, dim, texts);
     let mut request = agent.post(url).header("Content-Type", "application/json");
     let key = std::env::var("LEIO_CODE_EMBED_API_KEY")
         .ok()
@@ -380,10 +418,14 @@ fn embed_gemini_chunk(agent: &Agent, url: &str, texts: &[String]) -> Result<Vec<
         .body_mut()
         .read_json()
         .map_err(|err| format!("remote Gemini embed {url} decode: {err}"))?;
-    parse_gemini_embeddings(&payload, texts.len())
+    parse_gemini_embeddings(&payload, dim, texts.len())
 }
 
-fn parse_openai_embeddings(payload: &Value, expected: usize) -> Result<Vec<Vec<f32>>, String> {
+fn parse_openai_embeddings(
+    payload: &Value,
+    dim: usize,
+    expected: usize,
+) -> Result<Vec<Vec<f32>>, String> {
     let data = payload
         .get("data")
         .and_then(Value::as_array)
@@ -417,13 +459,13 @@ fn parse_openai_embeddings(payload: &Value, expected: usize) -> Result<Vec<Vec<f
             .get("embedding")
             .and_then(Value::as_array)
             .ok_or_else(|| format!("remote embed index {index} missing embedding"))?;
-        if embedding.len() != EMBED_DIM {
+        if embedding.len() != dim {
             return Err(format!(
-                "remote embed index {index} dim {} (expected {EMBED_DIM})",
+                "remote embed index {index} dim {} (expected {dim} for the configured encoder)",
                 embedding.len()
             ));
         }
-        let mut values = Vec::with_capacity(EMBED_DIM);
+        let mut values = Vec::with_capacity(dim);
         for number in embedding {
             let Some(value) = number.as_f64() else {
                 return Err(format!("remote embed index {index} non-float component"));
@@ -439,7 +481,11 @@ fn parse_openai_embeddings(payload: &Value, expected: usize) -> Result<Vec<Vec<f
         .collect()
 }
 
-fn parse_tei_embeddings(payload: &Value, expected: usize) -> Result<Vec<Vec<f32>>, String> {
+fn parse_tei_embeddings(
+    payload: &Value,
+    dim: usize,
+    expected: usize,
+) -> Result<Vec<Vec<f32>>, String> {
     let rows = payload
         .as_array()
         .ok_or_else(|| format!("remote TEI embed expected vector[]: {payload}"))?;
@@ -455,9 +501,9 @@ fn parse_tei_embeddings(payload: &Value, expected: usize) -> Result<Vec<Vec<f32>
             let values = row
                 .as_array()
                 .ok_or_else(|| format!("remote TEI embed index {index} is not a vector"))?;
-            if values.len() != EMBED_DIM {
+            if values.len() != dim {
                 return Err(format!(
-                    "remote TEI embed index {index} dim {} (expected {EMBED_DIM})",
+                    "remote TEI embed index {index} dim {} (expected {dim} for the configured encoder)",
                     values.len()
                 ));
             }
@@ -475,7 +521,11 @@ fn parse_tei_embeddings(payload: &Value, expected: usize) -> Result<Vec<Vec<f32>
 
 /// Parse a Gemini `batchEmbedContents` response. Embeddings come back in
 /// request order under `embeddings[].values`.
-fn parse_gemini_embeddings(payload: &Value, expected: usize) -> Result<Vec<Vec<f32>>, String> {
+fn parse_gemini_embeddings(
+    payload: &Value,
+    dim: usize,
+    expected: usize,
+) -> Result<Vec<Vec<f32>>, String> {
     let rows = payload
         .get("embeddings")
         .and_then(Value::as_array)
@@ -501,9 +551,9 @@ fn parse_gemini_embeddings(payload: &Value, expected: usize) -> Result<Vec<Vec<f
                 .get("values")
                 .and_then(Value::as_array)
                 .ok_or_else(|| format!("remote Gemini embed index {index} missing values"))?;
-            if values.len() != EMBED_DIM {
+            if values.len() != dim {
                 return Err(format!(
-                    "remote Gemini embed index {index} dim {} (expected {EMBED_DIM})",
+                    "remote Gemini embed index {index} dim {} (expected {dim} for the configured encoder)",
                     values.len()
                 ));
             }
@@ -531,7 +581,12 @@ fn float_json(values: &[f32]) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{DEFAULT_EMBED_DIM, DEFAULT_EMBED_MODEL};
     use serde_json::json;
+
+    /// Width these fixtures are built at. The parsers take it as an argument
+    /// now, so the value is a fixture detail rather than a global contract.
+    const EMBED_DIM: usize = DEFAULT_EMBED_DIM;
 
     #[test]
     fn code_view_prefers_symbol_then_kind() {
@@ -637,7 +692,7 @@ mod tests {
                 {"index": 0, "embedding": vec![1.0; EMBED_DIM]},
             ]
         });
-        let vectors = parse_openai_embeddings(&payload, 2).expect("parse");
+        let vectors = parse_openai_embeddings(&payload, EMBED_DIM, 2).expect("parse");
         assert_eq!(vectors.len(), 2);
         assert!((vectors[0][0] - 1.0).abs() < f32::EPSILON);
         assert!(vectors[1][0].abs() < f32::EPSILON);
@@ -646,7 +701,7 @@ mod tests {
     #[test]
     fn parse_tei_embeddings_preserves_input_order() {
         let payload = json!([vec![0.0; EMBED_DIM], vec![1.0; EMBED_DIM]]);
-        let vectors = parse_tei_embeddings(&payload, 2).expect("parse");
+        let vectors = parse_tei_embeddings(&payload, EMBED_DIM, 2).expect("parse");
         assert_eq!(vectors.len(), 2);
         assert!(vectors[0][0].abs() < f32::EPSILON);
         assert!((vectors[1][0] - 1.0).abs() < f32::EPSILON);
@@ -655,21 +710,21 @@ mod tests {
     #[test]
     fn parse_tei_embeddings_rejects_wrong_count() {
         let payload = json!([vec![0.0; EMBED_DIM]]);
-        let error = parse_tei_embeddings(&payload, 2).expect_err("count mismatch");
+        let error = parse_tei_embeddings(&payload, EMBED_DIM, 2).expect_err("count mismatch");
         assert!(error.contains("count mismatch"));
     }
 
     #[test]
     fn parse_tei_embeddings_rejects_wrong_dimension() {
         let payload = json!([vec![0.0; EMBED_DIM - 1]]);
-        let error = parse_tei_embeddings(&payload, 1).expect_err("dimension mismatch");
+        let error = parse_tei_embeddings(&payload, EMBED_DIM, 1).expect_err("dimension mismatch");
         assert!(error.contains("dim 1023"));
     }
 
     #[test]
     fn parse_tei_embeddings_rejects_non_numeric_components() {
         let payload = json!([vec![json!("not-a-number"); EMBED_DIM]]);
-        let error = parse_tei_embeddings(&payload, 1).expect_err("numeric component");
+        let error = parse_tei_embeddings(&payload, EMBED_DIM, 1).expect_err("numeric component");
         assert!(error.contains("non-float component"));
     }
 
@@ -721,7 +776,7 @@ mod tests {
                 {"index": 1, "embedding": vec![1.0; EMBED_DIM]},
             ]
         });
-        let error = parse_openai_embeddings(&payload, 2).expect_err("count mismatch");
+        let error = parse_openai_embeddings(&payload, EMBED_DIM, 2).expect_err("count mismatch");
         assert!(error.contains("count mismatch"));
     }
 
@@ -751,7 +806,7 @@ mod tests {
                 {"values": vec![1.0; EMBED_DIM]},
             ]
         });
-        let vectors = parse_gemini_embeddings(&payload, 2).expect("parse");
+        let vectors = parse_gemini_embeddings(&payload, EMBED_DIM, 2).expect("parse");
         assert_eq!(vectors.len(), 2);
         assert!(vectors[0][0].abs() < f32::EPSILON);
         assert!((vectors[1][0] - 1.0).abs() < f32::EPSILON);
@@ -760,24 +815,101 @@ mod tests {
     #[test]
     fn parse_gemini_embeddings_rejects_wrong_count() {
         let payload = json!({"embeddings": [{"values": vec![0.0; EMBED_DIM]}]});
-        let error = parse_gemini_embeddings(&payload, 2).expect_err("count mismatch");
+        let error = parse_gemini_embeddings(&payload, EMBED_DIM, 2).expect_err("count mismatch");
         assert!(error.contains("count mismatch"));
     }
 
     #[test]
     fn parse_gemini_embeddings_rejects_wrong_dimension() {
         let payload = json!({"embeddings": [{"values": vec![0.0; EMBED_DIM - 1]}]});
-        let error = parse_gemini_embeddings(&payload, 1).expect_err("dimension mismatch");
+        let error =
+            parse_gemini_embeddings(&payload, EMBED_DIM, 1).expect_err("dimension mismatch");
         assert!(error.contains("dim 1023"));
     }
 
     #[test]
     fn gemini_batch_request_wraps_texts_with_model_and_dimension() {
         let texts = vec!["alpha".to_string(), "beta".to_string()];
-        let body = gemini_batch_request(&texts);
+        let body = gemini_batch_request("models/gemini-embedding-2", EMBED_DIM, &texts);
         assert_eq!(body["requests"].as_array().unwrap().len(), 2);
         assert_eq!(body["requests"][0]["model"], "models/gemini-embedding-2");
         assert_eq!(body["requests"][0]["content"]["parts"][0]["text"], "alpha");
         assert_eq!(body["requests"][0]["outputDimensionality"], EMBED_DIM);
+    }
+
+    #[test]
+    fn parsers_accept_a_non_default_configured_width() {
+        // `google/embeddinggemma-2` is 768-d: the width the parsers were
+        // hardcoded to reject before it became configurable.
+        const GEMMA_DIM: usize = 768;
+        assert_ne!(GEMMA_DIM, DEFAULT_EMBED_DIM);
+
+        let openai = json!({"data": [{"index": 0, "embedding": vec![1.0; GEMMA_DIM]}]});
+        let vectors = parse_openai_embeddings(&openai, GEMMA_DIM, 1).expect("openai parse");
+        assert_eq!(vectors[0].len(), GEMMA_DIM);
+
+        let tei = json!([vec![1.0; GEMMA_DIM]]);
+        let vectors = parse_tei_embeddings(&tei, GEMMA_DIM, 1).expect("tei parse");
+        assert_eq!(vectors[0].len(), GEMMA_DIM);
+
+        let gemini = json!({"embeddings": [{"values": vec![1.0; GEMMA_DIM]}]});
+        let vectors = parse_gemini_embeddings(&gemini, GEMMA_DIM, 1).expect("gemini parse");
+        assert_eq!(vectors[0].len(), GEMMA_DIM);
+    }
+
+    #[test]
+    fn parsers_reject_a_width_other_than_the_configured_one() {
+        // A 1024-d response against a 768-d store is the silent-corruption
+        // case: both widths are individually valid, only the pairing is wrong.
+        const GEMMA_DIM: usize = 768;
+
+        let openai = json!({"data": [{"index": 0, "embedding": vec![1.0; DEFAULT_EMBED_DIM]}]});
+        let error = parse_openai_embeddings(&openai, GEMMA_DIM, 1).expect_err("openai mismatch");
+        assert!(error.contains("dim 1024"), "{error}");
+        assert!(error.contains("expected 768"), "{error}");
+
+        let tei = json!([vec![1.0; DEFAULT_EMBED_DIM]]);
+        let error = parse_tei_embeddings(&tei, GEMMA_DIM, 1).expect_err("tei mismatch");
+        assert!(error.contains("expected 768"), "{error}");
+
+        let gemini = json!({"embeddings": [{"values": vec![1.0; DEFAULT_EMBED_DIM]}]});
+        let error = parse_gemini_embeddings(&gemini, GEMMA_DIM, 1).expect_err("gemini mismatch");
+        assert!(error.contains("expected 768"), "{error}");
+    }
+
+    #[test]
+    fn gemini_batch_request_carries_the_configured_width_and_model() {
+        let texts = vec!["alpha".to_string()];
+
+        let body = gemini_batch_request("models/gemini-embedding-2", 768, &texts);
+        assert_eq!(body["requests"][0]["outputDimensionality"], 768);
+        assert_eq!(body["requests"][0]["model"], "models/gemini-embedding-2");
+    }
+
+    #[test]
+    fn stamped_model_is_the_model_actually_sent() {
+        const GEMINI: &str = "https://generativelanguage.googleapis.com/v1beta/models/x";
+
+        // A non-Gemini id cannot be served by this endpoint, so it is replaced
+        // *before* the stamp is taken — otherwise a row embedded by Gemini
+        // would claim to be bge-m3, the false provenance this guards against.
+        let sent = resolved_model(GEMINI, DEFAULT_EMBED_MODEL);
+        assert_eq!(sent, GEMINI_EMBED_MODEL);
+        let body = gemini_batch_request(&sent, DEFAULT_EMBED_DIM, &["alpha".to_string()]);
+        assert_eq!(body["requests"][0]["model"], sent);
+
+        // A Gemini id the endpoint accepts travels through untouched.
+        let sent = resolved_model(GEMINI, "models/gemini-embedding-2");
+        assert_eq!(sent, "models/gemini-embedding-2");
+
+        // Other endpoints never rewrite the configured id.
+        assert_eq!(
+            resolved_model("http://localhost:8080/embed", "google/embeddinggemma-2"),
+            "google/embeddinggemma-2"
+        );
+        assert_eq!(
+            resolved_model("http://localhost:4000", "google/embeddinggemma-2"),
+            "google/embeddinggemma-2"
+        );
     }
 }
