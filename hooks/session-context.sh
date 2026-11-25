@@ -9,9 +9,10 @@ if [[ ! -f "$SKILL" ]]; then
 fi
 awk '
   { line = $0; sub(/\r$/, "", line) }
-  NR == 1 && line == "---" { in_fm = 1; next }
+  NR == 1 && line == "---" { in_fm = 1; frontmatter = $0 ORS; next }
   in_fm && line == "---" { in_fm = 0; skip_blank = 1; next }
-  in_fm { next }
+  in_fm { frontmatter = frontmatter $0 ORS; next }
   skip_blank && line == "" { next }
   { skip_blank = 0; print line }
+  END { if (in_fm) printf "%s", frontmatter }
 ' "$SKILL"
