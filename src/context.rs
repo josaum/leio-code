@@ -27,7 +27,7 @@ use rayon::prelude::*;
 use regex::Regex;
 use serde_json::{Value, json};
 
-use crate::capabilities::workspace_capabilities;
+use crate::capabilities::capabilities_with_doctors;
 use crate::code_graph::CodeGraphQueryCache;
 use crate::doctors::utils::query_id;
 use crate::graph_query::try_load_graph_query_cache;
@@ -280,7 +280,15 @@ pub fn build_context_bundle_with_options(
             }
         }
     }
-    let capabilities = workspace_capabilities(index, root);
+    let doctor_catalog = crate::doctors::doctor_catalog_for_root(root);
+    let capabilities = capabilities_with_doctors(
+        &index.workspace_facets(),
+        root,
+        doctor_catalog
+            .iter()
+            .map(|(name, _)| name.clone())
+            .collect(),
+    );
     let mut warnings = Vec::new();
 
     if task_tokens.is_empty() && !diff {
@@ -501,8 +509,7 @@ pub fn build_context_bundle_with_options(
     let deploy_targets = rank_deploy_targets(index, &task_tokens, limit, &idf);
     let tests_to_run = tests_to_run(&files, &task_tokens);
     let graph_queries = graph_queries(&files, &symbols, limit);
-    let doctor_suggestions =
-        doctor_suggestions(&capabilities.doctor_kinds, &task_tokens, playbook.as_ref());
+    let doctor_suggestions = doctor_suggestions(&doctor_catalog, &task_tokens, playbook.as_ref());
     let mut risk_notes = risk_notes(&files, &env_vars, &redis_keys, &deploy_targets);
     for m in &missing_co_edits {
         if let (Some(changed), Some(partner), Some(count)) = (
@@ -1920,30 +1927,39 @@ fn tests_to_run(files: &[ScoredFile], task_tokens: &[String]) -> Vec<Value> {
 }
 
 fn doctor_suggestions(
-    available: &[String],
+    available: &[(String, String)],
     task_tokens: &[String],
     playbook: Option<&crate::playbook::Playbook>,
 ) -> Vec<Value> {
     // Names come from the selected repository's catalog. The engine does not
     // own mappings from product symptoms to product-specific doctor policy.
     let tokens: HashSet<_> = task_tokens.iter().map(String::as_str).collect();
-    let mut matched: Vec<(usize, &String, i32, Option<&'static str>)> = available
+    let mut matched: Vec<_> = available
         .iter()
-        .enumerate()
-        .filter(|(_, name)| name.split('-').any(|part| tokens.contains(part)))
-        .map(|(idx, name)| {
+        .filter_map(|(name, description)| {
+            let named = name.split('-').any(|part| tokens.contains(part));
+            let overlap = tokenize(description)
+                .into_iter()
+                .filter(|term| tokens.contains(term.as_str()))
+                .collect::<HashSet<_>>()
+                .len();
+            if !named && overlap < 2 {
+                return None;
+            }
             let (priority, status) = playbook
                 .map(|pb| crate::playbook::doctor_triage_priority(pb, name))
                 .unwrap_or((0, None));
-            (idx, name, priority, status)
+            Some((name, named, priority, overlap, status))
         })
         .collect();
-    matched.sort_by(|a, b| b.2.cmp(&a.2).then_with(|| a.0.cmp(&b.0)));
+    matched.sort_by_key(|(_, named, priority, overlap, _)| {
+        std::cmp::Reverse((*named, *priority, *overlap))
+    });
 
     let mut suggestions: Vec<Value> = matched
         .into_iter()
         .take(3)
-        .map(|(_, name, _, status)| {
+        .map(|(name, _, _, _, status)| {
             let reason = match status {
                 Some("high_signal") => {
                     "task matches a high-signal doctor (resolved/fired > 0.9 in playbook)"
@@ -3069,6 +3085,22 @@ mod tests {
             http_calls: Vec::new(),
             unresolved_edges: Vec::new(),
         }
+    }
+
+    #[test]
+    fn doctor_descriptions_match_distinct_terms_and_names_take_precedence() {
+        let catalog = vec![
+            (
+                "release-check".into(),
+                "Checks container images and package contents".into(),
+            ),
+            ("container-layout".into(), "Checks paths".into()),
+        ];
+        let suggestions = doctor_suggestions(&catalog, &task_tokens("container images"), None);
+        assert_eq!(suggestions[0]["kind"], "container-layout");
+        assert_eq!(suggestions[1]["kind"], "release-check");
+        let suggestions = doctor_suggestions(&catalog, &task_tokens("images images"), None);
+        assert_eq!(suggestions[0]["kind"], "all");
     }
 
     /// Every seed path imports `z/neighbor.rs`, so proximity fires whichever files

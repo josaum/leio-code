@@ -4,7 +4,7 @@
   "doctors": [
     {
       "name": "self-contract",
-      "description": "Repository-owned self-contract check",
+      "description": "Checks package versions and payloads, Docker build and runtime contents, Apps SDK smoke commands, CLI and MCP tool surfaces, and plugin launch.",
       "suites": [
         "all",
         "baseline",
