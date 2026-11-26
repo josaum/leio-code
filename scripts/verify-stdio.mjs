@@ -40,11 +40,19 @@ try {
   const context = await call('leio_code_context', { task: 'caller callee', limit: 2 });
   assert.equal(context.orientation.provider.transport, 'stdio');
   assert.equal(context.orientation.index.repository, fixture);
-  const graph = await call('leio_code_graph', { kind: 'symbols-in', needle: 'src/lib.rs' });
+  const relativeFile = 'src/lib.rs';
+  const graph = await call('leio_code_graph', { kind: 'symbols-in', needle: relativeFile });
   const caller = graph.envelope.entities.find(row => row.name === 'caller');
-  assert.ok(caller?.symbol, 'Graph did not return a stable caller identity');
+  assert.ok(caller?.symbol, `Graph did not return a stable caller identity: ${graph.envelope.summary}`);
+  const nativeFile = path.join('src', 'lib.rs');
+  if (nativeFile !== relativeFile) {
+    const nativeGraph = await call('leio_code_graph', { kind: 'symbols-in', needle: nativeFile });
+    assert.equal(nativeGraph.envelope.entities.find(row => row.name === 'caller')?.symbol, caller.symbol);
+  }
   const nav = args => call('leio_code_nav', { session: 'install-check', ...args });
   const cursor = result => result.envelope.entities.find(row => row.role === 'current');
+  const file = await nav({ kind: 'goto', needle: path.join(fixture, nativeFile) });
+  assert.equal(cursor(file)?.path, relativeFile);
   await nav({ kind: 'goto', needle: caller.symbol });
   const here = await nav({ kind: 'here' });
   assert.ok(JSON.stringify(here).includes('src/lib.rs'));

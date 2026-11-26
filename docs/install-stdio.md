@@ -36,7 +36,7 @@ install software on your computer.
 > Install the official LEIO Code local stdio MCP from
 > https://github.com/josaum/leio-code by following docs/install-stdio.md.
 > Inspect the installation script, check prerequisites, build the locked source,
-> and verify the actual MCP handshake, 18 tools, context and session navigation.
+> and verify the actual MCP handshake, tool catalog, context and session navigation.
 > Register only the leio-code stdio server in this host, preserving other MCP
 > entries. Use absolute paths and the installer output. Do not enable the HTTP
 > integration. Tell me whether a host reconnect is required and report the

@@ -1298,7 +1298,7 @@ fn collect_symbols(results: QueryResults) -> Result<Vec<ResolvedSymbol>> {
 
 fn resolve_files(store: &Store, needle: &str) -> Result<Vec<ResolvedFile>> {
     let ns = active_code_ns();
-    let quoted = sparql_string(needle);
+    let quoted = sparql_string(&crate::checkout::slash_repo_path(needle));
     let query = format!(
         r#"
 PREFIX code: <{ns}>
@@ -1339,10 +1339,11 @@ ORDER BY ?path
 }
 
 fn resolve_files_from_cache(cache: &CodeGraphQueryCache, needle: &str) -> Vec<ResolvedFile> {
+    let needle = crate::checkout::slash_repo_path(needle);
     let mut seen = BTreeSet::new();
     let mut out = Vec::new();
     for (path, file_iris) in &cache.file_lookup_path {
-        if path != needle && !path.ends_with(needle) {
+        if !path.ends_with(needle.as_ref()) {
             continue;
         }
         for iri in file_iris {

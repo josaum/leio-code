@@ -7,6 +7,7 @@
 //! HEAD, and a stable `repo_id` derived from `origin` when present.
 // Rust guideline compliant 2026-02-21
 
+use std::borrow::Cow;
 use std::path::Path;
 use std::process::Command;
 
@@ -165,6 +166,15 @@ pub fn strip_windows_verbatim(path: std::path::PathBuf) -> std::path::PathBuf {
         return std::path::PathBuf::from(stripped);
     }
     path
+}
+
+/// Store and query repository-relative paths with Git's separator on Windows.
+pub(crate) fn slash_repo_path(path: &str) -> Cow<'_, str> {
+    if cfg!(windows) && path.contains('\\') {
+        Cow::Owned(path.replace('\\', "/"))
+    } else {
+        Cow::Borrowed(path)
+    }
 }
 
 fn canonicalize_or(path: &Path) -> String {

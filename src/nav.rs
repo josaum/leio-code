@@ -945,10 +945,10 @@ fn exact_indexed_file(
         || candidate.contains('/')
         || candidate.contains('\\')
         || path.extension().is_some();
-    if path
-        .components()
-        .any(|part| matches!(part, Component::ParentDir | Component::Prefix(_)))
-    {
+    if path.components().any(|part| {
+        matches!(part, Component::ParentDir)
+            || (!path.is_absolute() && matches!(part, Component::Prefix(_) | Component::RootDir))
+    }) {
         bail!("nav goto file paths must stay inside the repository without parent traversal");
     }
     let root = fs::canonicalize(repo_root).unwrap_or_else(|_| repo_root.to_path_buf());
