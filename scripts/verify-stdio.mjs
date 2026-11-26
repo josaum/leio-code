@@ -18,7 +18,10 @@ const transport = new StdioClientTransport({
   stderr: 'pipe',
 });
 const client = new Client({ name: 'leio-install-check', version: '1.0.0' });
-transport.stderr?.resume();
+let serverStderr = '';
+transport.stderr?.setEncoding('utf8').on('data', (chunk) => {
+  serverStderr = (serverStderr + chunk).slice(-8192);
+});
 try {
   await mkdir(path.join(fixture, 'src'));
   await writeFile(path.join(fixture, 'Cargo.toml'), '[package]\nname="install-check"\nversion="0.1.0"\nedition="2021"\n');
@@ -37,11 +40,19 @@ try {
   const context = await call('leio_code_context', { task: 'caller callee', limit: 2 });
   assert.equal(context.orientation.provider.transport, 'stdio');
   assert.equal(context.orientation.index.repository, fixture);
-  const graph = await call('leio_code_graph', { kind: 'symbols-in', needle: 'src/lib.rs' });
+  const relativeFile = 'src/lib.rs';
+  const graph = await call('leio_code_graph', { kind: 'symbols-in', needle: relativeFile });
   const caller = graph.envelope.entities.find(row => row.name === 'caller');
-  assert.ok(caller?.symbol, 'Graph did not return a stable caller identity');
+  assert.ok(caller?.symbol, `Graph did not return a stable caller identity: ${graph.envelope.summary}`);
+  const nativeFile = path.join('src', 'lib.rs');
+  if (nativeFile !== relativeFile) {
+    const nativeGraph = await call('leio_code_graph', { kind: 'symbols-in', needle: nativeFile });
+    assert.equal(nativeGraph.envelope.entities.find(row => row.name === 'caller')?.symbol, caller.symbol);
+  }
   const nav = args => call('leio_code_nav', { session: 'install-check', ...args });
   const cursor = result => result.envelope.entities.find(row => row.role === 'current');
+  const file = await nav({ kind: 'goto', needle: path.join(fixture, nativeFile) });
+  assert.equal(cursor(file)?.path, relativeFile);
   await nav({ kind: 'goto', needle: caller.symbol });
   const here = await nav({ kind: 'here' });
   assert.ok(JSON.stringify(here).includes('src/lib.rs'));
@@ -55,6 +66,9 @@ try {
   const restored = await nav({ kind: 'here' });
   assert.deepEqual(cursor(restored), cursor(here), 'Back did not restore the cursor');
   console.error(`Verified ${tools.length} stdio tools, local CLI identity, task context and session cursor.`);
+} catch (error) {
+  if (serverStderr) console.error(serverStderr);
+  throw error;
 } finally {
   await client.close();
   await rm(fixture, { recursive: true, force: true });

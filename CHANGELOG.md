@@ -21,6 +21,8 @@ All notable changes to LEIO Code. Format follows [Keep a Changelog](https://keep
 ### Fixed
 
 - Update bundled MCP dependencies and validate schemas with Zod 4.
+- Restore Unix executable permissions when a desktop bundle extractor drops them.
+- Normalize Windows index paths to Git's `/` separator and accept native Windows paths in graph and navigation queries.
 - Keep source revision stamps current when Git HEAD moves.
 - Honor the requested file limit in compact MCP context.
 - Emit the session routing skill even when its frontmatter lacks a closing delimiter.
