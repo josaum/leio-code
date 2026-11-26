@@ -21,9 +21,10 @@ leio-code --version
 
 `.github/workflows/binary-release.yml` builds `leio-code-linux-amd64`,
 `leio-code-darwin-arm64`, `leio-code-darwin-amd64`, and
-`leio-code-windows-amd64.exe`, plus the matching harness binaries, on tag
-`leio-code-plugin-v*`. Current release:
-[`leio-code-plugin-v2.6.8`](https://github.com/josaum/leio-code/releases/tag/leio-code-plugin-v2.6.8).
+`leio-code-windows-amd64.exe`, plus the matching harness binaries. It assembles
+the wheel, npm, MCPB, and source plugin formats and runs native installation tests.
+The Windows portable ZIP additionally runs with a system-only PATH on Windows
+Server 2022 and 2025. [Current release](https://github.com/josaum/leio-code/releases/tag/leio-code-plugin-v2.7.0)
 
 ## Homebrew
 
@@ -50,16 +51,17 @@ Apps SDK image build and smoke live in `apps-sdk` (`npm run docker:build`,
 7. Keep wheel and parser package versions independent from the LEIO product version.
    Do not bulk-replace dependency or wheel versions during a LEIO release.
 8. Docs: no stale “bootstrap-only / no init / 1 doctor” claims; doctor counts via `capabilities` only.
-9. Tag `leio-code-plugin-vX.Y.Z` and attach release notes pointing at this checklist.
+9. After protected-branch CI passes, dispatch `binary-release.yml` on `main` at
+   the release commit. Confirm every build and install job passed for that SHA.
+   Download the `release-assets` artifact and check every file against
+   `SHA256SUMS` and the SHA in `release-manifest.json`. Tag that commit as
+   `leio-code-plugin-vX.Y.Z` and upload those exact files to a draft GitHub
+   Release. Confirm the draft asset digests before publishing.
 10. Do **not** mark ChatGPT store listing ready unless OAuth issuer, legal env vars (`LEIO_APPS_SDK_PUBLISHER_NAME`, company URL, support/privacy/security emails, support hours), and hosted public URL are configured with `legal.configured=true` on `/health` (same `legal` object as `GET /`). Canonical public box is GCP: [DEPLOY-GCP.md](DEPLOY-GCP.md). Fly Apps SDK is legacy; Keycloak issuer notes: [DEPLOY-FLY.md](DEPLOY-FLY.md).
 11. ChatGPT directory: complete [apps-sdk/SUBMISSION.md](../apps-sdk/SUBMISSION.md), run `npm test` in `apps-sdk` (includes submission-contract), portal **Scan Tools** against [chatgpt-app-submission.json](../apps-sdk/chatgpt-app-submission.json).
-12. Public source (`josaum/leio-code`) is **generated**, never edited by hand:
-    `make public-plan` reviews the delta against the published checkout and
-    `make public-publish` regenerates and pushes it; the `leio-code-plugin-v*` tag
-    does the same through `.github/workflows/publish-public.yml`, which needs the
-    `PUBLIC_REPO_TOKEN` secret. Publishing refuses a dirty tree, and a change made
-    directly in the public repository is deleted by the next export. `make hooks`
-    installs the pre-push contract gate (private names and credentials).
+12. Merge the release through the required checks on the protected `main`
+    branch. Match the published tag, the build run SHA, and the asset checksums
+    again after publication.
 
 ## Arbitrary-repo smoke
 

@@ -50,8 +50,8 @@ class PluginMcpManifestTests(unittest.TestCase):
         cfg = manifest["server"]["mcp_config"]
         self.assertEqual(cfg["command"], "node")
         joined = " ".join(cfg["args"])
-        self.assertIn("${__dirname}/mcp/index.js", joined)
-        self.assertIn("LEIO_CODE_BIN", cfg.get("env", {}))
+        self.assertIn("${__dirname}/mcp/desktop-launch.mjs", joined)
+        self.assertNotIn("LEIO_CODE_BIN", cfg.get("env", {}))
 
 
 class PluginMcpLaunchProcessTests(unittest.TestCase):

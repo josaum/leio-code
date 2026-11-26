@@ -1,48 +1,29 @@
 name: Binary release
 
+# Build and verify artifacts at the selected commit. Promote the resulting
+# assets to a GitHub Release only after every installation check has passed.
 on:
   workflow_dispatch:
-    inputs:
-      tag:
-        description: "Release tag (leio-code-plugin-v*)."
-        required: false
-        type: string
-  push:
-    tags:
-      - "leio-code-plugin-v*"
 
 concurrency:
-  group: leio-code-binary-${{ github.ref_name }}
+  group: leio-code-binary-${{ github.sha }}
   cancel-in-progress: false
+
+permissions:
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
+  RUSTC_WRAPPER: ""
+  LEIO_CODE_SKIP_BINARY_DOWNLOAD: "1"
 
 jobs:
-  resolve-tag:
-    runs-on: ubuntu-latest
-    outputs:
-      release_tag: ${{ steps.tag.outputs.release_tag }}
-      version: ${{ steps.tag.outputs.version }}
-    steps:
-      - uses: actions/checkout@v5
-      - name: Resolve release tag
-        id: tag
-        run: |
-          set -euo pipefail
-          VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
-          INPUT_TAG="${{ inputs.tag }}"
-          TAG="${INPUT_TAG:-leio-code-plugin-v${VERSION}}"
-          echo "release_tag=${TAG}" >> "$GITHUB_OUTPUT"
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-
   build:
-    needs: resolve-tag
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
             asset_name: leio-code-linux-amd64
             ext: ""
@@ -54,14 +35,12 @@ jobs:
             target: x86_64-apple-darwin
             asset_name: leio-code-darwin-amd64
             ext: ""
-          - os: windows-latest
+          - os: windows-2025
             target: x86_64-pc-windows-msvc
             asset_name: leio-code-windows-amd64
             ext: ".exe"
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@1.98.1
@@ -70,48 +49,165 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: leio-code-binary-${{ matrix.target }}
-      - name: Build release binary
+      - name: Build release binaries
         shell: bash
         env:
-          RUSTC_WRAPPER: ""
           CARGO_TARGET_DIR: target
+          CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS: -C target-feature=+crt-static
+          MACOSX_DEPLOYMENT_TARGET: "11.0"
+          TARGET: ${{ matrix.target }}
+          ASSET: ${{ matrix.asset_name }}
+          EXT: ${{ matrix.ext }}
         run: |
-          cargo build --locked --release --target ${{ matrix.target }} -p leio-code -p leio-harness
-          cp "target/${{ matrix.target }}/release/leio-code${{ matrix.ext }}" "${{ matrix.asset_name }}${{ matrix.ext }}"
-          cp "target/${{ matrix.target }}/release/leio-harness${{ matrix.ext }}" "${{ matrix.asset_name }}-harness${{ matrix.ext }}"
-      - name: Strip binary
-        shell: bash
-        run: |
-          if [ -z "${{ matrix.ext }}" ] && command -v strip >/dev/null; then
-            strip "${{ matrix.asset_name }}${{ matrix.ext }}" "${{ matrix.asset_name }}-harness${{ matrix.ext }}" || true
-          fi
-      - name: Smoke release binaries
-        shell: bash
-        run: |
-          "./${{ matrix.asset_name }}${{ matrix.ext }}" --version
-          "./${{ matrix.asset_name }}-harness${{ matrix.ext }}" --version
-      - name: Checksum
-        shell: bash
-        run: |
-          if command -v shasum >/dev/null 2>&1; then
-            shasum -a 256 "${{ matrix.asset_name }}${{ matrix.ext }}" > "${{ matrix.asset_name }}${{ matrix.ext }}.sha256"
-            shasum -a 256 "${{ matrix.asset_name }}-harness${{ matrix.ext }}" > "${{ matrix.asset_name }}-harness${{ matrix.ext }}.sha256"
-          else
-            sha256sum "${{ matrix.asset_name }}${{ matrix.ext }}" > "${{ matrix.asset_name }}${{ matrix.ext }}.sha256"
-            sha256sum "${{ matrix.asset_name }}-harness${{ matrix.ext }}" > "${{ matrix.asset_name }}-harness${{ matrix.ext }}.sha256"
-          fi
-      - name: Ensure release
+          cargo build --locked --release --target "$TARGET" -p leio-code -p leio-harness
+          mkdir -p release-bin
+          cp "target/$TARGET/release/leio-code$EXT" "release-bin/$ASSET$EXT"
+          cp "target/$TARGET/release/leio-harness$EXT" "release-bin/$ASSET-harness$EXT"
+      - name: Check versions and write digests
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          ASSET: ${{ matrix.asset_name }}
+          EXT: ${{ matrix.ext }}
         run: |
-          TAG="${{ needs.resolve-tag.outputs.release_tag }}"
-          if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" --target "$GITHUB_SHA" \
-              --title "LEIO Code v${{ needs.resolve-tag.outputs.version }}" \
-              --notes "Binary release for leio-code v${{ needs.resolve-tag.outputs.version }}" \
-              --draft || true
+          VERSION=$(node -p 'require("./mcp/package.json").version')
+          cd release-bin
+          code="$ASSET$EXT"
+          harness="$ASSET-harness$EXT"
+          if [[ -z "$EXT" ]] && command -v strip >/dev/null; then
+            strip "$code" "$harness"
           fi
-          gh release upload "$TAG" \
-            "${{ matrix.asset_name }}${{ matrix.ext }}" "${{ matrix.asset_name }}${{ matrix.ext }}.sha256" \
-            "${{ matrix.asset_name }}-harness${{ matrix.ext }}" "${{ matrix.asset_name }}-harness${{ matrix.ext }}.sha256" --clobber
+          "./$code" --version | tee code-version.txt
+          "./$harness" --version | tee harness-version.txt
+          grep -F "$VERSION (${GITHUB_SHA:0:12}, clean)" code-version.txt
+          grep -F "$VERSION" harness-version.txt
+          rm code-version.txt harness-version.txt
+          if command -v shasum >/dev/null; then
+            for file in "$code" "$harness"; do shasum -a 256 "$file" > "$file.sha256"; done
+          else
+            for file in "$code" "$harness"; do sha256sum "$file" > "$file.sha256"; done
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.asset_name }}
+          path: release-bin/
+          if-no-files-found: error
+          retention-days: 7
+
+  package:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24.22.3"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: binary-*
+          path: release-assets
+          merge-multiple: true
+      - name: Resolve package version
+        id: version
+        shell: bash
+        run: echo "version=$(node -p 'require("./mcp/package.json").version')" >> "$GITHUB_OUTPUT"
+      - name: Verify raw binaries and prepare locked stdio dependencies
+        run: |
+          (cd release-assets && sha256sum -c ./*.sha256)
+          npm ci --prefix mcp --omit=dev --ignore-scripts
+      - name: Assemble distributions
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          python scripts/package_windows_portable.py --assets-dir release-assets --output-dir release-assets
+          python scripts/build_packages.py --assets-dir release-assets
+          cp packaging/dist/leio_code-*.whl packaging/dist/leio-code-*.tgz release-assets/
+          bash scripts/package_desktop_mcpb.sh "release-assets/leio-code-plugin-v$VERSION.mcpb" release-assets
+          python scripts/package_codex_plugin.py --output-dir release-assets
+          python scripts/verify_release_artifact.py --manifest "release-assets/leio-code-plugin-v$VERSION.manifest.json"
+      - name: Record candidate identity and asset checksums
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          cd release-assets
+          for asset in ./*.tar.gz ./*.zip ./*.mcpb; do
+            name=${asset#./}
+            sha256sum "$name" > "$name.sha256"
+          done
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          assets = []
+          for file in sorted(Path.cwd().iterdir()):
+              if file.is_file():
+                  with file.open("rb") as handle:
+                      digest = hashlib.file_digest(handle, "sha256").hexdigest()
+                  assets.append({"name": file.name, "sha256": digest, "size_bytes": file.stat().st_size})
+          manifest = {"version": os.environ["VERSION"], "commit": os.environ["GITHUB_SHA"],
+                      "build_run_id": os.environ["GITHUB_RUN_ID"], "assets": assets}
+          Path("release-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+          PY
+          sha256sum -- * > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          path: release-assets/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+  install:
+    name: Install on ${{ matrix.os }}
+    needs: package
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            wheel: manylinux_*_x86_64
+          - os: macos-15
+            wheel: macosx_11_0_arm64
+          - os: macos-15-intel
+            wheel: macosx_11_0_x86_64
+          - os: windows-2025
+            wheel: win_amd64
+          - os: windows-2022
+            wheel: win_amd64
+    env:
+      VERSION: ${{ needs.package.outputs.version }}
+      WHEEL: ${{ matrix.wheel }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24.22.3"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v5
+        with:
+          name: release-assets
+          path: release-assets
+      - name: Verify downloaded assets and install package formats
+        shell: bash
+        run: |
+          (cd release-assets && if command -v shasum >/dev/null; then shasum -a 256 -c SHA256SUMS; else sha256sum -c SHA256SUMS; fi)
+          npm ci --prefix mcp --omit=dev --ignore-scripts
+          python scripts/smoke_release_packages.py --assets-dir release-assets \
+            --version "$VERSION" --revision "$GITHUB_SHA" --wheel-tag "$WHEEL"
+      - name: Test portable Windows install with system-only PATH
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+          $dumpbin = & $vswhere -latest -products '*' -find 'VC\Tools\MSVC\**\bin\Hostx64\x64\dumpbin.exe' | Select-Object -First 1
+          if (-not $dumpbin) { throw 'Visual Studio dumpbin was not found' }
+          python scripts/smoke_windows_release.py "release-assets/leio-code-${env:VERSION}-windows-amd64-portable.zip" `
+            --dumpbin "$dumpbin" --version "$env:VERSION" --revision "$env:GITHUB_SHA"

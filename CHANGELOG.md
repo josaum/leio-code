@@ -2,6 +2,29 @@
 
 All notable changes to LEIO Code. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow the crate version in `Cargo.toml`.
 
+## [2.7.0] — 2026-11-26
+
+### Added
+
+- Return evidence-backed co-edit companions in bounded context bundles and preserve exact file and symbol references at the cutoff. Qualified symbol lookups accept either `.` or `::`.
+- Add a Windows x64 portable distribution with statically linked LEIO executables, bundled Node.js, Git for Windows MinGit, locked MCP dependencies, and native command launchers.
+- Build and verify the raw binaries, Python wheels, npm archive, desktop MCP bundle, and source plugin archives before publishing. The release records SHA-256 digests and the source commit.
+- Add the paired patch-completion benchmark with request-time token limits, source-anchored edits, and regression feedback from the parent revision's tests.
+
+### Changed
+
+- Give repeated declarations in a single file separate graph identities and keep their call edges attached to the selected declaration. Code-graph caches refresh automatically. Reordering declarations with the same qualified name can change their IDs.
+- Validate lattice parent and child relationships against their attributes. Rank peers by shared parents and attribute overlap.
+- Suggest doctor checks from their catalog descriptions as well as their names.
+- Support configurable embedding models and dimensions, re-embed vectorless knowledge-base rows, and report the model used.
+
+### Fixed
+
+- Update bundled MCP dependencies and validate schemas with Zod 4.
+- Keep source revision stamps current when Git HEAD moves.
+- Honor the requested file limit in compact MCP context.
+- Emit the session routing skill even when its frontmatter lacks a closing delimiter.
+
 ## [2.6.8] — 2026-10-28
 
 ### Fixed

@@ -1,19 +1,34 @@
 # Install LEIO Code
 
-Install the `leio-code` package. These commands download the prebuilt programs:
+Download the wheel for your platform from the [GitHub release](https://github.com/josaum/leio-code/releases/tag/leio-code-plugin-v2.7.0), or install the npm tarball directly.
 
 ```bash
-pip install leio-code
-npm install -g leio-code
-cargo binstall leio-code
+npm install -g https://github.com/josaum/leio-code/releases/download/leio-code-plugin-v2.7.0/leio-code-2.7.0.tgz
 ```
 
 The Python wheel and the Node package install `leio-code`, `leio-harness`, and
 the stdio server `leio-mcp`. They register that server with harnesses already
 on the machine. Any other MCP host launches `leio-mcp`.
-`cargo binstall leio-code` installs Code. Release binaries cover macOS arm64,
-macOS x64, Linux x64, and Windows x64. `scripts/build_packages.py` builds the wheel and the
-npm package from the GitHub release assets.
+Release binaries cover macOS arm64, macOS x64, Linux x64, and Windows x64.
+
+## Windows x64 portable installation
+
+Extract the full `leio-code-2.7.0-windows-amd64-portable.zip` into a user-writable folder.
+It contains both LEIO executables, Node.js, MinGit, the MCP JavaScript dependencies,
+and the LEIO skill. From PowerShell in that folder, run these commands.
+
+```powershell
+.\leio-code.cmd --version
+.\leio-harness.cmd --version
+.\leio-mcp.cmd --registration
+```
+
+`.\leio-mcp.cmd --registration` prints the absolute MCP command and arguments.
+Run `.\leio-mcp.cmd --register` to register with auto-detected hosts for your
+Windows user. Keep the extracted folder in place after registering. Core
+repository queries and stdio start with the included files and Windows system
+libraries. Optional model services and agent providers use their own credentials
+and runtimes.
 
 The steps below are for changing Leio itself. A browser-only chat cannot
 install software on your computer.

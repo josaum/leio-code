@@ -1441,12 +1441,12 @@ const VigorosBridgeOutputSchema = z.object({
   answer_id: z.string(),
   summary: z.string().optional(),
   synthesis_mode: z.string().nullable().optional(),
-  research_dossier: z.record(z.unknown()).nullable().optional(),
-  research_brief: z.record(z.unknown()).nullable().optional(),
+  research_dossier: z.record(z.string(), z.unknown()).nullable().optional(),
+  research_brief: z.record(z.string(), z.unknown()).nullable().optional(),
   citations: z.array(z.unknown()).optional(),
-  timings_ms: z.record(z.unknown()).optional(),
-  ui_hints: z.record(z.unknown()).optional(),
-  action_palette: z.record(z.unknown()).optional(),
+  timings_ms: z.record(z.string(), z.unknown()).optional(),
+  ui_hints: z.record(z.string(), z.unknown()).optional(),
+  action_palette: z.record(z.string(), z.unknown()).optional(),
 }).passthrough();
 
 function summarizeAuditForSpecialist(auditStructuredContent) {

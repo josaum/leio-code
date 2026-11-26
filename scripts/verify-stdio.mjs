@@ -9,11 +9,12 @@ import { Client } from '../mcp/node_modules/@modelcontextprotocol/sdk/dist/esm/c
 import { StdioClientTransport } from '../mcp/node_modules/@modelcontextprotocol/sdk/dist/esm/client/stdio.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const fixture = await realpath(await mkdtemp(path.join(os.tmpdir(), 'leio-stdio-install-')));
+const entry = process.argv[2] ? path.resolve(process.argv[2]) : path.join(root, 'mcp/index.js');
+const fixture = await realpath(await mkdtemp(path.join(os.tmpdir(), 'LEIO stdio café-')));
 const transport = new StdioClientTransport({
   command: process.execPath,
-  args: [path.join(root, 'mcp/index.js')],
-  env: { ...process.env, LEIO_DISABLE_EVENTS: '1', CLAUDE_PLUGIN_ROOT: root },
+  args: [entry],
+  env: { ...process.env, LEIO_DISABLE_EVENTS: '1' },
   stderr: 'pipe',
 });
 const client = new Client({ name: 'leio-install-check', version: '1.0.0' });

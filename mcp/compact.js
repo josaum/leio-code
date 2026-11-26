@@ -42,9 +42,11 @@ export function compactEditingResult(result, {full = false, scope = {}} = {}) {
   lean.warnings = envelope.warnings ?? [];
   if (original.tool_family === "context") {
     const context = envelope.entities?.[0] ?? {};
+    const rankedFiles = context.files_to_read ?? [];
+    const visibleFiles = rankedFiles.slice(0, scope.limit ?? 5);
     lean.entities = [{...pick(context,["task","diff_summary","instruction_sources","memory_sources","verification_anchors","tests_to_run","risk_notes"]),
-      files_to_read:(context.files_to_read ?? []).slice(0,5).map(row => ({...pick(row,["path","language","reasons"]),symbols:row.symbols?.slice(0,3)})),
-      omitted_files:Math.max(0,(context.files_to_read?.length ?? 0)-5)}];
+      files_to_read:visibleFiles.map(row => ({...pick(row,["path","language","reasons"]),symbols:row.symbols?.slice(0,3)})),
+      omitted_files:rankedFiles.length-visibleFiles.length}];
     lean.meta = pick(envelope.meta,["workspace_profile"]);
   } else if (original.tool_family === "nav") {
     const current = envelope.entities?.find(row => row.role === "current");

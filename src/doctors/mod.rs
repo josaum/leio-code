@@ -42,15 +42,33 @@ pub fn doctor_names_for_profile(_profile: &str) -> Vec<&'static str> {
     doctor_names()
 }
 pub fn doctor_names_for_root(root: &Path) -> Vec<String> {
-    let mut names: Vec<_> = doctor_names().into_iter().map(str::to_owned).collect();
-    match native::discover(root) {
-        Ok(Some(pack)) => names.extend(pack.doctors.iter().map(|d| d.name.clone())),
-        Ok(None) => {}
-        Err(_) => names.push("native-pack-configuration".into()),
-    }
-    names.extend(local_catalog(root).1.packs.into_keys());
-    names
+    doctor_catalog_for_root(root)
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect()
 }
+
+/// Advertised names and descriptions, in registry order. Discovery reads metadata only.
+pub(crate) fn doctor_catalog_for_root(root: &Path) -> Vec<(String, String)> {
+    let mut entries: Vec<_> = registry()
+        .into_iter()
+        .map(|doctor| (doctor.name().to_owned(), doctor.description().to_owned()))
+        .collect();
+    match native::discover(root) {
+        Ok(Some(pack)) => entries.extend(pack.doctors.into_iter().map(|d| (d.name, d.description))),
+        Ok(None) => {}
+        Err(_) => entries.push(("native-pack-configuration".into(), String::new())),
+    }
+    entries.extend(
+        local_catalog(root)
+            .1
+            .packs
+            .into_iter()
+            .map(|(name, pack)| (name, pack.description)),
+    );
+    entries
+}
+
 pub fn run_doctor(name: &str, index: &RepoIndex, root: &Path) -> Option<QueryEnvelope> {
     let result = if let Some(doctor) = registry().into_iter().find(|d| d.name() == name) {
         Some(doctor.run(index, root))

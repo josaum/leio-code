@@ -21,3 +21,16 @@ test('context opens a grounded definition without guessed URNs or global fuzzy n
  const calls=contextNextCalls({entities:[{files_to_read:[{path:'src/a.rs',symbols:[{name:'run',kind:'function',line:42}]}]}]}, {repoRoot:'/repo',session:'agent-a'});
  assert.deepEqual(calls[0].arguments,{repo_root:'/repo',session:'agent-a',kind:'goto',needle:'definition:src/a.rs#42'});
 });
+
+test('compact context respects an explicit file limit in both result representations', () => {
+  const files = Array.from({length: 9}, (_, i) => ({path: `src/file-${i}.rs`}));
+  const result = {structuredContent: {ok: true, tool_family: 'context',
+    envelope: {entities: [{files_to_read: files}]}}};
+  for (const [scope, expected] of [[{}, 5], [{limit: 2}, 2], [{limit: 6}, 6], [{limit: 40}, 9]]) {
+    const response = compactEditingResult(result, {scope});
+    const context = response.structuredContent.envelope.entities[0];
+    assert.deepEqual(context.files_to_read.map(f => f.path), files.slice(0, expected).map(f => f.path));
+    assert.equal(context.omitted_files, files.length - expected);
+    assert.deepEqual(response.content[0].text.split('\n').slice(1), files.slice(0, expected).map(f => '- ' + f.path));
+  }
+});

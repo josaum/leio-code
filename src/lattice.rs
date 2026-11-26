@@ -787,13 +787,19 @@ pub fn family_peers(
     let Some(concept) = artifact.concepts.iter().find(|row| row.id == concept_id) else {
         return Vec::new();
     };
-    artifact
+    let mut candidates = artifact
         .concepts
         .iter()
         .filter(|row| row.id != concept.id && row.family == concept.family)
-        .take(limit.max(1))
-        .cloned()
-        .collect()
+        .collect::<Vec<_>>();
+    let intent: BTreeSet<_> = concept.intent.iter().collect();
+    candidates.sort_by_cached_key(|candidate| {
+        (
+            std::cmp::Reverse(intent_similarity(&intent, candidate)),
+            &candidate.id,
+        )
+    });
+    candidates.into_iter().take(limit.max(1)).cloned().collect()
 }
 
 /// Lattice walk direction (cover morphisms).
@@ -809,26 +815,63 @@ fn peers(
     concept: &LatticeConcept,
     limit: usize,
 ) -> Vec<LatticeConcept> {
-    let mut ids = BTreeSet::new();
-    for parent in &concept.parents {
-        if let Some(parent_concept) = artifact.concepts.iter().find(|row| &row.id == parent) {
-            for child in &parent_concept.children {
-                if child != &concept.id {
-                    ids.insert(child.clone());
+    let by_id: BTreeMap<_, _> = artifact
+        .concepts
+        .iter()
+        .map(|row| (row.id.as_str(), row))
+        .collect();
+    let mut shared_parents = BTreeMap::<&str, usize>::new();
+    for parent in concept.parents.iter().collect::<BTreeSet<_>>() {
+        if let Some(parent_concept) = by_id.get(parent.as_str())
+            && is_more_general(parent_concept, concept)
+        {
+            for child in parent_concept.children.iter().collect::<BTreeSet<_>>() {
+                if child != &concept.id
+                    && by_id
+                        .get(child.as_str())
+                        .is_some_and(|candidate| is_more_general(parent_concept, candidate))
+                {
+                    *shared_parents.entry(child).or_default() += 1;
                 }
             }
         }
     }
-    ids.into_iter()
-        .filter_map(|id| artifact.concepts.iter().find(|row| row.id == id).cloned())
+    let intent: BTreeSet<_> = concept.intent.iter().collect();
+    let mut candidates = artifact
+        .concepts
+        .iter()
+        .filter_map(|candidate| {
+            let shared = shared_parents.get(candidate.id.as_str())?;
+            Some((
+                std::cmp::Reverse(*shared),
+                std::cmp::Reverse(intent_similarity(&intent, candidate)),
+                candidate,
+            ))
+        })
+        .collect::<Vec<_>>();
+    candidates
+        .sort_by(|left, right| (left.0, left.1, &left.2.id).cmp(&(right.0, right.1, &right.2.id)));
+    candidates
+        .into_iter()
         .take(limit.max(1))
+        .map(|(_, _, candidate)| candidate.clone())
         .collect()
 }
 
+fn intent_similarity(intent: &BTreeSet<&String>, candidate: &LatticeConcept) -> usize {
+    let overlap = candidate
+        .intent
+        .iter()
+        .filter(|term| intent.contains(term))
+        .count();
+    let union = intent.len() + candidate.intent.len() - overlap;
+    overlap.saturating_mul(10_000) / union.max(1)
+}
+
 fn is_more_general(parent: &LatticeConcept, child: &LatticeConcept) -> bool {
-    parent.intent.len() <= child.intent.len()
-        && parent.extent_size >= child.extent_size
-        && (parent.intent.len() < child.intent.len() || parent.extent_size > child.extent_size)
+    parent.intent.len() < child.intent.len()
+        && parent.extent_size > child.extent_size
+        && parent.intent.iter().all(|term| child.intent.contains(term))
 }
 
 fn orient_cover(
@@ -1309,6 +1352,40 @@ mod tests {
                 start.id
             );
         }
+    }
+
+    #[test]
+    fn walks_check_intents_and_rank_supported_peers_first() {
+        let concept = |id: &str, intent: &[&str], extent_size| LatticeConcept {
+            id: id.into(),
+            label: id.into(),
+            family: "code".into(),
+            intent: intent.iter().map(|term| (*term).into()).collect(),
+            extent_size,
+            parents: Vec::new(),
+            children: Vec::new(),
+        };
+        let mut root = concept("root", &["source"], 10);
+        root.children = ["start", "a-distant", "z-related"]
+            .map(str::to_owned)
+            .into();
+        let impostor = concept("impostor", &["unrelated"], 10);
+        let mut start = concept("start", &["source", "query", "navigation"], 2);
+        start.parents = ["root", "impostor"].map(str::to_owned).into();
+        let distant = concept("a-distant", &["source", "unrelated"], 2);
+        let related = concept("z-related", &["source", "query", "edges"], 2);
+        let artifact = LatticeArtifact {
+            concepts: vec![root, impostor, start, distant, related],
+            ..LatticeArtifact::default()
+        };
+        let parents = walk(&artifact, "start", LatticeWalk::Parent, 10);
+        assert_eq!(parents.len(), 1);
+        assert_eq!(parents[0].id, "root");
+        assert_eq!(
+            walk(&artifact, "start", LatticeWalk::Peer, 1)[0].id,
+            "z-related"
+        );
+        assert_eq!(family_peers(&artifact, "start", 1)[0].id, "z-related");
     }
 
     #[test]

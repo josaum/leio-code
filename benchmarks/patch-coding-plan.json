@@ -1,0 +1,37 @@
+{
+  "model": "glm-5.3-flash",
+  "reasoning_effort": "low",
+  "max_tokens_per_task": 40000,
+  "max_seconds_per_task": 180,
+  "max_steps": 16,
+  "cases": [
+    {
+      "repo": "click",
+      "origin": "https://github.com/pallets/click.git",
+      "fix": "c53d3732b98c764932e146c007146ad402acb229",
+      "issue": "Click's environment-variable hints mishandle sequences and empty values. With show_envvar enabled, an empty configured name or empty list should behave like no name, including falling back to the automatic prefix. A missing required option should name each configured environment variable individually, for both lists and tuples, and omit the hint when empty. In help, use the existing automatic name for an empty string or empty sequence when an automatic prefix is configured. Otherwise omit the empty help hint. In the missing-option error, use one existing env-var hint, with each name quoted individually and separated by a comma and space. Preserve the existing single-name form.",
+      "test_file": "tests/test_options.py",
+      "base": "bb695aaecdef95832d167fc1d508921745aa824e"
+    },
+    {
+      "repo": "attrs",
+      "origin": "https://github.com/python-attrs/attrs.git",
+      "fix": "f53fc5440d7f86aac4328aec7a563eb48634177f",
+      "issue": "Defining attrs classes with replacement support changes the introspection metadata of the public evolve function. The generated bound __replace__ method should identify itself as belonging to its class, while attr.evolve should retain its own function name and the existing replacement behavior. Defining another replacement-enabled class must leave the first class's bound-method name intact. Preserve the public evolve function and its metadata.",
+      "test_file": "tests/test_functional.py",
+      "base": "f38b8a3f1625060aa4245930822c34c11c252f83"
+    },
+    {
+      "repo": "dotenv",
+      "origin": "https://github.com/theskumar/python-dotenv.git",
+      "fix": "bad5771ce54fd643538f177aab1465e4375e2039",
+      "issue": "When a malformed line in a dotenv file ends in CRLF, parser recovery assigns incorrect source line numbers to subsequent bindings. Consume the complete malformed line, preserve its original text, and count that CRLF as one line break. Existing parsing for LF and CR input should continue to work.",
+      "test_file": "tests/test_parser.py",
+      "base": "0b2880591780a426b0551436f47a17e7a76d954f"
+    }
+  ],
+  "provider": "Z.ai Coding Plan",
+  "transport": "claude-code-budgeted",
+  "grounded_edit": true,
+  "validate_parent_tests": true
+}

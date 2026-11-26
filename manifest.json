@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "leio-code",
   "display_name": "LEIO Code",
-  "version": "2.6.8",
+  "version": "2.7.0",
   "description": "Agent-first code intelligence. Index, find, graph, doctors, SPARQL knowledge, lattice nav over one repo_root.",
   "author": {
     "name": "LEIO Code contributors",
@@ -17,13 +17,10 @@
   "icon": "icon.png",
   "server": {
     "type": "node",
-    "entry_point": "mcp/index.js",
+    "entry_point": "mcp/desktop-launch.mjs",
     "mcp_config": {
       "command": "node",
-      "args": ["${__dirname}/mcp/index.js"],
-      "env": {
-        "LEIO_CODE_BIN": "${HOME}/.cargo/bin/leio-code"
-      }
+      "args": ["${__dirname}/mcp/desktop-launch.mjs"]
     }
   },
   "tools_generated": true,
@@ -38,7 +35,7 @@
     "claude_desktop": ">=0.10.0",
     "platforms": ["darwin", "win32", "linux"],
     "runtimes": {
-      "node": ">=18.0.0"
+      "node": ">=22.0.0"
     }
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "@leio/leio-code-apps-sdk",
-  "version": "2.6.8",
+  "version": "2.7.0",
   "private": true,
   "type": "module",
   "description": "OpenAI Apps SDK / ChatGPT MCP app for LEIO Code (self-host production-capable; private package)",
@@ -26,9 +26,9 @@
     "deploy:fly": "bash scripts/deploy-fly.sh"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "1.32.2",
     "jose": "^6.1.3",
-    "zod": "^3.25.76"
+    "zod": "4.6.7"
   },
   "license": "MIT OR Apache-2.0"
 }

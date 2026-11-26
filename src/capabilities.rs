@@ -53,6 +53,14 @@ pub fn workspace_capabilities_from_facets(
     workspace_facets: &WorkspaceFacetSummary,
     root: &Path,
 ) -> WorkspaceCapabilitySummary {
+    capabilities_with_doctors(workspace_facets, root, doctor_names_for_root(root))
+}
+
+pub(crate) fn capabilities_with_doctors(
+    workspace_facets: &WorkspaceFacetSummary,
+    root: &Path,
+    doctor_kinds: Vec<String>,
+) -> WorkspaceCapabilitySummary {
     let workspace_profile = repo_profile(root);
 
     let mut find_kinds = strings(BASE_FIND_KINDS);
@@ -70,11 +78,6 @@ pub fn workspace_capabilities_from_facets(
     if workspace_facets.has_cartridges {
         explain_kinds.push("cartridge".to_string());
     }
-
-    let doctor_kinds = doctor_names_for_root(root)
-        .into_iter()
-        .map(|value| value.to_string())
-        .collect::<Vec<_>>();
 
     let mut notes = Vec::new();
     if !workspace_facets.has_deploy_topology {

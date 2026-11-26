@@ -1,6 +1,6 @@
 {
   "name": "@leio/leio-code-mcp",
-  "version": "2.6.8",
+  "version": "2.7.0",
   "private": true,
   "type": "module",
   "description": "Evidence-first MCP wrapper for the LEIO Code CLI",
@@ -12,8 +12,8 @@
     "check": "node --check index.js && node --check install-binary.mjs && node --check resolve-binary.js && node --check watch-state.js && node --check export-paths.js && node --check mcp-spec-2025-11-25.js && node --check output-schemas.js && node --check evidence-contract.js && node --check workflow.js && node --check envelope.js && node --check guide.js && node --check compact.js && node --check harness-tasks.js && node --check harness-review.js"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.28.0",
-    "zod": "^3.25.76"
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "zod": "4.6.7"
   },
   "license": "MIT OR Apache-2.0",
   "devDependencies": {

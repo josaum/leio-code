@@ -17,8 +17,11 @@
 //!   rebuild). Proximity is indirect evidence and never changes a score.
 //! - Ties break on **graph proximity**, then **newer `modified_unix_ms`**, then path order.
 
+mod companions;
+
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 use std::time::Instant;
@@ -27,7 +30,7 @@ use rayon::prelude::*;
 use regex::Regex;
 use serde_json::{Value, json};
 
-use crate::capabilities::workspace_capabilities;
+use crate::capabilities::capabilities_with_doctors;
 use crate::code_graph::CodeGraphQueryCache;
 use crate::doctors::utils::query_id;
 use crate::graph_query::try_load_graph_query_cache;
@@ -35,6 +38,7 @@ use crate::model::{
     DeployTargetRecord, EvidenceItem, FileRecord, QueryEnvelope, RedisKeyOccurrence, RepoIndex,
     SymbolOccurrence,
 };
+use crate::query::qualified_symbol_key;
 
 const STOP_WORDS: &[&str] = &[
     "a", "an", "and", "are", "as", "at", "be", "by", "can", "code", "do", "does", "for", "from",
@@ -86,6 +90,7 @@ struct ScoredFile {
     path: String,
     language: String,
     score: i64,
+    explicit_match: ExplicitMatch,
     /// Indexer mtime (ms); used only for tie-breaking when scores match.
     modified_unix_ms: i128,
     /// Code-graph proximity to the top seeds: 3 import+call, 2 import, 1 call, 0 none.
@@ -118,6 +123,282 @@ struct ContextZoneInputs<'a> {
     doctor_suggestions: &'a [Value],
     verification_anchors: &'a [Value],
     risk_notes: &'a [String],
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
+enum ExplicitMatch {
+    #[default]
+    None,
+    Definition,
+    Path,
+}
+
+#[derive(Default)]
+struct ExplicitReferences {
+    paths: HashMap<String, Vec<std::ops::Range<usize>>>,
+    names: HashSet<String>,
+    qualified_names: HashSet<String>,
+}
+
+impl ExplicitReferences {
+    fn from_task(task: &str) -> Self {
+        static REFERENCES: LazyLock<Regex> = LazyLock::new(|| {
+            Regex::new(r"`([^`\n]+)`|[\w./\\:-]+").expect("valid reference regex")
+        });
+        let mut refs = Self::default();
+        for captures in REFERENCES.captures_iter(task) {
+            let quoted = captures.get(1);
+            let token = quoted.unwrap_or_else(|| captures.get(0).unwrap()).as_str();
+            let token = token.trim_end_matches(['.', ':']);
+            if token.is_empty() {
+                continue;
+            }
+            if token.contains(['/', '\\', '.']) || quoted.is_some() {
+                let token = token
+                    .rsplit_once(':')
+                    .filter(|(_, line)| {
+                        !line.is_empty() && line.bytes().all(|b| b.is_ascii_digit())
+                    })
+                    .map_or(token, |(path, _)| path);
+                let path = token.replace('\\', "/");
+                refs.paths
+                    .entry(path.strip_prefix("./").unwrap_or(&path).to_owned())
+                    .or_default()
+                    .push(captures.get(0).unwrap().range());
+            }
+            if quoted.is_some()
+                || token.contains('_')
+                || token.contains("::")
+                || token.contains('.')
+                || token.bytes().skip(1).any(|ch| ch.is_ascii_uppercase())
+                    && token.bytes().any(|ch| ch.is_ascii_lowercase())
+            {
+                refs.names.insert(token.to_owned());
+                if let Some(qualified) = qualified_symbol_key(token) {
+                    refs.qualified_names.insert(qualified.into_owned());
+                }
+            }
+        }
+        refs
+    }
+
+    /// Exact files are retained by identity. Use the remaining words for
+    /// other candidates, so the named directory and suffix are not counted twice.
+    fn description_without_files(&self, task: &str, index: &RepoIndex) -> Option<String> {
+        if self.paths.is_empty() {
+            return None;
+        }
+        let mut spans: Vec<_> = index
+            .files
+            .iter()
+            .filter_map(|f| self.paths.get(&f.path))
+            .flatten()
+            .collect();
+        if spans.is_empty() {
+            return None;
+        }
+        spans.sort_by_key(|span| span.start);
+        spans.dedup();
+        static FILE_DIRECTIVE: LazyLock<Regex> = LazyLock::new(|| {
+            Regex::new(r"(?i)(?:^|[.!?]\s+)(?:update|edit|modify|change)\s+$")
+                .expect("valid file directive")
+        });
+        let mut description = String::with_capacity(task.len());
+        let mut start = 0;
+        for span in spans {
+            let before = &task[start..span.start];
+            let remainder = task[span.end..].trim();
+            if remainder.trim_matches(['.', '!', '?']).is_empty()
+                && let Some(directive) = FILE_DIRECTIVE.find(before)
+            {
+                description.push_str(&before[..directive.start()]);
+                return Some(description);
+            }
+            description.push_str(before);
+            description.push(' ');
+            start = span.end;
+        }
+        description.push_str(&task[start..]);
+        Some(description)
+    }
+
+    fn names_symbol(&self, symbol: &SymbolOccurrence) -> bool {
+        !self.names.is_empty()
+            && (self.names.contains(&symbol.name)
+                || symbol.qual_name.as_ref().is_some_and(|name| {
+                    self.names.contains(name)
+                        || (!self.qualified_names.is_empty()
+                            && qualified_symbol_key(name)
+                                .is_some_and(|key| self.qualified_names.contains(key.as_ref())))
+                }))
+    }
+}
+
+/// A commit scope is a component hint. A path written as a directory is a
+/// stronger hint. Neither overrides a named file or definition.
+fn apply_component_hints(
+    files: &mut [ScoredFile],
+    root: &Path,
+    task: &str,
+    references: &ExplicitReferences,
+) {
+    static SCOPE: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"(?ix)(?:^[a-z][a-z0-9_-]*\(([a-z0-9_./-]+)\)!?:\s|\bin\s+(?:the\s+)?([a-z0-9_./-]+)\s+(?:module|component|package|directory)\b)").expect("valid component scope")
+    });
+    let captures = SCOPE.captures(task);
+    let scope = captures
+        .as_ref()
+        .and_then(|c| c.get(1).or_else(|| c.get(2)))
+        .map(|m| m.as_str());
+    if scope.is_none() && references.paths.is_empty() {
+        return;
+    }
+    let mut scoped = Vec::new();
+    let best = files.first().map_or(0, |f| f.score);
+    for (i, file) in files.iter_mut().enumerate() {
+        let path = Path::new(&file.path);
+        let parent = path.parent().unwrap_or(Path::new(""));
+        let directory = references
+            .paths
+            .keys()
+            .any(|hint| !hint.is_empty() && parent.starts_with(hint));
+        let component = scope.is_some_and(|scope| {
+            parent.starts_with(scope)
+                || parent.iter().any(|seg| seg == scope)
+                || path
+                    .file_stem()
+                    .and_then(|stem| stem.to_str())
+                    .is_some_and(|stem| {
+                        stem.strip_prefix(scope).is_some_and(|suffix| {
+                            suffix.is_empty() || suffix.starts_with(['_', '-'])
+                        })
+                    })
+        });
+        if directory || component {
+            scoped.push(i);
+            let (bonus, reason) = if directory {
+                (best, "file under repository directory named in task")
+            } else {
+                (best / 2, "file matches the component named in task")
+            };
+            file.score += bonus;
+            file.reasons.insert(reason.into());
+        }
+    }
+    if scoped.is_empty() {
+        return;
+    }
+    if let Some(captures) = captures {
+        let marker = captures.get(0).unwrap();
+        let description = format!("{} {}", &task[..marker.start()], &task[marker.end()..]);
+        let terms: HashSet<_> = task_tokens(&description)
+            .into_iter()
+            .filter(|term| term.len() >= 3 && term.bytes().any(|b| b.is_ascii_alphabetic()))
+            .collect();
+        if terms.len() >= 2
+            && let Ok(root) = root.canonicalize()
+        {
+            // Rerank only scoped candidates. Source-only terms distinguish modules
+            // whose names overlap, without a repository-wide text scan.
+            for &i in scoped.iter().take(32) {
+                let hits = scoped_source_hits(&root, &files[i].path, &terms);
+                if hits >= 2 {
+                    files[i].score += best * hits as i64 / terms.len() as i64;
+                    files[i].reasons.insert(format!(
+                        "{hits}/{} description terms in scoped source prefix",
+                        terms.len()
+                    ));
+                }
+            }
+        }
+    }
+    files.sort_by_key(|f| std::cmp::Reverse(f.score));
+}
+
+fn scoped_source_hits(root: &Path, path: &str, terms: &HashSet<String>) -> usize {
+    let Ok(path) = root.join(path).canonicalize() else {
+        return 0;
+    };
+    if !path.starts_with(root) || !path.is_file() {
+        return 0;
+    }
+    let Ok(file) = fs::File::open(path) else {
+        return 0;
+    };
+    let mut bytes = Vec::new();
+    if file.take(96 * 1024).read_to_end(&mut bytes).is_err() || bytes.contains(&0) {
+        return 0;
+    }
+    normalize_token_boundaries(&String::from_utf8_lossy(&bytes))
+        .split_ascii_whitespace()
+        .filter(|term| terms.contains(*term))
+        .collect::<HashSet<_>>()
+        .len()
+}
+
+/// Repeated co-changes with named files receive a bounded share of the
+/// working set. Evidence can include tracked docs outside the code index.
+fn add_named_co_edits(
+    files: &mut Vec<ScoredFile>,
+    index: &RepoIndex,
+    root: &Path,
+    playbook: &crate::playbook::Playbook,
+    seeds: &[String],
+    limit: usize,
+) -> usize {
+    let Ok(root) = root.canonicalize() else {
+        return 0;
+    };
+    let mut candidates = HashMap::new();
+    for seed in seeds {
+        if let Some(partners) = playbook.co_edits.get(seed) {
+            for (path, &count) in partners {
+                if count < 2 || seeds.contains(path) {
+                    continue;
+                }
+                let entry = candidates.entry(path).or_insert((0u32, seed));
+                if count > entry.0 {
+                    *entry = (count, seed);
+                }
+            }
+        }
+    }
+    let scores: HashMap<_, _> = files.iter().map(|f| (f.path.as_str(), f.score)).collect();
+    let mut candidates: Vec<_> = candidates
+        .into_iter()
+        .map(|(path, (count, seed))| {
+            (
+                path,
+                count,
+                seed,
+                scores.get(path.as_str()).copied().unwrap_or(0),
+            )
+        })
+        .collect();
+    candidates.sort_by(|a, b| {
+        b.1.cmp(&a.1)
+            .then_with(|| b.3.cmp(&a.3))
+            .then_with(|| a.0.cmp(b.0))
+    });
+    let floor = files.iter().map(|f| f.score).max().unwrap_or(0) + 1;
+    let mut added = 0;
+    for (path, count, seed, score) in candidates {
+        if added == (limit / 2).min(3) {
+            break;
+        }
+        if companions::live_file(&root, Path::new(path)).is_none() {
+            continue;
+        }
+        upsert_scored_file(
+            files,
+            index,
+            path,
+            floor - score + (3 - added) as i64,
+            &format!("co-edited with named file `{seed}` in {count} focused commits"),
+        );
+        added += 1;
+    }
+    added
 }
 
 fn apply_local_node_hits(
@@ -199,6 +480,7 @@ fn upsert_scored_file(
             path: record.path.clone(),
             language: record.language.as_str().to_string(),
             score: delta,
+            explicit_match: ExplicitMatch::None,
             modified_unix_ms: record.modified_unix_ms,
             graph_proximity: 2,
             reasons,
@@ -234,6 +516,7 @@ fn upsert_scored_file(
             path: path.to_string(),
             language: "manifest".to_string(),
             score: delta,
+            explicit_match: ExplicitMatch::None,
             modified_unix_ms: 0,
             graph_proximity: 1,
             reasons,
@@ -259,6 +542,7 @@ pub fn build_context_bundle_with_options(
     } else {
         Vec::new()
     };
+    let requested_task = task;
     let effective_task_owned: String;
     let task: &str = if task.trim().is_empty() && diff {
         if changed_files.is_empty() {
@@ -280,7 +564,15 @@ pub fn build_context_bundle_with_options(
             }
         }
     }
-    let capabilities = workspace_capabilities(index, root);
+    let doctor_catalog = crate::doctors::doctor_catalog_for_root(root);
+    let capabilities = capabilities_with_doctors(
+        &index.workspace_facets(),
+        root,
+        doctor_catalog
+            .iter()
+            .map(|(name, _)| name.clone())
+            .collect(),
+    );
     let mut warnings = Vec::new();
 
     if task_tokens.is_empty() && !diff {
@@ -293,6 +585,14 @@ pub fn build_context_bundle_with_options(
     let identifier_needles = extract_identifier_needles(task);
 
     let ablation = active_context_ablation();
+    let references = if matches!(
+        ablation,
+        ContextAblation::Full | ContextAblation::NoPlaybook
+    ) {
+        ExplicitReferences::from_task(requested_task)
+    } else {
+        ExplicitReferences::default()
+    };
     let graph_cache = if matches!(
         ablation,
         ContextAblation::PathOnly | ContextAblation::AstSymbolOnly
@@ -303,16 +603,51 @@ pub fn build_context_bundle_with_options(
     } else {
         try_load_graph_query_cache(root)
     };
+    let description = if diff {
+        None
+    } else {
+        references.description_without_files(task, index)
+    };
+    let residual = description
+        .as_deref()
+        .map(|text| (text, crate::context::task_tokens(text)))
+        .filter(|(_, terms)| !terms.is_empty());
+    let (rank_text, rank_terms) = residual
+        .as_ref()
+        .map_or((task, &task_tokens), |(text, terms)| (*text, terms));
+    let rank_intents = if residual.is_some() {
+        classify_intents(&rank_text.to_ascii_lowercase(), rank_terms)
+    } else {
+        intents
+    };
+    let rank_needles = residual
+        .as_ref()
+        .map(|_| extract_identifier_needles(rank_text));
+    let trace_enabled = std::env::var("LEIO_CONTEXT_TRACE").as_deref() == Ok("1");
     let mut files = rank_files(
         index,
-        &task_tokens,
-        task,
+        rank_terms,
+        rank_text,
         limit,
         &idf,
-        intents,
-        &identifier_needles,
+        rank_intents,
+        rank_needles.as_ref().unwrap_or(&identifier_needles),
+        &references,
         graph_cache.as_ref(),
     );
+    if matches!(
+        ablation,
+        ContextAblation::Full | ContextAblation::NoPlaybook
+    ) {
+        apply_component_hints(&mut files, root, requested_task, &references);
+    }
+    let initial_ranks = trace_enabled.then(|| {
+        files
+            .iter()
+            .enumerate()
+            .map(|(i, f)| (f.path.clone(), i + 1))
+            .collect::<HashMap<_, _>>()
+    });
     let mut impacted_dependents: Vec<String> = Vec::new();
     if diff {
         for changed in &changed_files {
@@ -379,11 +714,31 @@ pub fn build_context_bundle_with_options(
     } else {
         crate::playbook::load_or_auto_sync(root)
     };
+    let named_paths: Vec<_> = files
+        .iter()
+        .filter(|f| f.explicit_match == ExplicitMatch::Path)
+        .map(|f| f.path.clone())
+        .collect();
+    if residual.is_some() && !named_paths.is_empty() {
+        companions::add_task_companions(
+            &mut files,
+            index,
+            root,
+            rank_text,
+            &named_paths,
+            limit,
+            playbook.is_some(),
+        );
+    }
+    let before_playbook =
+        trace_enabled.then(|| files.iter().map(|f| f.path.clone()).collect::<HashSet<_>>());
     let mut playbook_boost_count = 0usize;
     let mut missing_co_edits: Vec<Value> = Vec::new();
     if let Some(ref pb) = playbook {
         let seed_paths: Vec<String> = if diff && !changed_files.is_empty() {
             changed_files.clone()
+        } else if !named_paths.is_empty() {
+            named_paths.clone()
         } else {
             files.iter().take(3).map(|f| f.path.clone()).collect()
         };
@@ -412,7 +767,7 @@ pub fn build_context_bundle_with_options(
             }
         }
         let mut boosted = diff;
-        let top_seed_snapshot = if !diff {
+        let top_seed_snapshot = if !diff && named_paths.is_empty() {
             files.first().map(|f| (f.path.clone(), f.score))
         } else {
             None
@@ -461,6 +816,11 @@ pub fn build_context_bundle_with_options(
                 }
             }
         }
+        if !diff && !named_paths.is_empty() {
+            let added = add_named_co_edits(&mut files, index, root, pb, &named_paths, limit);
+            playbook_boost_count += added;
+            boosted |= added > 0;
+        }
         if boosted {
             files.sort_by(|left, right| {
                 right
@@ -481,28 +841,58 @@ pub fn build_context_bundle_with_options(
                 .then_with(|| left.path.cmp(&right.path))
         });
     }
-    files.truncate(limit);
-    let mut symbols = rank_symbols(index, &task_tokens, limit, &idf);
-    if let Some(ref pb) = playbook
-        && !pb.query_counts.is_empty()
+    let related_path = if !diff && residual.is_some() && !named_paths.is_empty() {
+        companions::add_linked_companion(
+            &mut files,
+            index,
+            root,
+            &named_paths,
+            rank_terms,
+            graph_cache.as_ref(),
+            limit,
+        )
+    } else {
+        None
+    };
+    // Keep direct references ahead of indirect evidence after all boosts.
+    if files
+        .iter()
+        .any(|file| file.explicit_match != ExplicitMatch::None)
     {
-        for sym in &mut symbols {
-            if let Some(name) = sym.value.get("name").and_then(Value::as_str)
-                && let Some(count) = pb.query_counts.get(name).copied()
-                && count > 0
-            {
-                sym.score += i64::from(count.min(5)) * 5;
-            }
+        let (min, max) = files.iter().fold((0, 0), |(min, max), file| {
+            (min.min(file.score), max.max(file.score))
+        });
+        let band = max - min + 1;
+        for file in &mut files {
+            file.score += band * file.explicit_match as i64;
         }
-        symbols.sort_by_key(|a| std::cmp::Reverse(a.score));
+        files.sort_by_key(|file| std::cmp::Reverse(file.score));
     }
+    // The benchmark joins these rows with hidden labels only after retrieval.
+    // Leave this opt-in trace out of ordinary CLI and MCP responses.
+    let candidate_trace = initial_ranks.as_ref().map(|ranks| files.iter().enumerate().map(|(i, f)| {
+        let stage = if ranks.contains_key(&f.path) { "initial_ranking" }
+            else if before_playbook.as_ref().is_some_and(|paths| paths.contains(&f.path)) { "companion_or_diff" }
+            else if related_path.as_ref().is_some_and(|p| p == &f.path) { "resolved_relationship" }
+            else { "playbook" };
+        json!({"path": f.path, "initial_rank": ranks.get(&f.path), "rank_before_cutoff": i+1,
+               "first_stage": stage, "evidence": f.reasons})
+    }).collect::<Vec<_>>());
+    files.truncate(limit);
+    let symbols = rank_symbols(
+        index,
+        &task_tokens,
+        limit,
+        &idf,
+        &references,
+        playbook.as_ref(),
+    );
     let env_vars = rank_env_vars(index, &task_tokens, limit, &idf);
     let redis_keys = rank_redis_keys(index, &task_tokens, limit, &idf);
     let deploy_targets = rank_deploy_targets(index, &task_tokens, limit, &idf);
     let tests_to_run = tests_to_run(&files, &task_tokens);
     let graph_queries = graph_queries(&files, &symbols, limit);
-    let doctor_suggestions =
-        doctor_suggestions(&capabilities.doctor_kinds, &task_tokens, playbook.as_ref());
+    let doctor_suggestions = doctor_suggestions(&doctor_catalog, &task_tokens, playbook.as_ref());
     let mut risk_notes = risk_notes(&files, &env_vars, &redis_keys, &deploy_targets);
     for m in &missing_co_edits {
         if let (Some(changed), Some(partner), Some(count)) = (
@@ -630,6 +1020,9 @@ pub fn build_context_bundle_with_options(
         "doctor_suggestions": doctor_suggestions,
         "risk_notes": risk_notes,
     });
+    if let Some(trace) = candidate_trace {
+        bundle["candidate_trace"] = json!(trace);
+    }
     if diff {
         bundle["diff_summary"] = json!({
             "changed_files": changed_files,
@@ -710,7 +1103,9 @@ fn scored_file_json(file: &ScoredFile, full: bool) -> Value {
             "path": &file.path,
             "language": &file.language,
             "score": file.score,
-            "reasons": file.reasons.iter().take(2).cloned().collect::<Vec<_>>(),
+            "reasons": file.reasons.iter().filter(|reason| reason.starts_with("exact ") || reason.starts_with("co-edited with named file"))
+                .chain(file.reasons.iter().filter(|reason| !reason.starts_with("exact ") && !reason.starts_with("co-edited with named file")))
+                .take(2).collect::<Vec<_>>(),
             "symbols": cap(&file.symbols),
             "symbol_count": file.symbols.len(),
             "env_vars": cap(&file.env_vars),
@@ -1150,6 +1545,7 @@ fn rank_files(
     idf: &HashMap<String, f64>,
     intents: IntentHints,
     identifier_needles: &[String],
+    references: &ExplicitReferences,
     graph_cache: Option<&CodeGraphQueryCache>,
 ) -> Vec<ScoredFile> {
     let compounds = compound_path_tokens(task);
@@ -1165,12 +1561,14 @@ fn rank_files(
                 idf,
                 intents,
                 identifier_needles,
+                references,
             )
         })
         .collect();
     finalize_file_ranking(rows, graph_cache)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn score_file(
     file: &FileRecord,
     task_tokens: &[String],
@@ -1179,6 +1577,7 @@ fn score_file(
     idf: &HashMap<String, f64>,
     intents: IntentHints,
     identifier_needles: &[String],
+    references: &ExplicitReferences,
 ) -> Option<(ScoredFile, LayeredScore)> {
     let mut path_layer = match_score_idf(task_tokens, &file.path, 12, idf);
     let mut reasons = BTreeSet::new();
@@ -1217,11 +1616,12 @@ fn score_file(
         .filter_map(|symbol| {
             let symbol_score = match_score_idf(task_tokens, &symbol.name, 14, idf)
                 + match_score_idf(task_tokens, symbol.kind.as_str(), 4, idf);
-            if symbol_score == 0 {
+            let exact = references.names_symbol(symbol);
+            if symbol_score == 0 && !exact {
                 return None;
             }
             Some((
-                symbol_score,
+                (exact, symbol_score),
                 json!({
                     "name": &symbol.name,
                     "kind": symbol.kind.as_str(),
@@ -1234,7 +1634,7 @@ fn score_file(
 
     let ablation = active_context_ablation();
     let mut symbol_layer = sym_needles;
-    if let Some((symbol_score, _)) = symbols.first() {
+    if let Some(((_, symbol_score), _)) = symbols.first() {
         let mut combined_sym_score = *symbol_score;
         if matches!(
             ablation,
@@ -1336,8 +1736,17 @@ fn score_file(
         }
     }
 
+    let explicit_match = if references.paths.contains_key(&file.path) {
+        reasons.insert("exact repository path in task".into());
+        ExplicitMatch::Path
+    } else if symbols.first().is_some_and(|((exact, _), _)| *exact) {
+        reasons.insert("exact symbol definition in task".into());
+        ExplicitMatch::Definition
+    } else {
+        ExplicitMatch::None
+    };
     let score = path_layer + symbol_layer + config_layer;
-    if score == 0 {
+    if score == 0 && explicit_match == ExplicitMatch::None {
         return None;
     }
 
@@ -1350,6 +1759,7 @@ fn score_file(
     Some((
         ScoredFile {
             path: file.path.clone(),
+            explicit_match,
             graph_proximity: 0,
             language: file.language.as_str().to_string(),
             score,
@@ -1612,25 +2022,70 @@ fn rank_symbols(
     task_tokens: &[String],
     limit: usize,
     idf: &HashMap<String, f64>,
+    references: &ExplicitReferences,
+    playbook: Option<&crate::playbook::Playbook>,
 ) -> Vec<ScoredEntity> {
-    let mut entities = index
-        .all_symbols()
-        .filter_map(|symbol| score_symbol(symbol, task_tokens, idf))
-        .collect::<Vec<_>>();
+    let mut entities = Vec::new();
+    let mut definitions = Vec::new();
+    for symbol in index.all_symbols() {
+        let exact = references.names_symbol(symbol);
+        if let Some(entity) = score_symbol(symbol, task_tokens, idf, exact) {
+            if exact {
+                definitions.push(entity);
+            } else {
+                entities.push(entity);
+            }
+        }
+    }
+    // History reorders the retained symbols within each group.
+    sort_entities(&mut definitions);
+    definitions.truncate(limit);
     sort_entities(&mut entities);
-    entities.truncate(limit);
-    entities
+    entities.truncate(limit - definitions.len());
+    if let Some(pb) = playbook
+        && !pb.query_counts.is_empty()
+    {
+        for entity in definitions.iter_mut().chain(&mut entities) {
+            if let Some(count) = entity.value["name"]
+                .as_str()
+                .and_then(|name| pb.query_counts.get(name))
+            {
+                entity.score += i64::from((*count).min(5)) * 5;
+                entity.value["score"] = json!(entity.score);
+                entity.evidence.detail = format!("score={} {}", entity.score, entity.value["name"]);
+            }
+        }
+        sort_entities(&mut entities);
+        sort_entities(&mut definitions);
+    }
+    if definitions.is_empty() {
+        return entities;
+    }
+    let band = entities
+        .iter()
+        .map(|entity| entity.score)
+        .max()
+        .unwrap_or(0)
+        + 1;
+    for entity in &mut definitions {
+        entity.score += band;
+        entity.value["score"] = json!(entity.score);
+        entity.evidence.detail = format!("exact definition, score={}", entity.score);
+    }
+    definitions.extend(entities);
+    definitions
 }
 
 fn score_symbol(
     symbol: &SymbolOccurrence,
     task_tokens: &[String],
     idf: &HashMap<String, f64>,
+    exact: bool,
 ) -> Option<ScoredEntity> {
     let score = match_score_idf(task_tokens, &symbol.name, 16, idf)
         + match_score_idf(task_tokens, symbol.kind.as_str(), 4, idf)
         + match_score_idf(task_tokens, &symbol.path, 5, idf);
-    if score == 0 {
+    if score == 0 && !exact {
         return None;
     }
     Some(ScoredEntity {
@@ -1920,30 +2375,39 @@ fn tests_to_run(files: &[ScoredFile], task_tokens: &[String]) -> Vec<Value> {
 }
 
 fn doctor_suggestions(
-    available: &[String],
+    available: &[(String, String)],
     task_tokens: &[String],
     playbook: Option<&crate::playbook::Playbook>,
 ) -> Vec<Value> {
     // Names come from the selected repository's catalog. The engine does not
     // own mappings from product symptoms to product-specific doctor policy.
     let tokens: HashSet<_> = task_tokens.iter().map(String::as_str).collect();
-    let mut matched: Vec<(usize, &String, i32, Option<&'static str>)> = available
+    let mut matched: Vec<_> = available
         .iter()
-        .enumerate()
-        .filter(|(_, name)| name.split('-').any(|part| tokens.contains(part)))
-        .map(|(idx, name)| {
+        .filter_map(|(name, description)| {
+            let named = name.split('-').any(|part| tokens.contains(part));
+            let overlap = tokenize(description)
+                .into_iter()
+                .filter(|term| tokens.contains(term.as_str()))
+                .collect::<HashSet<_>>()
+                .len();
+            if !named && overlap < 2 {
+                return None;
+            }
             let (priority, status) = playbook
                 .map(|pb| crate::playbook::doctor_triage_priority(pb, name))
                 .unwrap_or((0, None));
-            (idx, name, priority, status)
+            Some((name, named, priority, overlap, status))
         })
         .collect();
-    matched.sort_by(|a, b| b.2.cmp(&a.2).then_with(|| a.0.cmp(&b.0)));
+    matched.sort_by_key(|(_, named, priority, overlap, _)| {
+        std::cmp::Reverse((*named, *priority, *overlap))
+    });
 
     let mut suggestions: Vec<Value> = matched
         .into_iter()
         .take(3)
-        .map(|(_, name, _, status)| {
+        .map(|(name, _, _, _, status)| {
             let reason = match status {
                 Some("high_signal") => {
                     "task matches a high-signal doctor (resolved/fired > 0.9 in playbook)"
@@ -2573,8 +3037,8 @@ fn task_tokens(task: &str) -> Vec<String> {
     tokens
 }
 
-fn tokenize_keep_stops(value: &str) -> Vec<String> {
-    let mut normalized = String::new();
+fn normalize_token_boundaries(value: &str) -> String {
+    let mut normalized = String::with_capacity(value.len());
     let mut previous_was_lower_or_digit = false;
     for ch in value.chars() {
         if ch.is_ascii_alphanumeric() {
@@ -2590,6 +3054,10 @@ fn tokenize_keep_stops(value: &str) -> Vec<String> {
     }
 
     normalized
+}
+
+fn tokenize_keep_stops(value: &str) -> Vec<String> {
+    normalize_token_boundaries(value)
         .split_whitespace()
         .filter(|token| token.len() >= 2)
         .map(str::to_string)
@@ -2676,6 +3144,7 @@ mod tests {
             path: path.into(),
             language: "rust".into(),
             score: 0,
+            explicit_match: ExplicitMatch::None,
             modified_unix_ms: 0,
             graph_proximity: 0,
             reasons: BTreeSet::new(),
@@ -2730,6 +3199,7 @@ mod tests {
             path: path.to_string(),
             language: "rust".to_string(),
             score: 10,
+            explicit_match: ExplicitMatch::None,
             modified_unix_ms: 0,
             graph_proximity: 0,
             reasons: BTreeSet::new(),
@@ -3043,7 +3513,17 @@ mod tests {
         let idf = sparse_token_idf(&index, &tokens);
         let intents = classify_intents("marker", &tokens);
         let needles = extract_identifier_needles("marker");
-        let ranked = rank_files(&index, &tokens, "marker", 10, &idf, intents, &needles, None);
+        let ranked = rank_files(
+            &index,
+            &tokens,
+            "marker",
+            10,
+            &idf,
+            intents,
+            &needles,
+            &ExplicitReferences::default(),
+            None,
+        );
         assert_eq!(ranked.len(), 2);
         assert_eq!(ranked[0].path, "z/new.rs");
         assert_eq!(ranked[1].path, "z/old.rs");
@@ -3069,6 +3549,439 @@ mod tests {
             http_calls: Vec::new(),
             unresolved_edges: Vec::new(),
         }
+    }
+
+    #[test]
+    fn residual_description_removes_only_complete_indexed_paths() {
+        let mut index = test_index();
+        index.files = vec![marker_file("core/format.rs")];
+        let task = "Compare `./core/format.rs:4` and core/format.rs with other/core/format.rs for `my_symbol`.";
+        let refs = ExplicitReferences::from_task(task);
+        let description = refs.description_without_files(task, &index).unwrap();
+        assert_eq!(
+            description.split_whitespace().collect::<Vec<_>>(),
+            [
+                "Compare",
+                "and",
+                "with",
+                "other/core/format.rs",
+                "for",
+                "`my_symbol`."
+            ]
+        );
+    }
+
+    #[test]
+    fn file_directives_do_not_supply_task_vocabulary() {
+        let mut index = test_index();
+        index.files = vec![marker_file("src/example.rs")];
+        for task in [
+            "Repair codec. Update src/example.rs.",
+            "Repair codec. Edit `src/example.rs`.",
+        ] {
+            assert_eq!(
+                ExplicitReferences::from_task(task)
+                    .description_without_files(task, &index)
+                    .as_deref(),
+                Some("Repair codec")
+            );
+        }
+        let task = "Update src/example.rs to support batches.";
+        assert!(
+            ExplicitReferences::from_task(task)
+                .description_without_files(task, &index)
+                .unwrap()
+                .contains("Update")
+        );
+    }
+
+    fn track_fixture_files(root: &Path) {
+        for args in [&["init", "-q"][..], &["add", "."]] {
+            assert!(
+                std::process::Command::new("git")
+                    .args(args)
+                    .current_dir(root)
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+        }
+    }
+
+    #[test]
+    fn documentation_backlinks_require_topic_words_in_the_same_paragraph() {
+        let root = tempfile::tempdir().unwrap();
+        let mut index = test_index();
+        index.files = vec![marker_file("src/probe.rs")];
+        fs::create_dir(root.path().join("src")).unwrap();
+        fs::write(root.path().join("src/probe.rs"), "").unwrap();
+        for (name, body) in [
+            ("a-crlf.md", "`src/probe.rs`\r\n\r\nLatency sampling"),
+            ("b-spaces.md", "`src/probe.rs`\n \t\nLatency sampling"),
+            ("z-same.rst", "`src/probe.rs`\r\nLatency sampling"),
+        ] {
+            fs::write(root.path().join(name), body).unwrap();
+        }
+        track_fixture_files(root.path());
+        let bundle = build_context_bundle(
+            &index,
+            root.path(),
+            "Latency sampling. Edit `src/probe.rs`.",
+            2,
+            true,
+        );
+        assert_eq!(bundle.entities[0]["files_to_read"][1]["path"], "z-same.rst");
+    }
+
+    #[test]
+    fn markdown_backlinks_resolve_from_the_document_directory() {
+        let root = tempfile::tempdir().unwrap();
+        let mut index = test_index();
+        index.files = vec![marker_file("src/probe.rs"), marker_file("src/frame.rs")];
+        for dir in ["src", "docs/src"] {
+            fs::create_dir_all(root.path().join(dir)).unwrap();
+        }
+        for (name, text) in [
+            ("src/probe.rs", ""),
+            ("src/frame.rs", ""),
+            ("docs/src/probe.rs", ""),
+            ("docs/a-wrong.md", "Latency sampling [probe](src/probe.rs)"),
+            (
+                "docs/b-external.md",
+                "Latency sampling [frame](https://example.invalid/#src/frame.rs)",
+            ),
+            (
+                "docs/c-outside.md",
+                "Latency sampling [probe](../../src/probe.rs)",
+            ),
+            (
+                "docs/d-valid.md",
+                "Latency sampling [probe](../src/probe.rs#L10)",
+            ),
+            (
+                "src/guide.md",
+                "Latency sampling [frame](<frame.rs> \"implementation\")",
+            ),
+        ] {
+            fs::write(root.path().join(name), text).unwrap();
+        }
+        track_fixture_files(root.path());
+        for (seed, doc) in [
+            ("src/probe.rs", "docs/d-valid.md"),
+            ("src/frame.rs", "src/guide.md"),
+        ] {
+            let task = format!("Latency sampling. Edit `{seed}`.");
+            let bundle = build_context_bundle(&index, root.path(), &task, 2, true);
+            assert_eq!(bundle.entities[0]["files_to_read"][1]["path"], doc);
+        }
+    }
+
+    #[test]
+    fn named_interfaces_retrieve_distinct_consumers_and_configuration_docs() {
+        let root = tempfile::tempdir().unwrap();
+        let mut index = test_index();
+        index.files.clear();
+        fs::create_dir(root.path().join("src")).unwrap();
+        for (path, text, definitions) in [
+            (
+                "src/codec.rs",
+                "",
+                vec!["decode_frame", "FrameLength", "CommonType"],
+            ),
+            ("src/reader.rs", "decode_frame FrameLength", vec!["read"]),
+            ("src/stream.rs", "FrameLength decode_frame", vec!["recv"]),
+            ("src/near.rs", "decode_frames FrameLength", vec!["other"]),
+            (
+                "src/ambiguous.rs",
+                "CommonType decode_frame",
+                vec!["CommonType"],
+            ),
+        ] {
+            fs::write(root.path().join(path), text).unwrap();
+            let mut f = marker_file(path);
+            let sym = f.symbols.pop().unwrap();
+            f.symbols = definitions
+                .into_iter()
+                .map(|name| SymbolOccurrence {
+                    name: name.into(),
+                    ..sym.clone()
+                })
+                .collect();
+            index.files.push(f);
+        }
+        index.files[0]
+            .env_vars
+            .push(crate::model::EnvVarOccurrence {
+                name: "FRAME_WIDTH".into(),
+                path: "src/codec.rs".into(),
+                line: 1,
+                access: crate::model::AccessKind::Read,
+                language: SourceLanguage::Rust,
+            });
+        fs::write(
+            root.path().join("reference.rst"),
+            "Set FRAME_WIDTH on binary input.",
+        )
+        .unwrap();
+        fs::write(
+            root.path().join("old.md"),
+            "Set FRAME_WIDTH_V2 on binary input.",
+        )
+        .unwrap();
+        track_fixture_files(root.path());
+        let result = build_context_bundle(
+            &index,
+            root.path(),
+            "Change frame decoding. Edit `src/codec.rs`.",
+            4,
+            true,
+        );
+        let paths: Vec<_> = result.entities[0]["files_to_read"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["path"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            paths,
+            [
+                "src/codec.rs",
+                "src/reader.rs",
+                "src/stream.rs",
+                "reference.rst"
+            ]
+        );
+    }
+
+    #[test]
+    fn verification_companions_require_package_and_definition_evidence() {
+        let root = tempfile::tempdir().unwrap();
+        let mut index = test_index();
+        index.files.clear();
+        for (path, text, names, kind) in [
+            (
+                "alpha/src/wire.rs",
+                "Envelope Signature Common Shared",
+                vec![],
+                SymbolKind::Function,
+            ),
+            (
+                "alpha/src/types.rs",
+                "",
+                vec!["Envelope", "Signature"],
+                SymbolKind::Struct,
+            ),
+            (
+                "alpha/src/weak.rs",
+                "",
+                vec!["Common", "Shared"],
+                SymbolKind::Struct,
+            ),
+            ("alpha/src/other.rs", "", vec!["Shared"], SymbolKind::Struct),
+            (
+                "alpha/tests/check.rs",
+                "",
+                vec!["decodes_wire_messages"],
+                SymbolKind::Function,
+            ),
+            (
+                "alpha/tests/near.rs",
+                "",
+                vec!["decodes_wireless_messages"],
+                SymbolKind::Function,
+            ),
+            (
+                "beta/tests/check.rs",
+                "",
+                vec!["validates_wire_messages", "reads_wire_headers"],
+                SymbolKind::Function,
+            ),
+        ] {
+            let full = root.path().join(path);
+            fs::create_dir_all(full.parent().unwrap()).unwrap();
+            fs::write(full, text).unwrap();
+            let mut file = marker_file(path);
+            let template = file.symbols.pop().unwrap();
+            file.symbols = names
+                .into_iter()
+                .map(|name| SymbolOccurrence {
+                    name: name.into(),
+                    kind,
+                    ..template.clone()
+                })
+                .collect();
+            index.files.push(file);
+        }
+        for package in ["alpha", "beta"] {
+            fs::write(root.path().join(package).join("Cargo.toml"), "").unwrap();
+        }
+        let bundle = build_context_bundle(
+            &index,
+            root.path(),
+            "CI coverage. Edit `alpha/src/wire.rs`.",
+            4,
+            true,
+        );
+        let paths: Vec<_> = bundle.entities[0]["files_to_read"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["path"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            paths[..3],
+            [
+                "alpha/src/wire.rs",
+                "alpha/tests/check.rs",
+                "alpha/src/types.rs"
+            ]
+        );
+    }
+
+    #[test]
+    fn scoped_source_evidence_disambiguates_equal_component_names() {
+        let root = tempfile::tempdir().unwrap();
+        let mut index = test_index();
+        index.files = vec![marker_file("a/codec.rs"), marker_file("b/codec.rs")];
+        for (path, text) in [
+            ("a", "fn marker() {}"),
+            ("b", "// validate sampleWidth and channelCount"),
+        ] {
+            fs::create_dir(root.path().join(path)).unwrap();
+            fs::write(root.path().join(path).join("codec.rs"), text).unwrap();
+        }
+        let env = build_context_bundle(
+            &index,
+            root.path(),
+            "fix(codec): validate sample width and channel count",
+            2,
+            true,
+        );
+        assert_eq!(env.entities[0]["files_to_read"][0]["path"], "b/codec.rs");
+    }
+
+    #[test]
+    fn component_scopes_match_complete_path_segments_and_keep_named_files_first() {
+        let root = tempfile::tempdir().unwrap();
+        let mut index = test_index();
+        index.files = vec![
+            marker_file("a/panel_old/model.rs"),
+            marker_file("z/panel/model.rs"),
+        ];
+        for task in [
+            "fix(panel): change model",
+            "change model in the panel module",
+            "change model under z/panel",
+        ] {
+            let env = build_context_bundle(&index, root.path(), task, 2, true);
+            assert_eq!(
+                env.entities[0]["files_to_read"][0]["path"], "z/panel/model.rs",
+                "{task}"
+            );
+        }
+        let env = build_context_bundle(
+            &index,
+            root.path(),
+            "fix(panel): edit a/panel_old/model.rs",
+            2,
+            false,
+        );
+        assert_eq!(
+            env.entities[0]["files_to_read"][0]["path"],
+            "a/panel_old/model.rs"
+        );
+    }
+
+    #[test]
+    fn named_seed_retrieves_repeated_existing_companions_with_a_bounded_budget() {
+        let root = tempfile::tempdir().unwrap();
+        let mut index = test_index();
+        index.files = vec![marker_file("z/model.rs"), marker_file("a/model_tests.rs")];
+        for path in ["review.md", "unused.md", "once.md"] {
+            fs::write(root.path().join(path), "context").unwrap();
+        }
+        let mut pb = crate::playbook::Playbook::default();
+        pb.co_edits.insert(
+            "z/model.rs".into(),
+            [
+                ("../outside.rs".into(), 8),
+                ("removed.rs".into(), 7),
+                ("review.md".into(), 3),
+                ("unused.md".into(), 2),
+                ("once.md".into(), 1),
+            ]
+            .into(),
+        );
+        crate::playbook::save_playbook(root.path(), &pb).unwrap();
+        let env =
+            build_context_bundle(&index, root.path(), "change tests for z/model.rs", 2, false);
+        let files = env.entities[0]["files_to_read"].as_array().unwrap();
+        assert_eq!(files[0]["path"], "z/model.rs");
+        assert_eq!(files[1]["path"], "review.md");
+        assert!(
+            files[1]["reasons"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|r| r.as_str().unwrap().contains("3 focused commits"))
+        );
+    }
+
+    #[test]
+    fn doctor_descriptions_match_distinct_terms_and_names_take_precedence() {
+        let catalog = vec![
+            (
+                "release-check".into(),
+                "Checks container images and package contents".into(),
+            ),
+            ("container-layout".into(), "Checks paths".into()),
+        ];
+        let suggestions = doctor_suggestions(&catalog, &task_tokens("container images"), None);
+        assert_eq!(suggestions[0]["kind"], "container-layout");
+        assert_eq!(suggestions[1]["kind"], "release-check");
+        let suggestions = doctor_suggestions(&catalog, &task_tokens("images images"), None);
+        assert_eq!(suggestions[0]["kind"], "all");
+    }
+
+    #[test]
+    fn explicit_references_survive_truncation_and_keep_the_matched_definition() {
+        let root = tempfile::tempdir().unwrap();
+        let mut index = test_index();
+        let mut target = marker_file("lib/a b.rs");
+        target.symbols[0].name = "resolveEntry".into();
+        target.symbols[0].qual_name = Some("Resolver::resolveEntry".into());
+        let mut decoy = marker_file("src/resolve_entry_dependencies.rs");
+        decoy.symbols[0].name = "resolveEntryDependencies".into();
+        index.files = vec![decoy, target];
+        let query = |task: &str| build_context_bundle(&index, root.path(), task, 1, false).entities;
+        for name in [
+            "resolveEntry",
+            "`Resolver::resolveEntry`",
+            "`Resolver.resolveEntry`",
+        ] {
+            let task = format!("Review {name} dependencies");
+            let entities = query(&task);
+            let file = &entities[0]["files_to_read"][0];
+            assert_eq!(file["path"], "lib/a b.rs");
+            assert_eq!(file["symbols"][0]["name"], "resolveEntry");
+            assert_eq!(entities[0]["symbols"][0]["name"], "resolveEntry");
+            assert_eq!(file["reasons"][0], "exact symbol definition in task");
+        }
+        let entities = query("Review resolveEntryDependencies in `./lib/a b.rs:1`");
+        assert_eq!(entities[0]["files_to_read"][0]["path"], "lib/a b.rs");
+        assert_eq!(
+            entities[0]["files_to_read"][0]["reasons"][0],
+            "exact repository path in task"
+        );
+    }
+
+    #[test]
+    fn plain_prose_and_path_suffixes_are_not_explicit_references_to_a_definition() {
+        let refs = ExplicitReferences::from_task("Review the marker in other/src/lib.rs");
+        assert!(!refs.names.contains("Review"));
+        assert!(!refs.names.contains("marker"));
+        assert!(!refs.paths.contains_key("src/lib.rs"));
+        assert!(refs.paths.contains_key("other/src/lib.rs"));
     }
 
     /// Every seed path imports `z/neighbor.rs`, so proximity fires whichever files
@@ -3142,7 +4055,15 @@ mod tests {
         let needles = extract_identifier_needles("marker");
         let rank = |cache: Option<&CodeGraphQueryCache>| {
             rank_files(
-                &index, &tokens, "marker", 10, &idf, intents, &needles, cache,
+                &index,
+                &tokens,
+                "marker",
+                10,
+                &idf,
+                intents,
+                &needles,
+                &ExplicitReferences::default(),
+                cache,
             )
         };
         let plain = rank(None);
@@ -3238,6 +4159,7 @@ mod tests {
             &idf,
             intents,
             &needles,
+            &ExplicitReferences::default(),
             Some(&cache),
         );
 
@@ -3314,7 +4236,17 @@ mod tests {
         let intents = classify_intents(&task.to_ascii_lowercase(), &tokens);
         assert!(intents.wants_tests);
         let needles = extract_identifier_needles(task);
-        let ranked = rank_files(&index, &tokens, task, 10, &idf, intents, &needles, None);
+        let ranked = rank_files(
+            &index,
+            &tokens,
+            task,
+            10,
+            &idf,
+            intents,
+            &needles,
+            &ExplicitReferences::default(),
+            None,
+        );
         assert_eq!(ranked[0].path, "tests/helper.rs");
     }
 
@@ -3380,7 +4312,17 @@ mod tests {
             needles.iter().any(|n| n.contains("SelfContractDoctor")),
             "needles={needles:?}"
         );
-        let ranked = rank_files(&index, &tokens, task, 10, &idf, intents, &needles, None);
+        let ranked = rank_files(
+            &index,
+            &tokens,
+            task,
+            10,
+            &idf,
+            intents,
+            &needles,
+            &ExplicitReferences::default(),
+            None,
+        );
         assert_eq!(ranked[0].path, "src/target.rs");
     }
 

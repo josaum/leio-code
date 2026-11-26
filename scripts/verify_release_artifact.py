@@ -27,6 +27,7 @@ REQUIRED_ARCHIVE_PATHS = (
     "Cargo.lock",
     "rust-toolchain.toml",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE",
     "LICENSE-MIT",
     "LICENSE-APACHE",
@@ -40,6 +41,7 @@ REQUIRED_ARCHIVE_PATHS = (
     "src/doctors/native.rs",
     "scripts/package_codex_plugin.py",
     "scripts/install_codex_plugin.py",
+    "packaging/windows/launch.mjs",
 )
 # #release-verify-contract keeps the packaged context benchmark and memory auditable.
 
@@ -130,7 +132,7 @@ def verify_manifest(manifest_path: Path, install_smoke: bool = True) -> dict[str
     checked = []
     tarball_for_install: Path | None = None
     for artifact in artifacts:
-        artifact_path = Path(artifact["path"]).expanduser().resolve()
+        artifact_path = (manifest_path.parent / Path(artifact["path"]).expanduser()).resolve()
         if not artifact_path.is_file():
             raise RuntimeError(f"missing release artifact: {artifact_path}")
         expected_size = int(artifact["size_bytes"])

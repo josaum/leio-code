@@ -37,7 +37,8 @@ use crate::model::{
     SourceLanguage, SymbolKind,
 };
 
-const CODE_GRAPH_VERSION: u32 = 4;
+// Version 5 separates declarations that previously shared a symbol identity.
+const CODE_GRAPH_VERSION: u32 = 5;
 /// Query-cache schema version. Bump when cache fields or importer index keys
 /// change so stale `query-cache.json` files force a rebuild.
 ///
@@ -45,7 +46,7 @@ const CODE_GRAPH_VERSION: u32 = 4;
 /// name, and file path resolve at query time from `file_import_details` /
 /// `importers_by_target_path`. Older caches stuffed last-segment aliases into
 /// `importers_by_raw` and collided on short names (`json`, `os`, `auth`).
-pub(crate) const QUERY_CACHE_VERSION: u32 = 9;
+pub(crate) const QUERY_CACHE_VERSION: u32 = 10;
 const RDF_TYPE: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
 const PROV_SPECIALIZATION_OF: &str = "http://www.w3.org/ns/prov#specializationOf";
 
@@ -529,6 +530,48 @@ fn rewrite_parsed_file_revision(
     parsed
 }
 
+/// Keep unsuffixed URNs for unique declarations. Overloads and redeclarations
+/// use their source order within the qualified name, independent of line shifts.
+fn distinguish_repeated_declarations(parsed: &mut ParsedFileGraph, revision: &str) {
+    if parsed.language == SourceLanguage::Rdf {
+        // Repeated RDF statements about a resource intentionally share identity.
+        return;
+    }
+    let mut counts = HashMap::new();
+    for definition in &parsed.definitions {
+        *counts
+            .entry(definition.stable_iri.clone())
+            .or_insert(0usize) += 1;
+    }
+    let mut ordinals = HashMap::new();
+    let mut renamed_occurrences = HashMap::new();
+    for definition in &mut parsed.definitions {
+        if counts[&definition.stable_iri] == 1 {
+            continue;
+        }
+        let ordinal = ordinals
+            .entry(definition.stable_iri.clone())
+            .or_insert(0usize);
+        *ordinal += 1;
+        definition
+            .stable_iri
+            .push_str(&format!(":declaration:{ordinal}"));
+        let occurrence = mint_occurrence_iri(
+            &definition.stable_iri,
+            revision,
+            definition.start_line,
+            definition.end_line,
+        );
+        let old = std::mem::replace(&mut definition.occurrence_iri, occurrence);
+        renamed_occurrences.insert(old, definition.occurrence_iri.clone());
+    }
+    for call in &mut parsed.calls {
+        if let Some(renamed) = renamed_occurrences.get(&call.owner_iri) {
+            call.owner_iri.clone_from(renamed);
+        }
+    }
+}
+
 fn build_graph_with_cache(
     index: &RepoIndex,
     root: &Path,
@@ -589,7 +632,8 @@ fn build_graph_with_cache(
         };
 
         match parse_file_graph(&file.path, file.language, &source, repo_slug, revision) {
-            Ok(parsed) => {
+            Ok(mut parsed) => {
+                distinguish_repeated_declarations(&mut parsed, revision);
                 *language_counts
                     .entry(file.language.as_str().to_string())
                     .or_insert(0usize) += 1;
@@ -1535,12 +1579,21 @@ fn walk_file_graph(
             format!("{}::{}", scopes.join("::"), name)
         };
         let stable_iri = mint_symbol_iri(repo_slug, path, language, kind, &qual_name);
-        let occurrence_iri = mint_occurrence_iri(
+        let start_line = node.start_position().row + 1;
+        let mut occurrence_iri = mint_occurrence_iri(
             &stable_iri,
             revision,
-            node.start_position().row + 1,
+            start_line,
             node.end_position().row + 1,
         );
+        if definitions
+            .iter()
+            .rev()
+            .take_while(|definition| definition.start_line == start_line)
+            .any(|definition| definition.occurrence_iri == occurrence_iri)
+        {
+            occurrence_iri.push_str(&format!(":byte:{}", node.start_byte()));
+        }
 
         definitions.push(Definition {
             stable_iri: stable_iri.clone(),
