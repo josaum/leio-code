@@ -51,7 +51,8 @@ use crate::search;
 // change, but unchanged files are served from the per-version cache without
 // re-running `extract_env_vars`, so the version must bump to force a
 // re-extract of cached Python files.
-const INDEX_VERSION: u32 = 19;
+// Bumped 19 → 20: rebuild Windows indexes with slash-separated file paths.
+const INDEX_VERSION: u32 = 20;
 
 /// Public accessor for the indexer's schema version. Used by report-rendering
 /// callers (e.g. `diagnostics::RunMeta`) so they don't need a `pub` constant.
@@ -1832,10 +1833,8 @@ fn ts_language(language: SourceLanguage) -> Option<Language> {
 }
 
 fn relative_path(root: &Path, path: &Path) -> String {
-    path.strip_prefix(root)
-        .unwrap_or(path)
-        .to_string_lossy()
-        .to_string()
+    let relative = path.strip_prefix(root).unwrap_or(path).to_string_lossy();
+    crate::checkout::slash_repo_path(&relative).into_owned()
 }
 
 fn system_time_to_unix_ms(value: Option<SystemTime>) -> i128 {
