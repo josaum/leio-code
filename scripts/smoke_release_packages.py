@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import subprocess
@@ -59,9 +60,12 @@ def smoke(assets: Path, version: str, revision: str, wheel_tag: str) -> None:
         wheel = one_asset(assets, f"leio_code-{version}-py3-none-{wheel_tag}.whl")
         run([python, "-m", "pip", "install", "--no-index", "--no-deps", wheel], work, env)
         versions([bin_dir / f"leio-code{suffix}"], [bin_dir / f"leio-harness{suffix}"])
-        wheel_entry = Path(run([python, "-c",
-            "import pathlib,leio_code; print(pathlib.Path(leio_code.__file__).parent/'mcp'/'leio-mcp.js')"
-        ], work, env).strip())
+        wheel_entry = Path(json.loads(run([python, "-c",
+            "import json,pathlib,leio_code; "
+            "print(json.dumps(str(pathlib.Path(leio_code.__file__).parent/'mcp'/'leio-mcp.js')))"
+        ], work, env)))
+        if not wheel_entry.is_file():
+            raise FileNotFoundError(wheel_entry)
         run([node, verify_stdio, wheel_entry], work, env)
         print(f"Installed {wheel.name} and verified CLI, harness and offline stdio")
 
