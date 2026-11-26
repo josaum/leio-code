@@ -719,8 +719,9 @@ pub fn build_context_bundle_with_options(
         .filter(|f| f.explicit_match == ExplicitMatch::Path)
         .map(|f| f.path.clone())
         .collect();
-    if residual.is_some() && !named_paths.is_empty() {
-        companions::add_task_companions(
+    let targeted_slots_full = residual.is_some()
+        && !named_paths.is_empty()
+        && companions::add_task_companions(
             &mut files,
             index,
             root,
@@ -729,7 +730,6 @@ pub fn build_context_bundle_with_options(
             limit,
             playbook.is_some(),
         );
-    }
     let before_playbook =
         trace_enabled.then(|| files.iter().map(|f| f.path.clone()).collect::<HashSet<_>>());
     let mut playbook_boost_count = 0usize;
@@ -841,30 +841,53 @@ pub fn build_context_bundle_with_options(
                 .then_with(|| left.path.cmp(&right.path))
         });
     }
-    let related_path = if !diff && residual.is_some() && !named_paths.is_empty() {
-        companions::add_linked_companion(
-            &mut files,
-            index,
-            root,
-            &named_paths,
-            rank_terms,
-            graph_cache.as_ref(),
-            limit,
-        )
-    } else {
-        None
-    };
-    // Keep direct references ahead of indirect evidence after all boosts.
-    if files
-        .iter()
-        .any(|file| file.explicit_match != ExplicitMatch::None)
+    let related_path =
+        if !diff && residual.is_some() && !named_paths.is_empty() && !targeted_slots_full {
+            companions::add_linked_companion(
+                &mut files,
+                index,
+                root,
+                &named_paths,
+                rank_terms,
+                graph_cache.as_ref(),
+                limit,
+            )
+        } else {
+            None
+        };
+    // A taskless diff names its files through Git. If the live change set fits,
+    // keep it together and use the remaining slots for the existing impact ranking.
+    let mut dirty_seeds = HashSet::new();
+    if diff
+        && requested_task.trim().is_empty()
+        && !changed_files.is_empty()
+        && let Ok(root) = root.canonicalize()
+    {
+        dirty_seeds.extend(
+            changed_files
+                .iter()
+                .map(String::as_str)
+                .filter(|p| companions::live_file(&root, Path::new(p)).is_some())
+                .take(limit + 1),
+        );
+        if dirty_seeds.len() > limit {
+            dirty_seeds.clear();
+        }
+    }
+    // Keep directly observed paths and explicit references ahead of indirect evidence.
+    if !dirty_seeds.is_empty()
+        || files
+            .iter()
+            .any(|file| file.explicit_match != ExplicitMatch::None)
     {
         let (min, max) = files.iter().fold((0, 0), |(min, max), file| {
             (min.min(file.score), max.max(file.score))
         });
         let band = max - min + 1;
         for file in &mut files {
-            file.score += band * file.explicit_match as i64;
+            let priority = (file.explicit_match as i64)
+                .max(i64::from(dirty_seeds.contains(file.path.as_str())));
+            file.score += band * priority;
         }
         files.sort_by_key(|file| std::cmp::Reverse(file.score));
     }

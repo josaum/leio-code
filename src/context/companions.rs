@@ -1,4 +1,6 @@
 //! Evidence for companions when the named file has little co-edit history.
+mod verification;
+
 use super::*;
 use crate::model::SymbolKind;
 use std::process::Command;
@@ -316,6 +318,7 @@ fn interface_companions(
     root: &Path,
     seeds: &[String],
     terms: &[String],
+    scope: &verification::CargoScope,
 ) -> Vec<(String, String)> {
     static QUALIFIED: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"\b([A-Za-z_][A-Za-z_0-9]*)\s*(?:::|\.)\s*").unwrap());
@@ -323,6 +326,7 @@ fn interface_companions(
     let mut candidates = Vec::new();
     for seed in seeds.iter().take(4) {
         let file = Path::new(seed);
+        let owner_package = package(root, file, &mut HashMap::new());
         let mut siblings: Vec<_> = index
             .files
             .iter()
@@ -406,8 +410,22 @@ fn interface_companions(
                     .collect();
                 let hits = defs.iter().filter(|s| refs.contains(**s)).count();
                 if hits >= 2 {
-                    candidates.push((100 * hits / defs.len(), hits, other.path.clone(),
-                        format!("named file `{seed}` mentions {hits}/{} indexed callables qualified by `{module}`", defs.len())));
+                    let bridge = source_prefix(root, path)
+                        .and_then(|text| scope.bridge(owner_package, &text));
+                    let mut reason = format!(
+                        "named file `{seed}` mentions {hits}/{} indexed callables qualified by `{module}`",
+                        defs.len()
+                    );
+                    if let Some(dep) = bridge {
+                        reason.push_str(&format!(" and the sibling uses local dependency `{dep}`"));
+                    }
+                    candidates.push((
+                        bridge.is_some(),
+                        100 * hits / defs.len(),
+                        hits,
+                        other.path.clone(),
+                        reason,
+                    ));
                 }
             }
             let Some(matcher) = &matcher else { continue };
@@ -426,6 +444,7 @@ fn interface_companions(
             let focused = hits.iter().filter(|n| focus.contains(**n)).count();
             if hits.len() >= 2 && focused > 0 {
                 candidates.push((
+                    false,
                     focused,
                     hits.len(),
                     other.path.clone(),
@@ -437,13 +456,18 @@ fn interface_companions(
             }
         }
     }
-    candidates.sort_by(|a, b| b.0.cmp(&a.0).then(b.1.cmp(&a.1)).then(a.2.cmp(&b.2)));
+    candidates.sort_by(|a, b| {
+        b.0.cmp(&a.0)
+            .then(b.1.cmp(&a.1))
+            .then(b.2.cmp(&a.2))
+            .then(a.3.cmp(&b.3))
+    });
     let mut seen = HashSet::new();
     candidates
         .into_iter()
-        .filter(|c| seen.insert(c.2.clone()))
+        .filter(|c| seen.insert(c.3.clone()))
         .take(2)
-        .map(|(_, _, p, r)| (p, r))
+        .map(|(_, _, _, p, r)| (p, r))
         .collect()
 }
 
@@ -620,41 +644,59 @@ pub(super) fn add_task_companions(
     seeds: &[String],
     limit: usize,
     history: bool,
-) {
+) -> bool {
     let budget = limit.saturating_sub(seeds.len());
     if budget == 0 {
-        return;
+        return false;
     }
     let Ok(root) = root.canonicalize() else {
-        return;
+        return false;
     };
     let terms = task_tokens(task);
     let verify = terms
         .iter()
         .any(|t| matches!(t.as_str(), "ci" | "coverage" | "test" | "tests" | "testing"));
+    let scope = if verify {
+        verification::CargoScope::from_seeds(&root, seeds)
+    } else {
+        Default::default()
+    };
     let mut evidence = named_directory_members(&root, task, seeds, budget);
     let has_directory = !evidence.is_empty();
     if evidence.len() < budget {
         if verify {
             evidence.extend(verification_candidates(index, &root, seeds));
+            if history {
+                evidence.extend(verification::stale_expectations(
+                    index, &root, seeds, &scope,
+                ));
+            }
         }
         if history && let Some(candidate) = recurring_candidate(&root, task, seeds) {
             evidence.push(candidate);
         }
     }
     if !has_directory {
-        evidence.extend(interface_companions(index, &root, seeds, &terms));
+        evidence.extend(interface_companions(index, &root, seeds, &terms, &scope));
         if let Some(doc) = documentation_companion(index, &root, seeds, &terms) {
             evidence.push(doc);
         }
     }
     let mut seen = HashSet::new();
-    evidence.retain(|(path, _)| seen.insert(path.clone()));
+    evidence.retain(|(path, _)| {
+        live_file(&root, Path::new(path)).is_some() && seen.insert(path.clone())
+    });
+    // A generic binary or graph fallback can fill a free slot after targeted evidence.
+    let filled = evidence.len() >= budget;
+    if !filled && terms.iter().any(|t| t == "coverage") {
+        evidence.extend(
+            verification::coverage_gaps(index, &root, &scope)
+                .into_iter()
+                .filter(|(path, _)| !seeds.contains(path) && seen.insert(path.clone())),
+        );
+    }
     let ceiling = files.iter().map(|f| f.score).max().unwrap_or(0);
     for (i, (path, reason)) in evidence.into_iter().take(budget).enumerate() {
-        if live_file(&root, Path::new(&path)).is_none() {
-            continue;
-        }
         let existing = files.iter().find(|f| f.path == path).map(|f| f.score);
         upsert_scored_file(
             files,
@@ -669,6 +711,7 @@ pub(super) fn add_task_companions(
             new.graph_proximity = 0;
         }
     }
+    filled
 }
 
 /// Reserve the last available slot for a corroborated relationship. Exact

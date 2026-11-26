@@ -825,3 +825,219 @@ fn explain_symbol_find_text_and_context_diff_work_end_to_end() {
         "{diff_ctx}"
     );
 }
+
+#[test]
+fn context_follows_changed_contracts_across_local_packages() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+    let git = |args: &[&str]| {
+        let out = Command::new("git")
+            .args([
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=test@example.invalid",
+                "-c",
+                "commit.gpgsign=false",
+                "-c",
+                "core.hooksPath=/dev/null",
+            ])
+            .args(args)
+            .current_dir(root)
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    };
+    git(&["init", "-q"]);
+    for (path, body) in [
+        (".gitignore", "/.leio-code/\n"),
+        (
+            "Cargo.toml",
+            "[workspace]\nmembers=['viewer','island']\n[workspace.dependencies]\nkit={package='orchard',path='.'}\n[package]\nname='orchard'\nversion='0.1.0'\nedition='2021'\n[lib]\nname='orchard_lib'\n",
+        ),
+        (
+            "viewer/Cargo.toml",
+            "[package]\nname='viewer'\nversion='0.1.0'\nedition='2021'\n[dependencies]\nkit.workspace=true\n",
+        ),
+        (
+            "island/Cargo.toml",
+            "[package]\nname='island'\nversion='0.1.0'\nedition='2021'\n",
+        ),
+        ("src/lib.rs", "pub mod report;\npub mod compass;\n"),
+        (
+            "src/compass.rs",
+            "pub fn bearing() -> usize { 4 }\npub fn inclination() -> usize { 7 }\n",
+        ),
+        (
+            "viewer/src/main.rs",
+            "mod bridge;\nfn main(){bridge::north();bridge::south();}\n",
+        ),
+        (
+            "viewer/src/bridge.rs",
+            "use kit::compass::{bearing, inclination};\npub fn north() { bearing(); }\npub fn south(){inclination();}\n",
+        ),
+        (
+            "viewer/tests/runs.rs",
+            r#"#[test] fn invokes(){let _ = env!("CARGO_BIN_EXE_viewer");}"#,
+        ),
+        (
+            "tests/checks.rs",
+            r#"#[test] fn angle(){assert_eq!(orchard_lib::compass::inclination(),7);}"#,
+        ),
+        (
+            "tests/palette.rs",
+            r#"#[test] fn palette(){assert_eq!(orchard_lib::report::catalog()["flavor"], "indigo");}"#,
+        ),
+        (
+            "viewer/tests/shade.rs",
+            r#"use kit::report::{catalog, SHADE as TONE}; #[test] fn shade(){assert_eq!(catalog().get("flavor").copied(), Some(TONE));}"#,
+        ),
+        (
+            "tests/repaired.rs",
+            r#"use orchard_lib::report::catalog; const SHADE: &str="violet"; #[test] fn repaired(){assert_eq!(catalog()["flavor"], SHADE, "indigo");}"#,
+        ),
+        (
+            "tests/other_import.rs",
+            r#"mod misc {pub const SHADE:&str="violet";} use misc::SHADE; #[test] fn other(){assert_eq!(orchard_lib::report::catalog()["flavor"], SHADE);}"#,
+        ),
+        (
+            "tests/future.rs",
+            r#"#[test] fn future(){assert_eq!(orchard_lib::report::catalog()["count"], "five");}"#,
+        ),
+        ("island/src/lib.rs", ""),
+        (
+            "island/tests/mirror.rs",
+            r#"#[test] fn mirror(){ let x=std::collections::BTreeMap::from([("flavor","indigo")]); assert_eq!(x["flavor"], "indigo");}"#,
+        ),
+    ] {
+        write(root, path, body);
+    }
+    let original = r#"pub const SHADE: &str = "indigo";
+pub fn catalog() -> std::collections::BTreeMap<&'static str,&'static str> {
+    std::collections::BTreeMap::from([("flavor", SHADE), ("count", "five")])
+}
+#[test] fn shape() { assert_eq!(catalog()["flavor"], SHADE); assert_eq!(catalog()["count"], "five"); }"#;
+    write(root, "src/report.rs", original);
+    git(&["add", "."]);
+    git(&["commit", "-qm", "initial orchard"]);
+    let changed = original
+        .replace(r#"("flavor", SHADE)"#, r#"("flavor","violet")"#)
+        .replace(r#"["flavor"], SHADE"#, r#"["flavor"], "violet""#);
+    write(root, "src/report.rs", &changed);
+    git(&["commit", "-qam", "switch palette"]);
+    write(root, "notes.txt", "unrelated work");
+    git(&["add", "notes.txt"]);
+    git(&["commit", "-qm", "record notes"]);
+    write(root, "src/unrelated.rs", "pub fn other() -> bool { true }");
+    git(&["add", "src/unrelated.rs"]);
+    git(&["commit", "-qm", "add unrelated helper"]);
+    write(
+        root,
+        "src/report.rs",
+        &changed.replace("\"five\"", "\"nine\""),
+    );
+    git(&["commit", "-qam", "future change"]);
+    git(&["checkout", "-q", "--detach", "HEAD^"]);
+    envelope(root, &["index"]);
+    let query = |limit: &str| {
+        envelope(
+            root,
+            &[
+                "context",
+                "Expand test coverage. Update `viewer/src/main.rs`.",
+                "--full",
+                "--limit",
+                limit,
+            ],
+        )
+    };
+    let small = query("4");
+    let paths: Vec<_> = small["entities"][0]["files_to_read"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["path"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        paths,
+        [
+            "viewer/src/main.rs",
+            "tests/palette.rs",
+            "viewer/tests/shade.rs",
+            "viewer/src/bridge.rs"
+        ]
+    );
+    for limit in ["1", "2"] {
+        let limited = query(limit);
+        let files = limited["entities"][0]["files_to_read"].as_array().unwrap();
+        assert_eq!(files.len(), limit.parse::<usize>().unwrap());
+        assert_eq!(files[0]["path"], "viewer/src/main.rs");
+    }
+    let ablated = Command::new(bin())
+        .args(["--json", "--repo"])
+        .arg(root)
+        .args([
+            "context",
+            "Expand test coverage. Update `viewer/src/main.rs`.",
+            "--full",
+            "--limit",
+            "40",
+        ])
+        .env("LEIO_CONTEXT_ABLATION", "no_playbook")
+        .output()
+        .unwrap();
+    assert!(ablated.status.success());
+    assert!(
+        !String::from_utf8(ablated.stdout)
+            .unwrap()
+            .contains("test still asserts")
+    );
+    let wide = query("40");
+    let files = wide["entities"][0]["files_to_read"].as_array().unwrap();
+    let reasons = |needle: &str| {
+        files
+            .iter()
+            .filter(|f| {
+                f["reasons"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|r| r.as_str().unwrap().contains(needle))
+            })
+            .map(|f| f["path"].as_str().unwrap())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        reasons("test still asserts"),
+        ["tests/palette.rs", "viewer/tests/shade.rs"]
+    );
+    assert!(reasons("local dependency").contains(&"viewer/src/bridge.rs"));
+    let gap = files
+        .iter()
+        .find(|f| f["path"] == "src/compass.rs")
+        .unwrap()["reasons"]
+        .to_string();
+    assert!(
+        gap.contains("bearing") && !gap.contains("inclination"),
+        "{gap}"
+    );
+    for path in ["src/lib.rs", "src/compass.rs"] {
+        let original = fs::read_to_string(root.join(path)).unwrap();
+        write(root, path, &(original + "\n"));
+    }
+    let diff = envelope(root, &["context", "--diff", "--limit", "2"]);
+    let actual: std::collections::BTreeSet<_> = diff["entities"][0]["files_to_read"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|f| f["path"].as_str())
+        .collect();
+    assert_eq!(
+        actual,
+        std::collections::BTreeSet::from(["src/lib.rs", "src/compass.rs"])
+    );
+}
