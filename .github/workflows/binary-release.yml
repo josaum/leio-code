@@ -1,24 +1,179 @@
 name: Windows installation preflight
 
+# Build and verify artifacts at the selected commit. Promote the resulting
+# assets to a GitHub Release only after every installation check has passed.
 on:
   workflow_dispatch:
+
+concurrency:
+  group: leio-code-binary-${{ github.sha }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
   actions: read
 
+env:
+  CARGO_TERM_COLOR: always
+  RUSTC_WRAPPER: ""
+  LEIO_CODE_SKIP_BINARY_DOWNLOAD: "1"
+
 jobs:
-  preflight:
-    name: Windows installation (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+  build:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-2022, windows-2025]
+        include:
+          - os: windows-2025
+            target: x86_64-pc-windows-msvc
+            asset_name: leio-code-windows-amd64
+            ext: ".exe"
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@1.98.1
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: leio-code-binary-${{ matrix.target }}
+      - name: Build release binaries
+        shell: bash
+        env:
+          CARGO_TARGET_DIR: target
+          CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS: -C target-feature=+crt-static
+          MACOSX_DEPLOYMENT_TARGET: "11.0"
+          TARGET: ${{ matrix.target }}
+          ASSET: ${{ matrix.asset_name }}
+          EXT: ${{ matrix.ext }}
+        run: |
+          cargo build --locked --release --target "$TARGET" -p leio-code -p leio-harness
+          mkdir -p release-bin
+          cp "target/$TARGET/release/leio-code$EXT" "release-bin/$ASSET$EXT"
+          cp "target/$TARGET/release/leio-harness$EXT" "release-bin/$ASSET-harness$EXT"
+      - name: Check versions and write digests
+        shell: bash
+        env:
+          ASSET: ${{ matrix.asset_name }}
+          EXT: ${{ matrix.ext }}
+        run: |
+          VERSION=$(node -p 'require("./mcp/package.json").version')
+          cd release-bin
+          code="$ASSET$EXT"
+          harness="$ASSET-harness$EXT"
+          if [[ -z "$EXT" ]] && command -v strip >/dev/null; then
+            strip "$code" "$harness"
+          fi
+          "./$code" --version | tee code-version.txt
+          "./$harness" --version | tee harness-version.txt
+          grep -F "$VERSION (${GITHUB_SHA:0:12}, clean)" code-version.txt
+          grep -F "$VERSION" harness-version.txt
+          rm code-version.txt harness-version.txt
+          if command -v shasum >/dev/null; then
+            for file in "$code" "$harness"; do shasum -a 256 "$file" > "$file.sha256"; done
+          else
+            for file in "$code" "$harness"; do sha256sum "$file" > "$file.sha256"; done
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.asset_name }}
+          path: release-bin/
+          if-no-files-found: error
+          retention-days: 7
+
+  package:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24.22.3"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Reuse earlier non-Windows binaries for preflight only
+        uses: actions/download-artifact@v5
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45838893701
+          pattern: binary-!(leio-code-windows-amd64)
+          path: release-assets
+          merge-multiple: true
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: binary-leio-code-windows-amd64
+          path: release-assets
+          merge-multiple: true
+      - name: Resolve package version
+        id: version
+        shell: bash
+        run: echo "version=$(node -p 'require("./mcp/package.json").version')" >> "$GITHUB_OUTPUT"
+      - name: Verify raw binaries and prepare locked stdio dependencies
+        run: |
+          (cd release-assets && sha256sum -c ./*.sha256)
+          (cd mcp && npm ci --omit=dev --ignore-scripts --no-audit --no-fund)
+      - name: Assemble distributions
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          python scripts/package_windows_portable.py --assets-dir release-assets --output-dir release-assets
+          python scripts/build_packages.py --assets-dir release-assets
+          cp packaging/dist/leio_code-*.whl packaging/dist/leio-code-*.tgz release-assets/
+          bash scripts/package_desktop_mcpb.sh "release-assets/leio-code-plugin-v$VERSION.mcpb" release-assets
+          python scripts/package_codex_plugin.py --output-dir release-assets
+          python scripts/verify_release_artifact.py --manifest "release-assets/leio-code-plugin-v$VERSION.manifest.json"
+      - name: Record candidate identity and asset checksums
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          cd release-assets
+          for asset in ./*.tar.gz ./*.zip ./*.mcpb; do
+            name=${asset#./}
+            sha256sum "$name" > "$name.sha256"
+          done
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          assets = []
+          for file in sorted(Path.cwd().iterdir()):
+              if file.is_file():
+                  with file.open("rb") as handle:
+                      digest = hashlib.file_digest(handle, "sha256").hexdigest()
+                  assets.append({"name": file.name, "sha256": digest, "size_bytes": file.stat().st_size})
+          manifest = {"version": os.environ["VERSION"], "commit": os.environ["GITHUB_SHA"],
+                      "build_run_id": os.environ["GITHUB_RUN_ID"], "assets": assets}
+          Path("release-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+          PY
+          sha256sum -- * > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          path: release-assets/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+  install:
+    name: Install on ${{ matrix.os }}
+    needs: package
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2025
+            wheel: win_amd64
+          - os: windows-2022
+            wheel: win_amd64
     env:
-      REVISION: ef250fd439049df03fbe73125b630d9b3b114383
-      VERSION: 2.7.0
+      VERSION: ${{ needs.package.outputs.version }}
+      WHEEL: ${{ matrix.wheel }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v6
@@ -29,25 +184,25 @@ jobs:
           python-version: "3.12"
       - uses: actions/download-artifact@v5
         with:
-          github-token: ${{ github.token }}
-          run-id: 45838893701
           name: release-assets
           path: release-assets
-      - name: Install test client
+      - name: Verify downloaded assets and install smoke dependencies
         id: prepare
-        working-directory: mcp
-        run: npm ci --omit=dev --ignore-scripts --no-audit --no-fund
-      - name: Verify wheel, npm and desktop installs
+        shell: bash
+        run: |
+          (cd release-assets && if command -v shasum >/dev/null; then shasum -a 256 -c SHA256SUMS; else sha256sum -c SHA256SUMS; fi)
+          (cd mcp && npm ci --omit=dev --ignore-scripts --no-audit --no-fund)
+      - name: Install wheel, npm archive and desktop bundle
         shell: bash
         run: |
           python scripts/smoke_release_packages.py --assets-dir release-assets \
-            --version "$VERSION" --revision "$REVISION" --wheel-tag win_amd64
-      - name: Verify portable package
-        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+            --version "$VERSION" --revision "$GITHUB_SHA" --wheel-tag "$WHEEL"
+      - name: Test portable Windows install with system-only PATH
+        if: ${{ !cancelled() && runner.os == 'Windows' && steps.prepare.outcome == 'success' }}
         shell: pwsh
         run: |
           $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
           $dumpbin = & $vswhere -latest -products '*' -find 'VC\Tools\MSVC\**\bin\Hostx64\x64\dumpbin.exe' | Select-Object -First 1
           if (-not $dumpbin) { throw 'Visual Studio dumpbin was not found' }
           python scripts/smoke_windows_release.py "release-assets/leio-code-${env:VERSION}-windows-amd64-portable.zip" `
-            --dumpbin "$dumpbin" --version "$env:VERSION" --revision "$env:REVISION"
+            --dumpbin "$dumpbin" --version "$env:VERSION" --revision "$env:GITHUB_SHA"
