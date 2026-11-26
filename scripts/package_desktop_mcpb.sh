@@ -33,6 +33,9 @@ for platform, files in zip(("darwin-arm64", "darwin-x64", "linux-x64", "win32-x6
     suffix = ".exe" if platform == "win32-x64" else ""
     shutil.copy2(release_binary(files["code"], assets), vendor / f"leio-code{suffix}")
     shutil.copy2(release_binary(files["harness"], assets), vendor / f"leio-harness{suffix}")
+    if not suffix:
+        for executable in vendor.iterdir():
+            executable.chmod(0o755)
 with zipfile.ZipFile(assets / f"leio-code-{VERSION}-windows-amd64-portable.zip") as archive:
     archive.extractall(stage / "portable", [n for n in archive.namelist() if n.startswith("leio-code/runtime/git/")])
 runtime = stage / "mcp" / "runtime" / "win32-x64"
@@ -45,7 +48,7 @@ fi
 # pnpm-layout tree: pnpm's relative symlinks do not survive the .mcpb zip
 # round-trip, and a half-dangling @modelcontextprotocol/sdk breaks the
 # packaged server at import time (ERR_MODULE_NOT_FOUND).
-npm ci --prefix "${STAGE}/mcp" --omit=dev --ignore-scripts >/dev/null
+(cd "${STAGE}/mcp" && npm ci --omit=dev --ignore-scripts --no-audit --no-fund >/dev/null)
 
 npx --yes @anthropic-ai/mcpb@2.1.2 validate "${STAGE}/manifest.json"
 npx --yes @anthropic-ai/mcpb@2.1.2 pack "${STAGE}" "${OUT}"

@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { chmodSync, existsSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -10,6 +10,13 @@ const code = path.join(vendor, `leio-code${ext}`);
 const harness = path.join(vendor, `leio-harness${ext}`);
 
 if (existsSync(code) && existsSync(harness)) {
+  if (process.platform !== "win32") {
+    for (const file of [code, harness]) {
+      const mode = statSync(file).mode & 0o777;
+      // Some archive extractors discard the packaged executable bit.
+      if (!(mode & 0o100)) chmodSync(file, mode | 0o100);
+    }
+  }
   process.env.LEIO_CODE_BIN = code;
   process.env.LEIO_HARNESS_BIN = harness;
 }

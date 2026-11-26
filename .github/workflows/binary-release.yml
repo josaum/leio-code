@@ -119,7 +119,7 @@ jobs:
       - name: Verify raw binaries and prepare locked stdio dependencies
         run: |
           (cd release-assets && sha256sum -c ./*.sha256)
-          npm ci --prefix mcp --omit=dev --ignore-scripts
+          (cd mcp && npm ci --omit=dev --ignore-scripts --no-audit --no-fund)
       - name: Assemble distributions
         env:
           VERSION: ${{ steps.version.outputs.version }}
@@ -199,7 +199,7 @@ jobs:
         shell: bash
         run: |
           (cd release-assets && if command -v shasum >/dev/null; then shasum -a 256 -c SHA256SUMS; else sha256sum -c SHA256SUMS; fi)
-          npm ci --prefix mcp --omit=dev --ignore-scripts
+          (cd mcp && npm ci --omit=dev --ignore-scripts --no-audit --no-fund)
           python scripts/smoke_release_packages.py --assets-dir release-assets \
             --version "$VERSION" --revision "$GITHUB_SHA" --wheel-tag "$WHEEL"
       - name: Test portable Windows install with system-only PATH
