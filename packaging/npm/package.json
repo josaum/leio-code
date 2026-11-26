@@ -1,6 +1,7 @@
 {
   "name": "leio-code",
-  "version": "2.6.8",
+  "version": "2.7.0",
+  "type": "module",
   "description": "Prebuilt Leio Code and Leio Harness",
   "license": "MIT OR Apache-2.0",
   "repository": {

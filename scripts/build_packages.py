@@ -7,8 +7,10 @@ that installs them.
 
 from __future__ import annotations
 
-import hashlib
+import argparse
 import base64
+import hashlib
+import json
 import re
 import shutil
 import subprocess
@@ -41,17 +43,16 @@ SERVER_FILES = (
 def server_modules() -> Path:
     cached = DIST / "server-modules"
     marker = cached / "node_modules" / "zod" / "package.json"
-    if marker.is_file():
+    lock = cached / "package-lock.json"
+    if marker.is_file() and lock.is_file() and lock.read_bytes() == (ROOT / "mcp" / lock.name).read_bytes():
         return cached / "node_modules"
     if cached.exists():
         shutil.rmtree(cached)
     cached.mkdir(parents=True)
-    (cached / "package.json").write_text(
-        '{"name":"leio-code-server","private":true,"version":"2.6.8"}\n',
-        encoding="utf-8",
-    )
+    for name in ("package.json", "package-lock.json"):
+        shutil.copy2(ROOT / "mcp" / name, cached / name)
     subprocess.run(
-        ["npm", "install", "--omit=dev", "--ignore-scripts", "@modelcontextprotocol/sdk@1.28.0", "zod@3.25.76"],
+        ["npm", "ci", "--omit=dev", "--ignore-scripts"],
         cwd=cached,
         check=True,
     )
@@ -65,13 +66,15 @@ def stage_server(dest: Path, *, with_modules: bool = False) -> None:
     for name in SERVER_FILES:
         shutil.copy2(ROOT / "mcp" / name, dest / name)
     (dest / "package.json").write_text(
-        '{"name":"leio-code-server","private":true,"type":"module","version":"2.6.8"}\n',
+        json.dumps({"name": "leio-code-server", "private": True, "type": "module", "version": VERSION}) + "\n",
         encoding="utf-8",
     )
     shutil.copy2(ROOT / "packaging" / "npm" / "bin" / "leio-mcp.js", dest / "leio-mcp.js")
     if with_modules:
         shutil.copytree(server_modules(), dest / "node_modules")
-VERSION = "2.6.8"
+
+
+VERSION = json.loads((ROOT / "packaging" / "npm" / "package.json").read_text(encoding="utf-8"))["version"]
 TAG = f"leio-code-plugin-v{VERSION}"
 REPO = "josaum/leio-code"
 
@@ -112,9 +115,10 @@ def download(name: str) -> Path:
     return dest
 
 
-def linux_tag(binary: Path) -> str:
+def linux_tag(*binaries: Path) -> str:
     versions = [
         tuple(int(part) for part in match.split(b"."))
+        for binary in binaries
         for match in re.findall(br"GLIBC_(\d+\.\d+)", binary.read_bytes())
     ]
     if not versions:
@@ -169,10 +173,22 @@ def retag_wheel(source: Path, tag: str) -> Path:
     return output
 
 
-def build_wheel(platform: dict[str, str]) -> Path:
-    code = download(platform["code"])
-    harness = download(platform["harness"])
-    tag = linux_tag(code) if platform["code"].endswith("linux-amd64") else platform["tag"]
+def release_binary(name: str, assets_dir: Path | None) -> Path:
+    if assets_dir is None:
+        return download(name)
+    binary = assets_dir / name
+    expected = binary.with_name(f"{name}.sha256").read_text(encoding="ascii").split()[0]
+    with binary.open("rb") as handle:
+        actual = hashlib.file_digest(handle, "sha256").hexdigest()
+    if actual != expected:
+        raise ValueError(f"SHA-256 mismatch for {binary.name}")
+    return binary
+
+
+def build_wheel(platform: dict[str, str], assets_dir: Path | None) -> Path:
+    code = release_binary(platform["code"], assets_dir)
+    harness = release_binary(platform["harness"], assets_dir)
+    tag = linux_tag(code, harness) if platform["code"].endswith("linux-amd64") else platform["tag"]
     stage = DIST / "stage" / tag
     if stage.exists():
         shutil.rmtree(stage)
@@ -198,7 +214,7 @@ def build_wheel(platform: dict[str, str]) -> Path:
         stage / "src" / "leio_code" / "skills" / "leio-code",
         ignore=shutil.ignore_patterns(".DS_Store", "__pycache__"),
     )
-    wheel_dir = DIST / "wheels-any"
+    wheel_dir = DIST / "wheels-any" / tag
     wheel_dir.mkdir(parents=True, exist_ok=True)
     subprocess.run(
         [sys.executable, "-m", "pip", "wheel", "--no-deps", str(stage), "-w", str(wheel_dir)],
@@ -238,9 +254,12 @@ def pack_npm() -> Path:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--assets-dir", type=Path, help="Use verified binaries from the release build")
+    args = parser.parse_args()
     DIST.mkdir(parents=True, exist_ok=True)
     for platform in PLATFORMS:
-        build_wheel(platform)
+        build_wheel(platform, args.assets_dir)
     pack_npm()
 
 

@@ -24,12 +24,16 @@ INCLUDED_PATHS = (
     ".leio-code/config.toml",
     ".codex-plugin",
     ".claude-plugin",
+    ".chatgpt-plugin",
     ".mcp.json",
+    "manifest.json",
+    "gemini-extension.json",
     "Cargo.toml",
     "Cargo.lock",
     "rust-toolchain.toml",
     "build.rs",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE",
     "LICENSE-MIT",
     "LICENSE-APACHE",
@@ -40,6 +44,7 @@ INCLUDED_PATHS = (
     "skills",
     "hooks",
     "mcp",
+    "packaging",
     "apps-sdk",
     "src",
     "schema",
@@ -121,6 +126,7 @@ def copy_payload(plugin_root: Path, staging_root: Path, plugin_name: str) -> Pat
                     "target",
                     ".venv*",
                     "releases",
+                    "dist",
                 ),
             )
         else:
@@ -191,7 +197,7 @@ def main() -> None:
             build_tar_gz(staging_root, tar_path, plugin_name)
             artifacts.append(
                 {
-                    "path": str(tar_path),
+                    "path": tar_path.name,
                     "format": "tar.gz",
                     "sha256": sha256_hex(tar_path),
                     "size_bytes": tar_path.stat().st_size,
@@ -202,7 +208,7 @@ def main() -> None:
             build_zip(staging_root, zip_path, plugin_name)
             artifacts.append(
                 {
-                    "path": str(zip_path),
+                    "path": zip_path.name,
                     "format": "zip",
                     "sha256": sha256_hex(zip_path),
                     "size_bytes": zip_path.stat().st_size,
