@@ -17,7 +17,7 @@ use serde_json::json;
 use crate::graph_query::{GraphDirection, query_call_graph, query_symbols_in};
 use crate::local_nodes::{self, NodeHit};
 use crate::model::{EvidenceItem, QueryEnvelope, RepoIndex};
-use crate::query::find_symbols;
+use crate::query::{find_symbols, qualified_symbol_key};
 
 /// Cap on persisted history/forward entries.
 ///
@@ -96,7 +96,10 @@ impl NavNode {
         if let (Some(left), Some(right)) = (&self.section, &other.section) {
             return left == right;
         }
-        self.path == other.path && self.symbol == other.symbol && self.kind == other.kind
+        self.path == other.path
+            && self.symbol == other.symbol
+            && self.kind == other.kind
+            && !matches!((self.line, other.line), (Some(left), Some(right)) if left != right)
     }
 
     fn retain_identity_from(&mut self, other: &Self) {
@@ -975,11 +978,19 @@ fn exact_indexed_file(
             section: None,
         }));
     }
-    let exact_symbol = index
-        .files
-        .iter()
-        .flat_map(|file| &file.symbols)
-        .any(|symbol| symbol.name == needle || symbol.qual_name.as_deref() == Some(needle));
+    let qualified = qualified_symbol_key(needle);
+    let exact_symbol = index.all_symbols().any(|symbol| {
+        symbol.name == needle
+            || symbol.qual_name.as_deref() == Some(needle)
+            || qualified.as_ref().is_some_and(|key| {
+                symbol
+                    .qual_name
+                    .as_deref()
+                    .and_then(qualified_symbol_key)
+                    .as_ref()
+                    == Some(key)
+            })
+    });
     if explicit && !exact_symbol {
         bail!(
             "file `{relative}` is not indexed; refresh the repository index or choose an indexed path"
@@ -1310,20 +1321,25 @@ fn graph_needle(index: &RepoIndex, repo_root: &Path, node: &NavNode) -> Result<S
         return Ok(iri.clone());
     }
     let envelope = query_symbols_in(index, repo_root, &node.path)?;
+    let qualified = qualified_symbol_key(&node.symbol);
     let matches: Vec<&serde_json::Value> = envelope
         .entities
         .iter()
         .filter(|entity| {
             entity.get("path").and_then(serde_json::Value::as_str) == Some(node.path.as_str())
-                && ["name", "qual_name"].iter().any(|key| {
+                && (["name", "qual_name"].iter().any(|key| {
                     entity.get(key).and_then(serde_json::Value::as_str)
                         == Some(node.symbol.as_str())
-                })
+                }) || qualified.as_ref().is_some_and(|key| {
+                    entity["qual_name"]
+                        .as_str()
+                        .and_then(qualified_symbol_key)
+                        .as_ref()
+                        == Some(key)
+                }))
         })
         .collect();
-    if matches.len() == 1
-        && let Some(iri) = matches[0].get("symbol").and_then(serde_json::Value::as_str)
-    {
+    if let Some(iri) = graph_identity_at_line(&matches, node.line) {
         return Ok(iri.to_string());
     }
     anyhow::bail!(
@@ -1332,6 +1348,26 @@ fn graph_needle(index: &RepoIndex, repo_root: &Path, node: &NavNode) -> Result<S
         node.path,
         node.path
     )
+}
+
+fn graph_identity_at_line<'a>(
+    matches: &[&'a serde_json::Value],
+    line: Option<u32>,
+) -> Option<&'a str> {
+    let entry = if let [only] = matches {
+        *only
+    } else {
+        let line = u64::from(line?);
+        let mut at_line = matches
+            .iter()
+            .filter(|row| row["line"].as_u64() == Some(line));
+        let selected = *at_line.next()?;
+        if at_line.next().is_some() {
+            return None;
+        }
+        selected
+    };
+    entry.get("symbol").and_then(serde_json::Value::as_str)
 }
 
 fn dedupe_nodes(nodes: impl Iterator<Item = NavNode>) -> Vec<NavNode> {
@@ -1801,12 +1837,22 @@ mod tests {
             &index,
             dir.path(),
             NavAction::Goto,
-            Some("Example.method"),
+            Some("Example::method"),
             None,
             10,
         )
         .unwrap();
         assert_eq!(envelope.entities[0]["line"], 2);
+        let dotted = run_nav(
+            &index,
+            dir.path(),
+            NavAction::Goto,
+            Some("Example.method"),
+            None,
+            10,
+        )
+        .unwrap();
+        assert_eq!(dotted.entities[0]["line"], 2);
         assert!(
             envelope
                 .evidence
@@ -2411,6 +2457,52 @@ mod tests {
         let mut repeated_heading = heading.clone();
         repeated_heading.section = Some("section:a.md#5".into());
         assert!(!heading.same_identity(&repeated_heading));
+    }
+
+    #[test]
+    fn repeated_definitions_keep_distinct_source_positions() {
+        let first: NavNode = serde_json::from_value(json!({
+            "path": "a.py", "symbol": "handler", "kind": "function", "line": 2
+        }))
+        .unwrap();
+        let mut second = first.clone();
+        second.line = Some(9);
+        assert_eq!(dedupe_nodes([first, second].into_iter()).len(), 2);
+        let rows = [
+            json!({"line": 2, "symbol": "first"}),
+            json!({"line": 9, "symbol": "second"}),
+        ];
+        let matches: Vec<_> = rows.iter().collect();
+        assert_eq!(graph_identity_at_line(&matches, Some(9)), Some("second"));
+        assert_eq!(graph_identity_at_line(&matches, None), None);
+        assert_eq!(graph_identity_at_line(&matches, Some(5)), None);
+    }
+
+    #[test]
+    fn graph_walk_keeps_calls_on_the_selected_redeclaration() {
+        let dir = tempfile::tempdir().unwrap();
+        let index = indexed_fixture(
+            dir.path(),
+            &[(
+                "a.py",
+                "def one(): pass\ndef two(): pass\ndef handler(value):\n    return one()\ndef handler(value, default):\n    return two()\n",
+            )],
+        );
+        let inventory = query_symbols_in(&index, dir.path(), "a.py").unwrap();
+        let declarations: Vec<_> = inventory
+            .entities
+            .iter()
+            .filter(|row| row["name"] == "handler")
+            .collect();
+        assert_eq!(declarations.len(), 2);
+        assert_ne!(declarations[0]["symbol"], declarations[1]["symbol"]);
+        for (line, target) in [(3, "one"), (5, "two")] {
+            let start = format!("definition:a.py#{line}");
+            run_nav(&index, dir.path(), NavAction::Goto, Some(&start), None, 10).unwrap();
+            let walk = run_nav(&index, dir.path(), NavAction::Callees, None, None, 10).unwrap();
+            assert_eq!(walk.entities.len(), 2);
+            assert_eq!(walk.entities[1]["symbol"], target);
+        }
     }
 
     #[test]

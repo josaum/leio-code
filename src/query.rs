@@ -16,6 +16,7 @@
 //! priority) is intentionally rich because the coding agent uses route lookups
 //! as a primary navigation surface; see the inline test suite for the contract.
 
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs;
@@ -65,8 +66,43 @@ fn try_open_sidecar(index: &RepoIndex) -> Option<SearchIndex> {
     SearchIndex::open_if_fresh(&path).ok().flatten()
 }
 
+/// Canonical key for a complete dotted or double-colon symbol reference.
+pub(crate) fn qualified_symbol_key(value: &str) -> Option<Cow<'_, str>> {
+    let normalized = if value.contains("::") {
+        Cow::Owned(value.replace("::", "."))
+    } else if value.contains('.') {
+        Cow::Borrowed(value)
+    } else {
+        return None;
+    };
+    normalized
+        .split('.')
+        .all(|part| !part.is_empty() && part.chars().all(|ch| ch.is_alphanumeric() || ch == '_'))
+        .then_some(normalized)
+}
+
 pub fn find_symbols(index: &RepoIndex, needle: &str) -> QueryEnvelope {
     let started = Instant::now();
+    if let Some(key) = qualified_symbol_key(needle) {
+        let exact: Vec<_> = index
+            .all_symbols()
+            .filter(|symbol| {
+                symbol
+                    .qual_name
+                    .as_deref()
+                    .and_then(qualified_symbol_key)
+                    .as_ref()
+                    == Some(&key)
+            })
+            .collect();
+        if !exact.is_empty()
+            && !exact
+                .iter()
+                .any(|symbol| symbol.qual_name.as_deref() == Some(needle))
+        {
+            return linear_symbol_response(needle, &exact, started, "qualified-symbol");
+        }
+    }
     let multiword = needle.split_whitespace().count() > 1 || needle.contains("fca");
     // Local Arrow wins only when search_as_find has a path-or-better top hit.
     if multiword
@@ -131,6 +167,15 @@ pub fn find_symbols(index: &RepoIndex, needle: &str) -> QueryEnvelope {
         })
         .collect();
 
+    linear_symbol_response(needle, &matches, started, "linear-scan")
+}
+
+fn linear_symbol_response(
+    needle: &str,
+    matches: &[&SymbolOccurrence],
+    started: Instant,
+    source: &str,
+) -> QueryEnvelope {
     QueryEnvelope {
         schema_version: crate::model::SCHEMA_VERSION.to_string(),
         query_id: query_id("find_symbol"),
@@ -160,7 +205,7 @@ pub fn find_symbols(index: &RepoIndex, needle: &str) -> QueryEnvelope {
             })
             .collect(),
         warnings: Vec::new(),
-        meta: Some(json!({ "source": "linear-scan" })),
+        meta: Some(json!({ "source": source })),
         timing_ms: started.elapsed().as_millis(),
     }
 }

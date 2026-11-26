@@ -38,6 +38,7 @@ use crate::model::{
     DeployTargetRecord, EvidenceItem, FileRecord, QueryEnvelope, RedisKeyOccurrence, RepoIndex,
     SymbolOccurrence,
 };
+use crate::query::qualified_symbol_key;
 
 const STOP_WORDS: &[&str] = &[
     "a", "an", "and", "are", "as", "at", "be", "by", "can", "code", "do", "does", "for", "from",
@@ -136,6 +137,7 @@ enum ExplicitMatch {
 struct ExplicitReferences {
     paths: HashMap<String, Vec<std::ops::Range<usize>>>,
     names: HashSet<String>,
+    qualified_names: HashSet<String>,
 }
 
 impl ExplicitReferences {
@@ -172,6 +174,9 @@ impl ExplicitReferences {
                     && token.bytes().any(|ch| ch.is_ascii_lowercase())
             {
                 refs.names.insert(token.to_owned());
+                if let Some(qualified) = qualified_symbol_key(token) {
+                    refs.qualified_names.insert(qualified.into_owned());
+                }
             }
         }
         refs
@@ -220,10 +225,12 @@ impl ExplicitReferences {
     fn names_symbol(&self, symbol: &SymbolOccurrence) -> bool {
         !self.names.is_empty()
             && (self.names.contains(&symbol.name)
-                || symbol
-                    .qual_name
-                    .as_ref()
-                    .is_some_and(|name| self.names.contains(name)))
+                || symbol.qual_name.as_ref().is_some_and(|name| {
+                    self.names.contains(name)
+                        || (!self.qualified_names.is_empty()
+                            && qualified_symbol_key(name)
+                                .is_some_and(|key| self.qualified_names.contains(key.as_ref())))
+                }))
     }
 }
 
@@ -3947,7 +3954,11 @@ mod tests {
         decoy.symbols[0].name = "resolveEntryDependencies".into();
         index.files = vec![decoy, target];
         let query = |task: &str| build_context_bundle(&index, root.path(), task, 1, false).entities;
-        for name in ["resolveEntry", "`Resolver::resolveEntry`"] {
+        for name in [
+            "resolveEntry",
+            "`Resolver::resolveEntry`",
+            "`Resolver.resolveEntry`",
+        ] {
             let task = format!("Review {name} dependencies");
             let entities = query(&task);
             let file = &entities[0]["files_to_read"][0];
