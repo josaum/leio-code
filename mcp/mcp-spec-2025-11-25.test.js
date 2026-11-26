@@ -355,7 +355,7 @@ test("stdio initialize still works for legacy clients and discover is registered
       .object({
         resultType: z.string(),
         supportedVersions: z.array(z.string()),
-        capabilities: z.record(z.unknown()),
+        capabilities: z.record(z.string(), z.unknown()),
         ttlMs: z.number(),
         cacheScope: z.string(),
       })

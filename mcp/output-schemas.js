@@ -12,7 +12,7 @@ const UiBadgeSchema = z
 const UiHintsSchema = z
   .object({
     badges: z.array(UiBadgeSchema).optional(),
-    states: z.record(z.unknown()).optional(),
+    states: z.record(z.string(), z.unknown()).optional(),
   })
   .passthrough();
 
@@ -34,10 +34,10 @@ const QueryEnvelopeSchema = z
     kind: z.string().optional(),
     summary: z.unknown().optional(),
     confidence: z.number().optional(),
-    entities: z.array(z.record(z.unknown())).optional(),
-    evidence: z.array(z.record(z.unknown())).optional(),
+    entities: z.array(z.record(z.string(), z.unknown())).optional(),
+    evidence: z.array(z.record(z.string(), z.unknown())).optional(),
     warnings: z.array(z.unknown()).optional(),
-    meta: z.record(z.unknown()).optional(),
+    meta: z.record(z.string(), z.unknown()).optional(),
     timing_ms: z.number().optional(),
   })
   .passthrough();
@@ -57,8 +57,8 @@ const SourceControlSchema = z
   .object({
     supports_repo_url: z.boolean().optional(),
     supports_server_repo_root: z.boolean().optional(),
-    selected_repository: z.record(z.unknown()).nullable().optional(),
-    github: z.record(z.unknown()).optional(),
+    selected_repository: z.record(z.string(), z.unknown()).nullable().optional(),
+    github: z.record(z.string(), z.unknown()).optional(),
   })
   .passthrough();
 
@@ -98,13 +98,13 @@ export const LeioToolOutputSchema = z
     envelope: QueryEnvelopeSchema.nullable().optional(),
     envelope_summary: EnvelopeSummarySchema.nullable().optional(),
     ui_hints: UiHintsSchema.optional(),
-    workspace_capability_hints: z.record(z.unknown()).nullable().optional(),
-    workspace_capabilities: z.record(z.unknown()).nullable().optional(),
+    workspace_capability_hints: z.record(z.string(), z.unknown()).nullable().optional(),
+    workspace_capabilities: z.record(z.string(), z.unknown()).nullable().optional(),
     action_palette: ActionPaletteSchema.nullable().optional(),
     source_control: SourceControlSchema.nullable().optional(),
-    specialist_bridge: z.record(z.unknown()).nullable().optional(),
-    specialist_review: z.record(z.unknown()).nullable().optional(),
-    auth: z.record(z.unknown()).optional(),
+    specialist_bridge: z.record(z.string(), z.unknown()).nullable().optional(),
+    specialist_review: z.record(z.string(), z.unknown()).nullable().optional(),
+    auth: z.record(z.string(), z.unknown()).optional(),
     mcp_session_id: z.string().nullable().optional(),
     evidence_contract: EvidenceContractSchema.optional(),
   })
@@ -131,12 +131,12 @@ const HarnessTaskSchema = z.object({
 const HarnessArtifactPreviewSchema = z.object({path:z.string().nullable(),text:z.string(),available:z.boolean(),truncated:z.boolean(),error:z.string().nullable()});
 export const LeioTaskToolOutputSchema = LeioToolOutputSchema.extend({
   review_source: z.object({version:z.literal(1),source_repo:z.string(),repo_root:z.string(),captured_at:z.string(),files:z.array(z.object({path:z.string(),sha256:z.string(),bytes:z.number().int().nonnegative()})),scope:z.string()}).optional(),
-  review_runs: z.array(z.object({repo_root:z.string(),run_id:z.string(),captured_at:z.string(),source_files:z.number().int(),recovered:z.boolean().optional(),next_call:z.object({tool:z.literal('leio_code_task'),arguments:z.record(z.unknown()),reason:z.string()})})).optional(),
+  review_runs: z.array(z.object({repo_root:z.string(),run_id:z.string(),captured_at:z.string(),source_files:z.number().int(),recovered:z.boolean().optional(),next_call:z.object({tool:z.literal('leio_code_task'),arguments:z.record(z.string(), z.unknown()),reason:z.string()})})).optional(),
   review_runs_truncated: z.boolean().optional(),
   review_catalog_incomplete: z.boolean().optional(),
   review_warnings: z.array(z.object({kind:z.string(),path:z.string(),message:z.string()})).optional(),
   preparation: z.object({source_repo:z.string(),repo_root:z.string(),baseline_revision:z.string(),source_edits_excluded:z.boolean(),detached:z.literal(true),clean:z.boolean()}).optional(),
-  next_calls: z.array(z.object({tool:z.literal("leio_code_task"),arguments:z.record(z.unknown()),reason:z.string()})).optional(),
+  next_calls: z.array(z.object({tool:z.literal("leio_code_task"),arguments:z.record(z.string(), z.unknown()),reason:z.string()})).optional(),
   review: z.object({version:z.literal(1),outcome:z.string(),phase:z.string(),error:z.string().nullable(),next_action:z.enum(["observe_or_cancel","review_changes","review_findings","inspect_partial_changes","inspect_failure"]),
     verification:z.object({status:z.string(),exit_code:z.number().nullable()}).nullable(),changed_files:z.array(z.string()),changed_files_truncated:z.boolean(),
     artifacts:z.object({patch:HarnessArtifactPreviewSchema,worker_stdout:HarnessArtifactPreviewSchema,worker_stderr:HarnessArtifactPreviewSchema,verification_stdout:HarnessArtifactPreviewSchema,verification_stderr:HarnessArtifactPreviewSchema}),
@@ -165,7 +165,7 @@ export const LeioNavigationToolOutputSchema = LeioToolOutputSchema.extend({
   next_tools: z.array(z.string()).optional(),
   next_calls: z.array(z.object({
     tool: z.string(),
-    arguments: z.record(z.unknown()),
+    arguments: z.record(z.string(), z.unknown()),
     reason: z.string(),
   })).optional(),
 });
@@ -215,7 +215,7 @@ export const LeioGuideToolOutputSchema = LeioToolOutputSchema.extend({
 });
 
 export const LeioSessionTargetOutputSchema = LeioToolOutputSchema.extend({
-  selected_repository: z.record(z.unknown()).nullable().optional(),
+  selected_repository: z.record(z.string(), z.unknown()).nullable().optional(),
 });
 
 export const LeioSpecialistOutputSchema = LeioToolOutputSchema.extend({
@@ -224,7 +224,7 @@ export const LeioSpecialistOutputSchema = LeioToolOutputSchema.extend({
   answer: z.string().optional(),
   answer_id: z.string().optional(),
   citations: z.array(z.unknown()).optional(),
-  research_dossier: z.record(z.unknown()).nullable().optional(),
+  research_dossier: z.record(z.string(), z.unknown()).nullable().optional(),
 });
 
 export const LeioWatchToolOutputSchema = LeioToolOutputSchema.extend({

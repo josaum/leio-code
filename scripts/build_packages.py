@@ -236,6 +236,7 @@ def pack_npm() -> Path:
         ignore=shutil.ignore_patterns("node_modules", "vendor"),
     )
     stage_server(stage / "server")
+    shutil.copytree(server_modules(), stage / "node_modules")
     shutil.copy2(ROOT / "packaging" / "register-mcp.js", stage / "register-mcp.js")
     shutil.copytree(
         ROOT / "skills" / "leio-code",

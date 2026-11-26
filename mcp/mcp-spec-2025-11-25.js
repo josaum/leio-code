@@ -720,7 +720,7 @@ const DiscoverRequestSchema = z.object({
   method: z.literal("server/discover"),
   params: z
     .object({
-      _meta: z.record(z.unknown()).optional(),
+      _meta: z.record(z.string(), z.unknown()).optional(),
     })
     .passthrough()
     .optional(),

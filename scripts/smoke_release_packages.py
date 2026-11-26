@@ -67,7 +67,7 @@ def smoke(assets: Path, version: str, revision: str, wheel_tag: str) -> None:
 
         npm_package = one_asset(assets, f"leio-code-{version}.tgz")
         npm_command = [node, npm] if windows else [npm]
-        run([*npm_command, "install", "--no-audit", "--no-fund", npm_package], work, env)
+        run([*npm_command, "install", "--offline", "--no-audit", "--no-fund", npm_package], work, env)
         npm_bin = work / "node_modules" / "leio-code" / "bin"
         versions([node, npm_bin / "leio-code.js"], [node, npm_bin / "leio-harness.js"])
         run([node, verify_stdio, npm_bin / "leio-mcp.js"], work, env)
