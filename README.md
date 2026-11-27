@@ -51,7 +51,7 @@ and confirm the session cursor is still there.
 
 **15 of 15 scripted runs passed**, including cursor restoration after provider
 restart. Measured on this repository's **420 indexed files**, Apple M1,
-release 2.6.2. The current release is 2.7.1; these timings were not re-run.
+release 2.6.2. The current release is 2.7.2; these timings were not re-run.
 Five runs per scenario; warm index/graph. Timings include the
 11 calls, checks and reconnect; setup is excluded.
 
@@ -66,14 +66,14 @@ slowest 1.71 s run, is published with the methodology.
 Download the prebuilt programs from the GitHub release. Install the wheel for your operating system with `pip`, or install the release tarball with npm.
 
 ```bash
-npm install -g https://github.com/josaum/leio-code/releases/download/leio-code-plugin-v2.7.1/leio-code-2.7.1.tgz
+npm install -g https://github.com/josaum/leio-code/releases/download/leio-code-plugin-v2.7.2/leio-code-2.7.2.tgz
 ```
 
 The Python wheel and the Node package install `leio-code`, `leio-harness`, and the stdio server `leio-mcp`. They register that server with harnesses already on the machine. The release covers macOS arm64, macOS x64, Linux x64, and Windows x64.
 
 For a fresh Windows x64 setup, extract the **Windows portable ZIP**. It bundles Node.js, MinGit, and the MCP dependencies alongside the LEIO executables. From the unpacked folder, run `.\leio-code.cmd --version` or `.\leio-mcp.cmd --register`. Each query takes an absolute `--repo` or `repo_root`.
 
-[Release 2.7.1](https://github.com/josaum/leio-code/releases/tag/leio-code-plugin-v2.7.1)
+[Release 2.7.2](https://github.com/josaum/leio-code/releases/tag/leio-code-plugin-v2.7.2)
 
 ## Your first useful query
 

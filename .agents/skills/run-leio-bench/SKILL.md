@@ -5,7 +5,7 @@ license: MIT OR Apache-2.0
 compatibility: Requires python3, leio-harness, and a clean git checkout.
 metadata:
   author: leio-code
-  version: "2.7.1"
+  version: "2.7.2"
 ---
 
 # run-leio-bench (repo-local)

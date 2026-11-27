@@ -24,7 +24,7 @@ leio-code --version
 `leio-code-windows-amd64.exe`, plus the matching harness binaries. It assembles
 the wheel, npm, MCPB, and source plugin formats and runs native installation tests.
 The Windows portable ZIP additionally runs with a system-only PATH on Windows
-Server 2022 and 2025. [Current release](https://github.com/josaum/leio-code/releases/tag/leio-code-plugin-v2.7.1)
+Server 2022 and 2025. [Current release](https://github.com/josaum/leio-code/releases/tag/leio-code-plugin-v2.7.2)
 
 ## Homebrew
 

@@ -5,7 +5,7 @@ license: MIT OR Apache-2.0
 compatibility: Requires leio-code, leio-harness, and a clean git repository.
 metadata:
   author: leio-code
-  version: "2.7.1"
+  version: "2.7.2"
 ---
 
 # LEIO Day — multi-model orchestration

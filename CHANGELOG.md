@@ -2,6 +2,14 @@
 
 All notable changes to LEIO Code. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow the crate version in `Cargo.toml`.
 
+## [2.7.2] — 2026-11-27
+
+### Fixed
+
+- Seeded Cargo coverage queries now identify public functions with no observed direct test call when they share a caller with a locally tested peer. They also identify shared test helpers that reuse a clock-named temporary directory. These findings keep their place ahead of generic graph suggestions.
+- With a file limit above eight, coverage queries can also include files flagged by the checkout's pinned, locally installed rustfmt. The check is read-only and has a five-second deadline. Source-based retrieval works without the formatter.
+- On the later-commit benchmark, a 20-file limit recovered all 20 co-edit partners, up from 17 in 2.7.1. Both versions recovered 15 of 20 at six files. On the largest change, one named seed left five places for ten partners. The wider lookup took 1.35 seconds on that prompt, up from 0.57 seconds on the same Mac.
+
 ## [2.7.1] — 2026-11-26
 
 ### Fixed
