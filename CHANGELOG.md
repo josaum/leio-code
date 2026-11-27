@@ -2,6 +2,14 @@
 
 All notable changes to LEIO Code. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow the crate version in `Cargo.toml`.
 
+## [2.7.1] — 2026-11-26
+
+### Fixed
+
+- Co-edit retrieval finds Rust tests that still expect an earlier value after a change in a local Cargo dependency. Direct evidence keeps its place in a full result set. The six-file later-commit benchmark recovered 15 of 20 partners, up from 12.
+- Coverage queries with spare capacity can surface public Rust functions used by other files when no direct test call appears in the scanned sources.
+- `context --diff` now lists all live changed files ahead of related files when no task is supplied and the changes fit within the file limit.
+
 ## [2.7.0] — 2026-11-26
 
 ### Added

@@ -1,9 +1,9 @@
 # Install LEIO Code
 
-Download the wheel for your platform from the [GitHub release](https://github.com/josaum/leio-code/releases/tag/leio-code-plugin-v2.7.0), or install the npm tarball directly.
+Download the wheel for your platform from the [GitHub release](https://github.com/josaum/leio-code/releases/tag/leio-code-plugin-v2.7.1), or install the npm tarball directly.
 
 ```bash
-npm install -g https://github.com/josaum/leio-code/releases/download/leio-code-plugin-v2.7.0/leio-code-2.7.0.tgz
+npm install -g https://github.com/josaum/leio-code/releases/download/leio-code-plugin-v2.7.1/leio-code-2.7.1.tgz
 ```
 
 The Python wheel and the Node package install `leio-code`, `leio-harness`, and
@@ -13,7 +13,7 @@ Release binaries cover macOS arm64, macOS x64, Linux x64, and Windows x64.
 
 ## Windows x64 portable installation
 
-Extract the full `leio-code-2.7.0-windows-amd64-portable.zip` into a user-writable folder.
+Extract the full `leio-code-2.7.1-windows-amd64-portable.zip` into a user-writable folder.
 It contains both LEIO executables, Node.js, MinGit, the MCP JavaScript dependencies,
 and the LEIO skill. From PowerShell in that folder, run these commands.
 
