@@ -183,7 +183,7 @@ enum Command {
         /// Natural language task, symbol, path, env var, Redis key, or feature area (optional when `--diff` is set)
         task: Option<String>,
         /// Maximum number of ranked files/entities to include
-        #[arg(long, default_value = "8")]
+        #[arg(long, default_value_t = leio_code::context::DEFAULT_FILE_LIMIT)]
         limit: usize,
         /// Emit the exhaustive bundle: uncapped per-file entity lists and the
         /// full workspace capabilities block in meta. The default bundle is a

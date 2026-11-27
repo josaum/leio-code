@@ -40,6 +40,9 @@ use crate::model::{
 };
 use crate::query::qualified_symbol_key;
 
+/// Default file budget for a context request. Larger budgets can accommodate optional verification.
+pub const DEFAULT_FILE_LIMIT: usize = 8;
+
 const STOP_WORDS: &[&str] = &[
     "a", "an", "and", "are", "as", "at", "be", "by", "can", "code", "do", "does", "for", "from",
     "go", "how", "i", "in", "into", "is", "it", "make", "of", "on", "or", "our", "the", "this",

@@ -35,6 +35,12 @@ Roughly:
 
 Symbols, env vars, Redis keys, and deploy targets use the **same IDF-weighted lexical scorer** as file rows where applicable.
 
+## Finding additional coverage work
+
+A named file takes one place in the file limit. For a broad Cargo coverage task, increase `--limit` to explore more partners. After direct matches, LEIO looks for public functions with external callers and no observed direct test call, untested functions used alongside a locally tested peer, and shared test fixtures that allocate a clock-named directory without exclusive creation. Each lead includes its source evidence.
+
+Above the default eight-file limit, spare places can also include files reported by a read-only `rustfmt --check`. LEIO uses this signal when the checkout declares the rustfmt component for a locally installed, numerically pinned Rust release. The probe uses the package edition, respects the existing source scan bounds, and has a five-second total deadline. Source-based retrieval also works when the formatter is unavailable.
+
 ## Key JSON fields
 
 | Field | Meaning |

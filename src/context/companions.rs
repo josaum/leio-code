@@ -687,14 +687,14 @@ pub(super) fn add_task_companions(
         live_file(&root, Path::new(path)).is_some() && seen.insert(path.clone())
     });
     // A generic binary or graph fallback can fill a free slot after targeted evidence.
-    let filled = evidence.len() >= budget;
-    if !filled && terms.iter().any(|t| t == "coverage") {
+    if evidence.len() < budget && terms.iter().any(|t| t == "coverage") {
         evidence.extend(
-            verification::coverage_gaps(index, &root, &scope)
+            verification::coverage_gaps(index, &root, &scope, limit > super::DEFAULT_FILE_LIMIT)
                 .into_iter()
                 .filter(|(path, _)| !seeds.contains(path) && seen.insert(path.clone())),
         );
     }
+    let filled = evidence.len() >= budget;
     let ceiling = files.iter().map(|f| f.score).max().unwrap_or(0);
     for (i, (path, reason)) in evidence.into_iter().take(budget).enumerate() {
         let existing = files.iter().find(|f| f.path == path).map(|f| f.score);

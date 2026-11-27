@@ -996,6 +996,15 @@ pub fn catalog() -> std::collections::BTreeMap<&'static str,&'static str> {
             .unwrap()
             .contains("test still asserts")
     );
+    let medium = query("5");
+    assert!(
+        medium["entities"][0]["files_to_read"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|f| f["path"] == "src/compass.rs"),
+        "an observed coverage gap should keep the final slot ahead of a generic binary fallback"
+    );
     let wide = query("40");
     let files = wide["entities"][0]["files_to_read"].as_array().unwrap();
     let reasons = |needle: &str| {

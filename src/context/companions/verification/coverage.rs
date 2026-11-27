@@ -2,10 +2,15 @@
 //! not runtime coverage measurements.
 use super::*;
 
+mod fixtures;
+mod formatting;
+use fixtures::TestFixtures;
+
 #[derive(Default)]
 struct Callers<'a> {
     production: BTreeSet<&'a str>,
-    tested: bool,
+    functions: BTreeSet<(&'a str, usize)>,
+    tests: BTreeSet<&'a str>,
 }
 
 #[derive(Default)]
@@ -14,16 +19,22 @@ struct Inventory<'a> {
     owners: HashMap<String, Option<&'a str>>,
     public: BTreeMap<&'a str, BTreeSet<String>>,
     callers: HashMap<String, Callers<'a>>,
+    fixtures: Vec<(usize, String, String)>,
 }
 
-fn test_attribute(item: Node<'_>, source: &str) -> bool {
+fn test_attribute(item: Node<'_>, source: &str, include_cfg: bool) -> bool {
     let mut prev = item.prev_named_sibling();
     while let Some(attr) = prev {
         match attr.kind() {
             "attribute_item" => {
                 let compact: String = text(attr, source).split_whitespace().collect();
-                if matches!(compact.as_str(), "#[cfg(test)]" | "#[test]")
-                    || compact.ends_with("::test]")
+                let attribute = compact
+                    .trim_start_matches("#[")
+                    .split(['(', ']'])
+                    .next()
+                    .unwrap_or("");
+                if attribute.rsplit("::").next() == Some("test")
+                    || (include_cfg && compact == "#[cfg(test)]")
                 {
                     return true;
                 }
@@ -71,10 +82,11 @@ impl<'a> Inventory<'a> {
         } else {
             0
         };
+        let mut fixtures = TestFixtures::default();
         walk(tree.root_node(), &mut |node| {
             if matches!(node.kind(), "function_item" | "mod_item")
                 && test_end <= node.start_byte()
-                && test_attribute(node, source)
+                && test_attribute(node, source, true)
             {
                 test_end = node.end_byte();
             }
@@ -82,12 +94,21 @@ impl<'a> Inventory<'a> {
             if let Some(name) = call_name(node, source) {
                 let usage = self.callers.entry(name.to_owned()).or_default();
                 if in_test {
-                    usage.tested = true;
+                    usage.tests.insert(path);
                 } else {
                     usage.production.insert(path);
+                    if let Some(owner) = std::iter::successors(node.parent(), |n| n.parent())
+                        .find(|n| n.kind() == "function_item")
+                    {
+                        usage.functions.insert((path, owner.start_byte()));
+                    }
                 }
             }
-            if in_test || node.kind() != "function_item" {
+            if node.kind() != "function_item" {
+                return;
+            }
+            if in_test {
+                fixtures.observe(node, source);
                 return;
             }
             let module_level = node.parent().is_some_and(|parent| {
@@ -112,6 +133,9 @@ impl<'a> Inventory<'a> {
                 }
             }
         });
+        if let Some((count, reason)) = fixtures.strongest() {
+            self.fixtures.push((count, path.to_owned(), reason));
+        }
         Some(())
     }
 }
@@ -120,6 +144,7 @@ pub(in super::super) fn coverage_gaps(
     index: &RepoIndex,
     root: &Path,
     scope: &CargoScope,
+    expanded: bool,
 ) -> Vec<(String, String)> {
     if scope.packages.is_empty() {
         return vec![];
@@ -144,9 +169,14 @@ pub(in super::super) fn coverage_gaps(
     let Some(mut parser) = rust_parser() else {
         return vec![];
     };
+    let mut format_inputs: BTreeMap<&Path, Vec<&str>> = BTreeMap::new();
     let mut bytes = 0;
     let mut inventory = Inventory::default();
     for f in files {
+        if expanded {
+            let package = package(root, Path::new(&f.path), &mut manifests);
+            format_inputs.entry(package).or_default().push(&f.path);
+        }
         let Some(source) = bounded_source(root, Path::new(&f.path)) else {
             return vec![];
         };
@@ -155,39 +185,84 @@ pub(in super::super) fn coverage_gaps(
             return vec![];
         }
     }
-    let mut results = vec![];
-    for (path, names) in inventory.public {
-        let mut callers = BTreeSet::new();
-        let mut missing = vec![];
-        for name in &names {
-            if inventory.owners.get(name) != Some(&Some(path)) {
-                continue;
-            }
-            if let Some(usage) = inventory.callers.get(name)
-                && !usage.tested
-                && usage.production.iter().any(|&p| p != path)
-            {
-                callers.extend(usage.production.iter().copied().filter(|&p| p != path));
-                missing.push(name.as_str());
-            }
-        }
-        if !missing.is_empty() {
-            let evidence = format!(
-                "public calls with no direct test call observed ({} external caller files): {}",
-                callers.len(),
-                missing
-                    .iter()
-                    .take(4)
-                    .copied()
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            );
-            results.push((callers.len(), missing.len(), path.to_owned(), evidence));
-        }
-    }
-    results.sort_by(|a, b| b.0.cmp(&a.0).then(b.1.cmp(&a.1)).then(a.2.cmp(&b.2)));
-    results
-        .into_iter()
-        .map(|(_, _, path, reason)| (path, reason))
-        .collect()
+    let format = if expanded {
+        formatting::drift(root, &format_inputs).unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    inventory.leads(format)
 }
+
+impl Inventory<'_> {
+    fn leads(mut self, formatting: Vec<(String, String)>) -> Vec<(String, String)> {
+        let mut results = vec![];
+        let mut partial = vec![];
+        for (path, names) in self.public {
+            let mut callers = BTreeSet::new();
+            let mut missing = vec![];
+            let mut tested_peers = BTreeSet::new();
+            let mut missing_uses = BTreeSet::new();
+            for name in &names {
+                if self.owners.get(name) != Some(&Some(path)) {
+                    continue;
+                }
+                let Some(usage) = self.callers.get(name) else {
+                    continue;
+                };
+                if usage.tests.contains(path) {
+                    tested_peers
+                        .extend(usage.functions.iter().copied().filter(|&(p, _)| p != path));
+                }
+                if usage.tests.is_empty() && usage.production.iter().any(|&p| p != path) {
+                    callers.extend(usage.production.iter().copied().filter(|&p| p != path));
+                    missing_uses
+                        .extend(usage.functions.iter().copied().filter(|&(p, _)| p != path));
+                    missing.push(name.as_str());
+                }
+            }
+            if !missing.is_empty() {
+                let evidence = format!(
+                    "public calls with no direct test call observed ({} external caller files): {}",
+                    callers.len(),
+                    missing
+                        .iter()
+                        .take(4)
+                        .copied()
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+                let common = missing_uses.intersection(&tested_peers).count();
+                if missing.len() == 1 && common > 0 {
+                    let reason = format!(
+                        "{evidence}; production callers shared with a locally tested public peer: {common}"
+                    );
+                    partial.push((common, path.to_owned(), reason));
+                }
+                results.push((callers.len(), missing.len(), path.to_owned(), evidence));
+            }
+        }
+        results.sort_by(|a, b| b.0.cmp(&a.0).then(b.1.cmp(&a.1)).then(a.2.cmp(&b.2)));
+        let order = |a: &(usize, String, String), b: &(usize, String, String)| {
+            b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1))
+        };
+        partial.sort_by(order);
+        self.fixtures.sort_by(order);
+        let mut fanout = results.into_iter().map(|(_, _, p, r)| (p, r));
+        let mut peers = partial.into_iter().map(|(_, p, r)| (p, r));
+        let mut fixtures = self.fixtures.into_iter().map(|(_, p, r)| (p, r));
+        let mut format = formatting.into_iter();
+        // Each evidence family gets a turn before any one family takes a second place.
+        let mut leads = Vec::new();
+        loop {
+            let round = [fanout.next(), fixtures.next(), peers.next(), format.next()];
+            if round.iter().all(Option::is_none) {
+                break;
+            }
+            leads.extend(round.into_iter().flatten());
+        }
+        leads
+    }
+}
+
+#[cfg(test)]
+mod tests;
